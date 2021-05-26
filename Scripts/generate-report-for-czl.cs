@@ -111,7 +111,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
                 else
                     orderCell.Text = "---";
 
-                // Установка ширины ячейи и добавление ячейки в строку таблицы
+                // Установка ширины ячейки и добавление ячейки в строку таблицы
                 orderCell.WidthF = widthOfOrderColumn;
                 tableRow.Cells.Add(orderCell);
 
@@ -123,7 +123,12 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
                     tableOfCells.AddCell(cell);
 
                     // Заполнение значения ячейки
-                    cell.Text = value;
+                    // Производим проверку на нулевое значение.
+                    // Если значение нулевое, ставим прочерк
+                    if (value != "0")
+                        cell.Text = value;
+                    else
+                        cell.Text = "-";
 
                     // Дабавление ячейки в таблицу отчета
                     tableRow.Cells.Add(cell);
