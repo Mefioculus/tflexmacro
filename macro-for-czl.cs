@@ -85,7 +85,7 @@ public class Macro : MacroProvider
             public static Guid Диаметр = new Guid("50c7f6c1-e8da-496a-9327-f32bbbbee29f");
             public static Guid СводныйРазмер = new Guid("f91d8f9c-0d56-414f-b452-1032cc3cd0cd");
             // Для передачи в отчет
-            public static Guid ВидПроката = new Guid("4cfe5d7a-93ad-4db2-a9d4-ab2fda219a36");
+            public static Guid Испытание = new Guid("4cfe5d7a-93ad-4db2-a9d4-ab2fda219a36");
             public static Guid ПределПрочности = new Guid("d205d64d-ba0e-43e9-b7b3-52b250a5c8f8");
             public static Guid ПределТекучести = new Guid("20fb0b1a-be6d-4c0d-b78f-f8fc7cf0fe9c");
             public static Guid ОтносительноеУдлинение = new Guid("86bc650f-101e-47c2-9686-2ef8f5ccacee");
@@ -372,7 +372,7 @@ public class Macro : MacroProvider
                 resultDataClass.EndRow();
 
                 foreach (ReferenceObject sample in record.GetObjects(Guids.ListsOfObjects.Образцы)) {
-                    resultDataClass.Add(sample[Guids.Props.ВидПроката].Value.ToString());
+                    resultDataClass.Add(sample[Guids.Props.Испытание].Value.ToString());
                     resultDataClass.Add(sample[Guids.Props.СводныйРазмер].Value.ToString());
                     resultDataClass.Add(sample[Guids.Props.ПределПрочности].Value.ToString());
                     resultDataClass.Add(sample[Guids.Props.ПределТекучести].Value.ToString());
