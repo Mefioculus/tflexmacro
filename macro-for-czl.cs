@@ -363,12 +363,12 @@ public class Macro : MacroProvider
                 break;
             case таблицаПоОбразцам:
                 // код для получения выходных данным с вложенного списка "Образцы"
-                resultDataClass.Add("Испытание");
+                resultDataClass.Add("Вид испытания");
                 resultDataClass.Add("Сводный размер, мм");
                 resultDataClass.Add("Предел прочности, МПа");
                 resultDataClass.Add("Предел текучести, МПа");
                 resultDataClass.Add("Относительное удлинение, %");
-                resultDataClass.Add("Прочность при изгибе, Дж/см\u00B2");
+                resultDataClass.Add("KCU, Дж/см\u00B2");
                 resultDataClass.EndRow();
 
                 foreach (ReferenceObject sample in record.GetObjects(Guids.ListsOfObjects.Образцы)) {
