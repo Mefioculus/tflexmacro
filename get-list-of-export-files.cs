@@ -33,7 +33,6 @@ public class Macro : MacroProvider {
 
     #endregion Guids
 
-
     #region Entry point
 
     public override void Run() {
@@ -65,9 +64,7 @@ public class Macro : MacroProvider {
             foreach (ZipArchiveEntry entry in archive.Entries) {
                 string nameOfFile = HttpUtility.UrlDecode(entry.FullName);
                 if (nameOfFile.StartsWith("Files")) {
-                    if (nameOfFile.Contains("Личные папки")) { // Remove at job is done
-                        listOfFiles.Add(nameOfFile.Remove(0, 6));
-                    }
+                    listOfFiles.Add(nameOfFile.Remove(0, 6));
                 }
             }
         }
@@ -111,6 +108,7 @@ public class Macro : MacroProvider {
             WaitingDialog.NextStep(filePath);
         }
         WaitingDialog.Hide();
+
         string template = "Всего файлов на экспорт - {0}\nИз них найдено - {1} шт., не найдено - {2} шт.";
         Message("Информация", string.Format(template, allFiles, countFindingFiles, countNotFindingFiles));
         if (pathNotFound != string.Empty)
