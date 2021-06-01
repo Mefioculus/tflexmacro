@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO.Compression; // Для работы с zip архивами
 using System.Web; // Данное пространство имен подключено для того, чтобы произвести декодирование данных с кодировки Url
+using Forms = System.Windows.Forms; // Для отображения диалогового окна выбора файла для открытия и для сохранения
 // Пространства имен DOCs
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel; // пространство имен для отображения диалога ожидания 
@@ -32,10 +33,25 @@ public class Macro : MacroProvider {
 
     #endregion Guids
 
+
+    #region Entry point
+
     public override void Run() {
-        List<string> listOfFilesOnExport = GetAllExportedFiles(GetExportFile());
+        string pathToExportFile = GetPathToOpenFile();
+        if (pathToExportFile == string.Empty)
+            return;
+
+        List<string> listOfFilesOnExport = GetAllExportedFiles(pathToExportFile);
+        if (listOfFilesOnExport.Count == 0) {
+            Message("Информация", "В выбранном экспортируемом файле не были обнаружены объекты файлового справочника для экспорта");
+            return;
+        }
+
         ExportFiles(listOfFilesOnExport);
+        Message("Информация", "Экспорт завершен");
     }
+
+    #endregion Entry point
 
     #region Get list of files from archive with exported data
 
@@ -49,7 +65,7 @@ public class Macro : MacroProvider {
             foreach (ZipArchiveEntry entry in archive.Entries) {
                 string nameOfFile = HttpUtility.UrlDecode(entry.FullName);
                 if (nameOfFile.StartsWith("Files")) {
-                    if (nameOfFile.Contains("Личные папки")) {
+                    if (nameOfFile.Contains("Личные папки")) { // Remove at job is done
                         listOfFiles.Add(nameOfFile.Remove(0, 6));
                     }
                 }
@@ -81,8 +97,8 @@ public class Macro : MacroProvider {
         WaitingDialog.Show("Обработка данных", true);
 
         foreach (string filePath in pathToFiles) {
-            filePath = filePath.Replace("/", "\\");
-            ReferenceObject file = fileReference.FindByRelativePath(filePath) as ReferenceObject;
+            string fPath = filePath.Replace("/", "\\");
+            ReferenceObject file = fileReference.FindByRelativePath(fPath) as ReferenceObject;
 
             if (file != null) {
                 countFindingFiles++;
@@ -90,9 +106,9 @@ public class Macro : MacroProvider {
             }
             else {
                 countNotFindingFiles++;
-                pathNotFound += string.Format("{0}\n", filePath);
+                pathNotFound += string.Format("{0}\n", fPath);
             }
-            WaitingDialog.NextStep("filePath");
+            WaitingDialog.NextStep(filePath);
         }
         WaitingDialog.Hide();
         string template = "Всего файлов на экспорт - {0}\nИз них найдено - {1} шт., не найдено - {2} шт.";
@@ -100,8 +116,8 @@ public class Macro : MacroProvider {
         if (pathNotFound != string.Empty)
             Message("Список ненайденных позиций", pathNotFound);
 
-        template = "Начать экспорт {0} найденный позиций из {1} всего?";
-        if (!Question("Подтвердите действие", string.Format(template, countFindingFiles, allFiles)))
+        template = "Начать экспорт {0} найденный позиций из {1} позиций всего?";
+        if (!Question(string.Format(template, countFindingFiles, allFiles)))
             return;
 
         // Написать диалог сохранения файла при помощи WinForms
@@ -111,30 +127,30 @@ public class Macro : MacroProvider {
         }
 
         // Экспорт файлов
-        ExportOption option = new ExportOption();
+        ExportOptions options = new ExportOptions();
 
         // Определяем параметры для экспорта
-        option.FileName = pathToExportFile;
+        options.FileName = pathToExportFile;
         // Не экспортировать диалоги
-        option.DialogsMode = ExportDialogMode.None;
+        options.DialogsMode = ExportDialogsMode.None;
         // Не экспортировать связанные справочники
-        option.LinkedObjectsMode = ExportLinkedObjectMode.None;
+        options.LinkedObjectsMode = ExportLinkedObjectsMode.None;
         // Экспортировать только выбранные объекты справочника
-        option.ObjectMode = ExportObjectMode.Specified;
+        options.ObjectsMode = ExportObjectsMode.Specified;
         // Не экспортировать доступы
-        option.IncludeAccesses = false;
+        options.IncludeAccesses = false;
         // Не экспортировать связанные макросы
-        option.IncludeMacros = false;
+        options.IncludeMacros = false;
         // Не экспортировать прототипы
-        option.IncludePrototypes = false;
+        options.IncludePrototypes = false;
         // Не экспортировать структуру и типы
-        option.IncludeStructure = false;
+        options.IncludeStructure = false;
         // Не экспортировать виды
-        option.IncludeViews = false;
+        options.IncludeViews = false;
         // Упаковать все в один файл
-        option.UsePackage = true;
+        options.UsePackage = true;
 
-        DataExchangeGateway.Export(Context.Connection, objectToExport, option);
+        DataExchangeGateway.Export(Context.Connection, objectToExport, options);
     }
 
     #endregion Export data
@@ -142,20 +158,32 @@ public class Macro : MacroProvider {
     #region Methods for set path to opening and saving files
 
     // Метод для выбора файла для его последующего анализа
-    private string GetExportFile() {
-        string pathToFile = @"C:\Users\gukovry\Desktop\DOCs (Экспорт)\Тестовый экспорт изделий\УЯИС.525455.007 (с связанными объектами связанных справочников).ddx";
-        return pathToFile;
+    private string GetPathToOpenFile() {
+        Forms.OpenFileDialog dialog = new Forms.OpenFileDialog();
+        dialog.Filter = "export files (*.ddx)|*.ddx|All files (*.*)|*.*";
+        dialog.FilterIndex = 1;
+        dialog.RestoreDirectory = true;
+
+        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+            return dialog.FileName;
+        
+        return string.Empty;
     }
 
     // Функция для получения пути сохранения файла
     private string GetPathToSaveData() {
-        string result = string.Empty;
-        //TODO Реализовать метод получения пути для сохранения файла экспорта
-        return result;
+        Forms.SaveFileDialog dialog = new Forms.SaveFileDialog();
+        dialog.Filter = "export files (*.ddx)|*.ddx|All files (*.*)|*.*";
+        dialog.FilterIndex = 1;
+        dialog.RestoreDirectory = true;
+        dialog.AddExtension = true;
+
+        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+            return dialog.FileName;
+        
+        return string.Empty;
     }
 
-    // Функция для получения пути файла, который требуется открыть
-    // TODO
 
     #endregion Methods for set path to opening and saving files
 }
