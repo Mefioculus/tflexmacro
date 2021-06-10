@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Compression; // Для работы с zip архивами
 using System.Web; // Данное пространство имен подключено для того, чтобы произвести декодирование данных с кодировки Url
 using Forms = System.Windows.Forms; // Для отображения диалогового окна выбора файла для открытия и для сохранения
@@ -11,12 +12,16 @@ using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.References.Files;
 using TFlex.DOCs.Model.References.Nomenclature;
 using TFlex.DOCs.Model.DataExchange; // пространстпо имен для экспорта данных
+using Newtonsoft.Json; // Для сохранения данных в строку
 
 // Для работы макроса так же необходимо подключить следующие библиотеки
 // System.Web.dll
 // System.IO.Compression.dll
 // System.IO.Compression.ZipFile.dll
 // System.IO.Compression.FileSystem.dll
+
+// А так же подкючить ссылку на
+// Newtonsoft.Json.dll
 
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
@@ -50,6 +55,8 @@ public class Macro : MacroProvider {
     #region Fields and Properties
 
     string simpleTemplate = "{0}\n";
+    // Поле, которое будет хранить логи экспорта
+    private List<ExportLog> listOfExportedLogs = null;
 
     #endregion Fields and Properties
 
@@ -58,32 +65,6 @@ public class Macro : MacroProvider {
     #region Method Run
 
     public override void Run() {
-        // Получаем от пользователя список изделий, для которого нужно произвести экспорт
-        List<ReferenceObject> listOfReferenceObjects = GetReferenceObjects();
-        if (listOfReferenceObjects.Count == 0)
-            return;
-
-        // Инициалилзируем список, который будет хранить все объекты, для которых необхоимо произвести экспорт
-        List<ReferenceObject> listAllObjectsOnExport= new List<ReferenceObject>();
-
-        // Получаем для выбранных изделий все входящие в них объекты
-        foreach (ReferenceObject element in listOfReferenceObjects) {
-            listAllObjectsOnExport.AddRange(GetAllChildObjects(element));
-        }
-
-        string message = string.Empty;
-        foreach (ReferenceObject element in listAllObjectsOnExport) {
-            message += string.Format(simpleTemplate, element.ToString());
-        }
-        Message("Список экспортируемых объектов", message);
-
-        listAllObjectsOnExport.AddRange(GetAttachmentFiles(listAllObjectsOnExport));
-        //List<ReferenceObject> AllFiles = GetAttachmentFiles(listAllObjectOnExport);
-        ExportWithoutLinks(listAllObjectsOnExport);
-
-
-        Message("Информация", "Работа по экспорту изделий завершена");
-
     }
 
     #endregion Method Run
@@ -92,7 +73,7 @@ public class Macro : MacroProvider {
 
     public void ЭкспортироватьВсеВложенияЭкспортФайла() {
 
-        string pathToExportFile = GetPathToOpenFile();
+        string pathToExportFile = GetPathToOpenFile("ddx");
         if (pathToExportFile == string.Empty)
             return;
 
@@ -113,17 +94,71 @@ public class Macro : MacroProvider {
     
     // Метод, который будет формировать файл эскпорта по всем вложениям, которые относятся к конкретному изделию
     public void ЭкспортироватьВсеВложенияИзделия() {
-        
+        // Получаем от пользователя список изделий, для которого нужно произвести экспорт
+        List<ReferenceObject> listOfInitialObject = GetReferenceObjects();
+        if (listOfInitialObject.Count == 0)
+            return;
 
-        //TODO Реализовать метод, который получает список всех файлов в виде List<string> с относительными путями файлов
+        // Инициалилзируем список, который будет хранить все объекты, для которых необхоимо произвести экспорт
+        List<ReferenceObject> listAllObjectsOnExport= new List<ReferenceObject>();
 
-        // 
+        // Получаем для выбранных изделий все входящие в них объекты
+        listOfExportedLogs = new List<ExportLog>();
+        foreach (ReferenceObject element in listOfInitialObject) {
+            List<ReferenceObject> allElements = GetAllChildObjects(element);
+
+            // Ведение лога
+            ExportLog exportLogOfProduct = new ExportLog();
+            exportLogOfProduct.NameOfProduct = element.ToString();
+            // Готовим информацию о составе экспортируемых данных
+            foreach (ReferenceObject refObj in allElements) {
+                exportLogOfProduct.Add(
+                        refObj.ToString(),
+                        refObj.SystemFields.Guid,
+                        refObj.Parent.ToString(),
+                        refObj.Parent.SystemFields.Guid);
+            }
+            listOfExportedLogs.Add(exportLogOfProduct);
+            // Конец ведения лога
+
+            // Добавляем элементы в список на экспорт
+            listAllObjectsOnExport.AddRange(allElements);
+        }
+
+        string message = string.Empty;
+        foreach (ReferenceObject element in listAllObjectsOnExport) {
+            message += string.Format(simpleTemplate, element.ToString());
+        }
+        Message("Список экспортируемых объектов", message);
+
+        listAllObjectsOnExport.AddRange(GetAttachmentFiles(listAllObjectsOnExport));
+        //List<ReferenceObject> AllFiles = GetAttachmentFiles(listAllObjectOnExport);
+        ExportWithoutLinks(listAllObjectsOnExport);
+
+
+        Message("Информация", "Работа по экспорту изделий завершена");
     }
 
     #endregion Method ЭкспортироватьВсеВложенияИзделия
 
-    #endregion Entry points
+    #region Method ПроверитьЭкспортируемуюСтруктуру
 
+    public void ПроверитьЭкспортируемуюСтруктуру() {
+        // Для начала получаем объект, для которого будем проводить проверку
+        ReferenceObject product = Context.ReferenceObject;
+        // Получаем все входящие элементы в текущий объект
+        List<ReferenceObject>listOfAllObjects = GetAllChildObjects(product);
+
+        // Далее, открываем сохраненную структуру, с которой будем проводить сравнение
+        string pathToLogFile = GetPathToOpenFile("txt");
+        ExportLog logOfProduct = ReadLogs(pathToLogFile);
+        string message = logOfProduct.Compare(listOfAllObjects);
+        Message("Информация", message);
+    }
+
+    #endregion Method ПроверитьЭкспортируемуюСтруктуру
+
+    #endregion Entry points
 
     #region Method GetReferenceObject
     
@@ -254,7 +289,7 @@ public class Macro : MacroProvider {
         }
         
         // Написать диалог сохранения файла при помощи WinForms
-        string pathToExportFile = GetPathToSaveData();
+        string pathToExportFile = GetPathToSaveData("ddx");
         if (pathToExportFile == string.Empty) {
             return;
         }
@@ -284,17 +319,59 @@ public class Macro : MacroProvider {
         options.UsePackage = true;
 
         DataExchangeGateway.Export(Context.Connection, objectToExport, options);
+
+        // Сохранение логов экспорта
+        if (listOfExportedLogs != null) {
+            foreach (var product in listOfExportedLogs) {
+                WriteLogs(product, pathToExportFile);
+            }
+        }
     }
 
     #endregion Export data
 
+    #region Methods for read and write logs
+
+    private void WriteLogs(ExportLog productLog, string pathToExportFile) {
+        string jsonString = JsonConvert.SerializeObject(productLog);
+
+        // Получаем директорию для сохранения и название экспортируемого файла
+        string pathToDirectory = Path.GetDirectoryName(pathToExportFile);
+        string nameOfExportFile = Path.GetFileNameWithoutExtension(pathToExportFile);
+
+        string nameOfLogFile = string.Format("{0} ({1}).txt", productLog.NameOfProduct, nameOfExportFile);
+        string pathToLogFile = Path.Combine(pathToDirectory, nameOfLogFile);
+
+        File.WriteAllText(pathToLogFile, jsonString);
+    }
+
+    private ExportLog ReadLogs (string pathToFile) {
+        string jsonString = File.ReadAllText(pathToFile);
+
+        return JsonConvert.DeserializeObject<ExportLog>(jsonString);
+    }
+
+    #endregion Methods for read and write logs
+
     #region Methods for set path to opening and saving files
 
     // Метод для выбора файла для его последующего анализа
-    private string GetPathToOpenFile() {
+    private string GetPathToOpenFile(string typeFile) {
         Forms.OpenFileDialog dialog = new Forms.OpenFileDialog();
         dialog.Filter = "export files (*.ddx)|*.ddx|All files (*.*)|*.*";
-        dialog.FilterIndex = 1;
+        
+        switch (typeFile) {
+            case "ddx":
+                dialog.FilterIndex = 1;
+                break;
+            case "txt":
+                dialog.FilterIndex = 2;
+                break;
+            default:
+                dialog.FilterIndex = 3;
+                break;
+        }
+
         dialog.RestoreDirectory = true;
 
         if (dialog.ShowDialog() == Forms.DialogResult.OK)
@@ -304,10 +381,22 @@ public class Macro : MacroProvider {
     }
 
     // Функция для получения пути сохранения файла
-    private string GetPathToSaveData() {
+    private string GetPathToSaveData(string typeFile) {
         Forms.SaveFileDialog dialog = new Forms.SaveFileDialog();
-        dialog.Filter = "export files (*.ddx)|*.ddx|All files (*.*)|*.*";
-        dialog.FilterIndex = 1;
+        dialog.Filter = "export files (*.ddx)|*.ddx|text files (*.txt)|*.txt|All files (*.*)|*.*";
+
+        switch (typeFile) {
+            case "ddx":
+                dialog.FilterIndex = 1;
+                break;
+            case "txt":
+                dialog.FilterIndex = 2;
+                break;
+            default:
+                dialog.FilterIndex = 3;
+                break;
+        }
+
         dialog.RestoreDirectory = true;
         dialog.AddExtension = true;
 
@@ -319,4 +408,99 @@ public class Macro : MacroProvider {
 
 
     #endregion Methods for set path to opening and saving files
+
+    #region Service classes
+
+    // Класс для хранения данных об экспортированной структуре для последующей проверки структуры на
+    // полноту проведения экспорта
+    private class ExportLog {
+        public string NameOfProduct { get; set; }
+        public List<LogElement> listOfElements = new List<LogElement>();
+
+        public LogElement this[int index] {
+            get {
+                return this.listOfElements[index];
+            }
+            set {
+                this.listOfElements[index] = value;
+            }
+        }
+
+        public void Add(string name, Guid guid, string parentName, Guid parentGuid) {
+            listOfElements.Add(new LogElement(name, guid, parentName, parentGuid));
+        }
+
+        public string Compare(List<ReferenceObject> targetStructure) {
+
+            string resultMessage = string.Empty;
+            int indexOnRemove = -1;
+
+            foreach (LogElement element in this.listOfElements) {
+                for (int index = 0; index < targetStructure.Count; index++) {
+                    // Производим поиск элемента
+                    if (element.GuidOfElement == targetStructure[index].SystemFields.Guid) {
+                        // Элемент найден, его можно удалить
+                        indexOnRemove = index;
+                        break;
+                    }
+                }
+
+                if (indexOnRemove >= 0) {
+                    targetStructure.RemoveAt(indexOnRemove);
+                    indexOnRemove = -1;
+                }
+                else {
+                    // Обработка случая, когда у нас не получилось найти элемент изначальной структуры в перенесенной структуре
+                    if (resultMessage == string.Empty)
+                        resultMessage += "В экспортированной структуре отсутствуют следующие позиции:\n";
+
+                    resultMessage += string.Format("----\nName: {0}\nGuid: {1}\nName of Parent: {2}\nGuid of Parent: {3}\n",
+                                                    element.Name,
+                                                    element.GuidOfElement.ToString(),
+                                                    element.ParentName,
+                                                    element.ParentGuid.ToString());
+                }
+            }
+
+            if (resultMessage == string.Empty)
+                resultMessage += "В экспортированной структуре есть все элементы из структуры источника";
+
+            // По логике в списке targetSutructure к данному моменту не должно остаться позиций, так как если они останутся, это будет означать, что в
+            // перенесенной структуре появились элементы, которых не было в изначальной структуре.
+            // Но на всякий случай обработать этот вариант так же необходимо.
+            
+            if (targetStructure.Count != 0) {
+                resultMessage += "\n\nВ экспортированной структуре обнаружены позиции, которых не было в структуре источника";
+                foreach(ReferenceObject refObj in targetStructure) {
+                    resultMessage += string.Format("----\nName: {0}\nGuid: {1}\nName of Parent: {2}\nGuid of Parent: {3}\n",
+                                                    refObj.ToString(),
+                                                    refObj.SystemFields.Guid.ToString(),
+                                                    refObj.Parent.ToString(),
+                                                    refObj.Parent.SystemFields.Guid.ToString());
+                }
+            }
+            else
+                resultMessage += "\n\nВ экспортированной структуре отсутствуют позиции, которых не было в структуре источнике";
+
+            return resultMessage;
+        }
+    }
+
+    private class LogElement {
+        public string Name { get; set; }
+        public Guid GuidOfElement { get; set;}
+
+        public string ParentName { get; set; }
+        public Guid ParentGuid { get; set; }
+
+        public LogElement (string name, Guid guid, string parentName, Guid parentGuid) {
+            this.Name = name;
+            this.GuidOfElement = guid;
+            this.ParentName = parentName;
+            this.ParentGuid = parentGuid;
+        }
+    }
+
+
+    #endregion Service classes
 }
