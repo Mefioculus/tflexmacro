@@ -145,7 +145,11 @@ public class Macro : MacroProvider {
 
     public void ПроверитьЭкспортируемуюСтруктуру() {
         // Для начала получаем объект, для которого будем проводить проверку
-        ReferenceObject product = Context.ReferenceObject;
+        ReferenceObject product = GetReferenceObject();
+        if (product == null) {
+            Message("Ошибка", "Не выбрано изделия для проведения сравнения структуры");
+            return;
+        }
         // Получаем все входящие элементы в текущий объект
         List<ReferenceObject>listOfAllObjects = GetAllChildObjects(product);
 
@@ -161,6 +165,18 @@ public class Macro : MacroProvider {
     #endregion Entry points
 
     #region Method GetReferenceObject
+
+    // Метод для запроса изделия у пользователя для проведения сравнения состава
+    private ReferenceObject GetReferenceObject() {
+        ReferenceObject result = null;
+
+        SelectObjectDialog dialog = CreateSelectObjectsDialog("Электронная структура изделий");
+        dialog.MultipleSelect = true;
+        if (dialog.Show()) {
+            result = dialog.SelectedObjects[0];
+        }
+        return result;
+    }
     
     // Метод для запроса изделий у пользователя для проведения экспорта
     private List<ReferenceObject> GetReferenceObjects() {
