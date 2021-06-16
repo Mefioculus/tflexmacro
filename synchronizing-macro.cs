@@ -12,24 +12,33 @@ using TFlex.DOCs.Model.References;
 // Макрос для синхронизации макросов, которые находятся в справочнике "Макросы"
 
 public class Macro : MacroProvider {
-    public Macro (MacroContext) : base(context)
+
+    public Macro (MacroContext context) : base(context)
     {
     }
 
 
     #region Fields and Properties
 
+    private string nameOfLogFile = "last_sync.json";
+    // Переменная, в которой будет храниться текущий лог
+    private SyncronizationLog currentSyncLog = new SyncronizationLog();
+
+    #region Guids
+
     private static class Guids {
         public static class References {
-            public Guid MacroReference = new Guid("TODO");
+            public static Guid MacroReference = new Guid("3e6df4d0-b1d8-4375-978c-4da676604cca");
         }
 
-        private static class Properties {
-            public Guid NameOfMacro = new Guid("TODO");
-            public Guid CodeOfMacro = new Guid("TODO");
-            public Guid DateLastModificationOfMacro = new Guid("TODO");
+        public static class Properties {
+            public static Guid NameOfMacro = new Guid("8334853d-8b04-4716-b3e2-19bc0a360384");
+            public static Guid CodeOfMacro = new Guid("3d654359-8567-49b3-8060-516f5f2f2ad2");
         }
     }
+
+    #endregion Guids
+
 
     #endregion Fields and Properties
 
@@ -41,9 +50,12 @@ public class Macro : MacroProvider {
     // Остальные методы в точках входа будут выполнять более специфические задачи
     
         string pathToDirectory = SelectDirectory();
-        if (pathToDirectory = string.Empty) {
+        if (pathToDirectory == string.Empty) {
             return;
         }
+
+        // Получаем файл, в котором будет храниться информация об предыдущей синхронизации
+        string pathToLogFile = Path.Combine(pathToDirectory, nameOfLogFile);
 
         //TODO
         //Реализовать проверку сервера при синхронизации
@@ -76,14 +88,35 @@ public class Macro : MacroProvider {
         //- Все изменения в процессе фиксировать в файле истории
         //- По завершению синхронизации произвести запись файла истории для последующих интеграций
 
-        // Производим чтение всех макросов из директории
-        Dictionary<string, MacrosObject> macroFromLocalMachine = GetAllMacrosFromLocalMachine(pathToDirectory);
 
         // Производим чтение всех макросов, находящихся в справочнике
         Dictionary<string, MacrosObject> macroFromMacroReference = GetAllMacrosFromMacroReference();
 
+        // Производим поиск и чтение файла истории
+        if (File.Exists(pathToLogFile)) {
+            // Данная ветка предполагает, что синхронизация ранее производилась
+        }
+        else {
+            // Данная ветка предполгатает, что синхнонизация производится в первый раз
+        }
+
+        // Производим чтение всех макросов из директории
+        Dictionary<string, MacrosObject> macroFromLocalMachine = GetAllMacrosFromLocalMachine(pathToDirectory);
+
+
         // Производим анализ полученных данных
 
+    }
+
+    public void MethodForTestPurpose() {
+        // Проверка запроса директории
+        string directory = SelectDirectory();
+        Message("Проверка выбора директории", string.Format("Выбранная директория для проведения синхронизации - '{0}'", directory));
+
+        // Проверка запроса данных из справочника
+
+
+        // Проверка запроса данных с локальной директории
     }
 
 
@@ -107,6 +140,34 @@ public class Macro : MacroProvider {
         return string.Empty;
     }
 
+
+    // Метод для получения всех макросов, которые есть в системном справочнике Макросы
+    private Dictionary<string, MacrosObject> GetAllMacrosFromMacroReference() {
+
+        currentSyncLog.ServerName = Context.Connection.ServerName;
+
+        Dictionary<string, MacrosObject> result = new Dictionary<string, MacrosObject>();
+
+        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference();
+        // Производим загрузку объектов справочника на первом уровне иерархии (так как справочник плоский,
+        // то это загрузка всех объектов
+        macroReference.Objects.Load();
+
+        foreach (ReferenceObject macroObj in macroReference.Objects) {
+            // Проходим через все объекты справочника и собираем данные
+            MacrosObject docsMacro = new MacrosObject();
+            docsMacro.Name = (string)macroObj[Guids.Properties.NameOfMacro];
+            docsMacro.Code = (string)macroObj[Guids.Properties.CodeOfMacro];
+            docsMacro.LastModificationDate = macroObj.SystemFields.EditDate;
+            docsMacro.GuidOfMacro = macroObj.SystemFields.Guid;
+
+            result[docsMacro.Name] = docsMacro;
+        }
+
+        return result;
+    }
+
+    // Метод для получения всех макросов, которые находятся в синхронизуемой директории на локальной машине
     private Dictionary<string, MacrosObject> GetAllMacrosFromLocalMachine(string pathToDirectory) {
         Dictionary<string, MacrosObject> result = new Dictionary<string, MacrosObject>();
 
@@ -128,30 +189,6 @@ public class Macro : MacroProvider {
 
         return result;
     }
-
-    // TODO
-    // Реализовать метод, который будет производить чтение всех макросов, которые находятся в системном справочнике
-    private Dictionary<string, MacrosObject> GetAllMacrosFromMacroReference() {
-        Dictionary<string, MacrosObject> result = new Dictionary<string, MacrosObject>();
-
-        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference;
-        // Производим загрузку объектов справочника на первом уровне иерархии (так как справочник плоский,
-        // то это загрузка всех объектов
-        macroReference.Objects.Load();
-
-        foreach (ReferenceObject macroObj in macroReference.Objects) {
-            // Проходим через все объекты справочника и собираем данные
-            MacrosObject docsMacro = new MacrosObject();
-            docsMacro.Name = macroObj[Guids.Properties.NameOfMacro];
-            docsMacro.Code = macroObj[Guids.Properties.CodeOfMacro];
-            docsMacro.LastModificationDate = macroObj[Guids.Properties.DateLastModificationOfMacro];
-            docsMacro.GuidOfMacro = macroObj.SystemFields.Guid;
-
-            result[docsMacro.Name] = docsMacro;
-        }
-
-        return result;
-    }
     
     // TODO
     // Реализовать метод сравнения макросов
@@ -162,11 +199,11 @@ public class Macro : MacroProvider {
 
     // Дата класс, предназначенный для хранения всей важной информации, связанной с макросами
     private class MacrosObject {
-        string Name { get; set; }
-        string Code { get; set; }
+        public string Name { get; set; }
+        public string Code { get; set; }
         // string AuthorOfLastModification { get; private set; }
-        DateTime LastModificationDate { get; set; }
-        Guid GuidOfMacro { get; set; }
+        public DateTime LastModificationDate { get; set; }
+        public Guid GuidOfMacro { get; set; }
     }
 
     // TODO
@@ -176,6 +213,8 @@ public class Macro : MacroProvider {
         // Так же он должен хранить данные о дате последней модификации макроса из справочника и дате, когда этот макрос был
         // в последний раз изменен на локальном компьютере
         // ДАнный класс должена хратить историю синхронизаций (не всех запусков, а именно историю переносов информации
+        
+        public string ServerName { get; set; }
     }
 
     #endregion Service classes
