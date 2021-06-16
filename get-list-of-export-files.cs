@@ -170,10 +170,10 @@ public class Macro : MacroProvider {
     private ReferenceObject GetReferenceObject() {
         ReferenceObject result = null;
 
-        SelectObjectDialog dialog = CreateSelectObjectsDialog("Электронная структура изделий");
+        SelectObjectsDialog dialog = CreateSelectObjectsDialog("Электронная структура изделий");
         dialog.MultipleSelect = true;
         if (dialog.Show()) {
-            result = dialog.SelectedObjects[0];
+            result = (ReferenceObject)dialog.SelectedObjects[0];
         }
         return result;
     }
