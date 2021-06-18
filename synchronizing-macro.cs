@@ -20,9 +20,12 @@ public class Macro : MacroProvider {
 
     #region Fields and Properties
 
-    private string nameOfLogFile = "last_sync.json";
+    private string nameOfLogFile = "sync-metadata.json";
     // Переменная, в которой будет храниться текущий лог
-    private SyncronizationLog currentSyncLog = new SyncronizationLog();
+    private SyncMetaData currentSyncMetaData = new SyncMetaData();
+    private Dictionary<string, MacroObject> dictOfMacros = new Dictionary<string, MacroObject>();
+    private string serverName = Context.Connection.ServerName;
+    private string pathToDirectory = string.Empty;
 
     #region Guids
 
@@ -44,177 +47,167 @@ public class Macro : MacroProvider {
 
     #region Entry Points
 
+    #region Run entry
+
     public override void Run() {
     // Основная точка входа
     // Данный метод будет проводить синхронизацию в общем порядке.
     // Остальные методы в точках входа будут выполнять более специфические задачи
-    
-        string pathToDirectory = SelectDirectory();
-        if (pathToDirectory == string.Empty) {
-            return;
-        }
-
-        // Получаем файл, в котором будет храниться информация об предыдущей синхронизации
-        string pathToLogFile = Path.Combine(pathToDirectory, nameOfLogFile);
-
-        //TODO
-        //Реализовать проверку сервера при синхронизации
-        //(Если предыдущая синхроназация проводилась с другого сервера, должно выскочить предупреждение)
-
-        //TODO
-        //Основаная последовательность действий при синхронизации
-        //- Получаем директорию от пользователя
-        //- В данной директории производим поиск json файла, который будет хранит в себе данные
-        //о прошлой синхронизации
-        //-  Если данный файл был в наличии, производим его чтение, если его нет, считаем, что загрузка проиозводится впервые
-        //- Произвести чтение всех данных из справочника с макросами
-        //
-        //ЕСЛИ ЗАГРУЗКА ПРОИЗВОДИТСЯ ВПЕРВЫЕ
-        //- Проверям данную директорию на наличие файлов cs
-        //- Если файлов нет, производим создание файлов в соответствии с тем, что получилось прочитать из справочника
-        //- Если файлы есть, нужно произвести сравнение, создать отсутствующие файлы, спросить про перезапись присутствующих
-        //и спросить про удаление лишних
-        //
-        //ЕСЛИ ЗАГРУЗКА ПРОИЗВОДИТСЯ НЕ В ПЕРВЫЙ РАЗ
-        //- Произвести чтение файла истории
-        //- Произвести сравнение файла истории с списком макросов, которые были прочтены из справочника
-        //- Произвести сравнение файла истории с списокм макросов, которые были прочтены из справчоника
-        //- Спросить что делать с отсутствующими на локальном компьютере файлами (следует ли их удалять в справочнике, или же из следует снова воссоздать в директории
-        //- Спосить, что делать с отсутствующими в справочнике макросами (следует ли их добавть, следует ли удалить их из локальной директории, или же следует ничего не предпринимать)
-        //- Спрость, что делать с измененными файлами, которые имеют более свежую дажу модификации на локальной машине
-        //- Спросить, что делать с измененными файлами, которые имеют более свежую дату модификации в справочнике
-        
-        //- В конце вывести справочное сообщение с произведенными изменениями
-        //- Все изменения в процессе фиксировать в файле истории
-        //- По завершению синхронизации произвести запись файла истории для последующих интеграций
-
-
-        // Производим чтение всех макросов, находящихся в справочнике
-        Dictionary<string, MacrosObject> macroFromMacroReference = GetAllMacrosFromMacroReference();
-
-        // Производим поиск и чтение файла истории
-        if (File.Exists(pathToLogFile)) {
-            // Данная ветка предполагает, что синхронизация ранее производилась
-        }
-        else {
-            // Данная ветка предполгатает, что синхнонизация производится в первый раз
-        }
-
-        // Производим чтение всех макросов из директории
-        Dictionary<string, MacrosObject> macroFromLocalMachine = GetAllMacrosFromLocalMachine(pathToDirectory);
-
-
-        // Производим анализ полученных данных
-
+        Testing(); 
     }
 
-    public void MethodForTestPurpose() {
-        // Проверка запроса директории
-        string directory = SelectDirectory();
-        Message("Проверка выбора директории", string.Format("Выбранная директория для проведения синхронизации - '{0}'", directory));
+    #endregion Run entry
 
-        // Проверка запроса данных из справочника
+    #region Testing entry
 
-
-        // Проверка запроса данных с локальной директории
+    public void Testing() {
+        Message("Информация", "Работа макроса завершена");
     }
+
+    #endregion Testing entry
 
 
     #endregion Entry Points
 
     #region Service methods
+    
+    #region Method SelectDirectory
     // Метод выбора директории для синхронизации при помощи диалога Windows.Forms
-    private string SelectDirectory() {
+    private SelectDirectory() {
         FolderBrowserDialog dialog = new FolderBrowserDialog();
         dialog.Description =
             "Выберите директорию для проведения синхронизации макросов";
         // Позволить пользователю создавать новую директорию из диалогового окна
         dialog.ShowNewFolderButton = true;
-        // Устанавливаем стартовый путь для диалога на папку "Мои документы"
-        dialog.RootFolder = Environment.SpecialFolder.Personal;
+        // Данное свойство не принимает строки в качестве значения и требует специального класса SpecialFolder.
+        // Для того, чтобы покрыть все возможнные варианты, была выбрана директория "Мой компьютер", так как она позволяет
+        // получить доступ ко всему, что находится на компьютере
+        dialog.RootFolder = Environment.SpecialFolder.MyComputer;
 
-        if (dialog.ShowDialog() == DialogResult.OK) {
-            return dialog.SelectedPath;
-        }
-        
-        return string.Empty;
+        if (dialog.ShowDialog() == DialogResult.OK)
+            pathToDirectory = dialog.SelectedPath;
     }
+    #endregion Method SelectDirectory
 
-
+    #region Method GetAllMacrosFromRemoteBase
     // Метод для получения всех макросов, которые есть в системном справочнике Макросы
-    private Dictionary<string, MacrosObject> GetAllMacrosFromMacroReference() {
-
-        currentSyncLog.ServerName = Context.Connection.ServerName;
-
-        Dictionary<string, MacrosObject> result = new Dictionary<string, MacrosObject>();
-
-        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference();
-        // Производим загрузку объектов справочника на первом уровне иерархии (так как справочник плоский,
-        // то это загрузка всех объектов
+    private bool GetAllMacrosFromRemoteBase() {
+        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference;
         macroReference.Objects.Load();
 
-        foreach (ReferenceObject macroObj in macroReference.Objects) {
-            // Проходим через все объекты справочника и собираем данные
-            MacrosObject docsMacro = new MacrosObject();
-            docsMacro.Name = (string)macroObj[Guids.Properties.NameOfMacro];
-            docsMacro.Code = (string)macroObj[Guids.Properties.CodeOfMacro];
-            docsMacro.LastModificationDate = macroObj.SystemFields.EditDate;
-            docsMacro.GuidOfMacro = macroObj.SystemFields.Guid;
+        
+        foreach (ReferenceObject macroFromRef in macroReference) {
+            //TODO Добавить проверку на то, что это макрос, а не блок схема
 
-            result[docsMacro.Name] = docsMacro;
-        }
+            string nameOfMacro = macroFromRef[Guids.Properties.NameOfMacro];
+            string code = macroFromRef[Guids.Properties.CodeOfMacro];
+            DateTime modification = macroFromRef.SystemFields.LastEdit;
 
-        return result;
-    }
+            if (!dictOfMacros.ContainsKey(nameOfMacro)) {
+                // Данного объекта еще не было добавлено
+                MacroObject currentMacroObject = new MacroObject();
+                // Производим первичное наполнение объекта
+                currentMacroObject.NameMacro = nameOfMacro;
+                currentMacroObject.CodeFromRemoteBase = code;
+                currentMacroObject.DateOfRemoteMacro = modification;
+                currentMacroObject.Location = LocationOfMacro.Remote;
 
-    // Метод для получения всех макросов, которые находятся в синхронизуемой директории на локальной машине
-    private Dictionary<string, MacrosObject> GetAllMacrosFromLocalMachine(string pathToDirectory) {
-        Dictionary<string, MacrosObject> result = new Dictionary<string, MacrosObject>();
-
-        // Получаем пути ко всем файлам с расширением *.cs
-        string[] files = Directory.GetFiles(pathToDirectory, "*.cs");
-
-        if (files.Length > 0) {
-            foreach (string file in files) {
-                MacrosObject localMacro = new MacrosObject();
-                localMacro.Name = Path.GetFileNameWithoutExtension(file);
-                localMacro.Code = File.ReadAllText(file);
-                //TODO
-                //Реализовать получение даты не из параметров файла, а из специального файла, который
-                //будет генерироваться во время первой синхранизации и будет хранить параметры синхронизации
-                localMacro.LastModificationDate = File.GetLastWriteTime(file);
-                result[localMacro.Name] = localMacro;
+                dictOfMacros[nameOfMacro] = currentMacroObject;
             }
-        }
+            else {
+                // Данный объект уже есть в базе, следовательно нужно обновить информацию о нем
+                // Данный случай не должен срабатывать при чтении всех макросов с удаленной базы.
+                // Если данная ветка сработала, значит у двух макросов одинаковое название,
+                // что на данный момент не предусмотрено работой данного макроса
+                string messageTemplate = "Во время чтения макросов из базы '{0}' было обнаружено несколько макросов с одинаковым наименованием - '{1}'";
+                messageTemplate += "\nМакрос прекратит свою работу, так как его логика не предусматривает таких случаев.";
+                messageTemplate += "\nЕсли вы увидели данное сообщение, свяжитесь с разработчиком макроса для того, чтобы макрос был модифицирован для обработки подобных случаев";
+                Message("Внимание", string.Format(messageTemplate,
+                                                    serverName,
+                                                    nameOfMacro));
 
-        return result;
+                // Прекращаем работу макроса
+                return false;
+            }
+            
+            // Сообщаем вызвавшему об успешном завершении работы макроса
+            return true;
+        }
     }
+    #endregion Method GetAllMacrosFromRemoteBase
+
+    #region Method GetAllMacrosFromLocalBase
+    // Метод для получения всех макросов, которые находятся в синхронизуемой директории на локальной машине
+    // Данный метод должен запускаться после того, как произойдет чтение из удаленной базы
+    private bool GetAllMacrosFromLocalBase(string pathToDirectory) {
+        // Получаем путь к директории для синхронизации макросов
+        SelectDirectory();
+
+        if (pathToDirectory != string.Empty) {
+            // Производим поиск макросов, расположенных в локальной директории
+        }
+        else
+            return false;
+
+        return true;
+    }
+    #endregion Method GetAllMacrosFromLocalBase
     
     // TODO
-    // Реализовать метод сравнения макросов
+    // Реализовать метод, который будет обновлять (создавать) макросы на основании файлов в папке синхронизации
     
     #endregion Service methods
 
     #region Service classes
 
     // Дата класс, предназначенный для хранения всей важной информации, связанной с макросами
-    private class MacrosObject {
-        public string Name { get; set; }
-        public string Code { get; set; }
-        // string AuthorOfLastModification { get; private set; }
-        public DateTime LastModificationDate { get; set; }
-        public Guid GuidOfMacro { get; set; }
+
+    private enum SyncAction {
+        UpdateFile,
+        CreateFile,
+        UpdateMacro,
+        CreateMacro,
+        DeleteMacro,
+        DeleteFile,
+        None
     }
 
-    // TODO
-    // Реализовать класс, который будет хранить информацию о последней синхронизации
-    private class SyncronizationLog {
+    private enum LocationOfMacro {
+        Remote,
+        Local,
+        RemoteAndLocal,
+        Unknown
+    }
+
+    private class MacroObject {
+        public string NameMacro { get; set; }
+        public string CodeFromLocalBase { get; set; }
+        public string CodeFromRemoteBase { get; set; }
+        public DateTime DateOfLocalMacro { get; set; }
+        public DateTime DateOfRemoteMacro { get; set; }
+        //public Guid GuidOfMacro { get; set; }   TODO определиться с тем, нужно ли это свойство
+        public SyncAction Action { get; set; } = SyncAction.None;
+        public LocationOfMacro Location { get; set; } = LocationOfMacro.Unknown;
+
+        //TODO Реализовать метод анализа макро объекта (который будет выбирать действие, которое нужно совершить над макросом
+
+        //TODO Реализовать метод вывода объекта в виде текста;
+
+        //TODO Реализовать метод, который будет производить действия над данный макросом в соответствии с тем, какое дайствие в нем выбрано
+    }
+
+    private class SyncMetaData {
         // Данный класс должен хранить данные о всех макросах, которые были перенесены путем синхронизации.
         // Так же он должен хранить данные о дате последней модификации макроса из справочника и дате, когда этот макрос был
         // в последний раз изменен на локальном компьютере
         // ДАнный класс должена хратить историю синхронизаций (не всех запусков, а именно историю переносов информации
         
-        public string ServerName { get; set; }
+        public string ServerName { get; private set; }
+        public DateTime Date { get; private set; }
+
+        public SyncMetaData () {
+            this.ServerName = Context.Connection.ServerName;
+        }
     }
 
     #endregion Service classes
