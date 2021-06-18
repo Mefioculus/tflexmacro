@@ -24,7 +24,7 @@ public class Macro : MacroProvider {
     // Переменная, в которой будет храниться текущий лог
     private SyncMetaData currentSyncMetaData = new SyncMetaData();
     private Dictionary<string, MacroObject> dictOfMacros = new Dictionary<string, MacroObject>();
-    private string serverName = Context.Connection.ServerName;
+    private string serverName = string.Empty;
     private string pathToDirectory = string.Empty;
 
     #region Guids
@@ -61,6 +61,18 @@ public class Macro : MacroProvider {
     #region Testing entry
 
     public void Testing() {
+        // Для начала получаем список объектов из справочника
+        serverName = Context.Connection.ServerName;
+
+        GetAllMacrosFromRemoteBase();
+        GetAllMacrosFromLocalBase();
+
+        string message = string.Empty;
+        foreach (KeyValuePair<string, MacroObject> kvp in dictOfMacros) {
+            message += string.Format("{0}\n", kvp.Value.ToString());
+        }
+        Message("Список макросов", message);
+
         Message("Информация", "Работа макроса завершена");
     }
 
@@ -73,7 +85,7 @@ public class Macro : MacroProvider {
     
     #region Method SelectDirectory
     // Метод выбора директории для синхронизации при помощи диалога Windows.Forms
-    private SelectDirectory() {
+    private void SelectDirectory() {
         FolderBrowserDialog dialog = new FolderBrowserDialog();
         dialog.Description =
             "Выберите директорию для проведения синхронизации макросов";
@@ -92,18 +104,18 @@ public class Macro : MacroProvider {
     #region Method GetAllMacrosFromRemoteBase
     // Метод для получения всех макросов, которые есть в системном справочнике Макросы
     private bool GetAllMacrosFromRemoteBase() {
-        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference;
+        Reference macroReference = Context.Connection.ReferenceCatalog.Find(Guids.References.MacroReference).CreateReference();
         macroReference.Objects.Load();
 
         
-        foreach (ReferenceObject macroFromRef in macroReference) {
+        foreach (ReferenceObject macroFromRef in macroReference.Objects) {
             //TODO Добавить проверку на то, что это макрос, а не блок схема
 
-            string name = macroFromRef[Guids.Properties.NameOfMacro];
-            string code = macroFromRef[Guids.Properties.CodeOfMacro];
-            DateTime modification = macroFromRef.SystemFields.LastEdit;
+            string name = macroFromRef[Guids.Properties.NameOfMacro].ToString();
+            string code = macroFromRef[Guids.Properties.CodeOfMacro].ToString();
+            DateTime modification = macroFromRef.SystemFields.EditDate;
 
-            if (!dictOfMacros.ContainsKey(nameOfMacro)) {
+            if (!dictOfMacros.ContainsKey(name)) {
                 // Данного объекта еще не было добавлено
                 MacroObject currentMacroObject = new MacroObject();
                 // Производим первичное наполнение объекта
@@ -112,7 +124,7 @@ public class Macro : MacroProvider {
                 currentMacroObject.DateOfRemoteMacro = modification;
                 currentMacroObject.Location = LocationOfMacro.Remote;
 
-                dictOfMacros[nameOfMacro] = currentMacroObject;
+                dictOfMacros[name] = currentMacroObject;
             }
             else {
                 // Данный объект уже есть в базе, следовательно нужно обновить информацию о нем
@@ -124,22 +136,22 @@ public class Macro : MacroProvider {
                 messageTemplate += "\nЕсли вы увидели данное сообщение, свяжитесь с разработчиком макроса для того, чтобы макрос был модифицирован для обработки подобных случаев";
                 Message("Внимание", string.Format(messageTemplate,
                                                     serverName,
-                                                    nameOfMacro));
+                                                    name));
 
                 // Прекращаем работу макроса
                 return false;
             }
             
-            // Сообщаем вызвавшему об успешном завершении работы макроса
-            return true;
         }
+        // Сообщаем вызвавшему об успешном завершении работы макроса
+        return true;
     }
     #endregion Method GetAllMacrosFromRemoteBase
 
     #region Method GetAllMacrosFromLocalBase
     // Метод для получения всех макросов, которые находятся в синхронизуемой директории на локальной машине
     // Данный метод должен запускаться после того, как произойдет чтение из удаленной базы
-    private bool GetAllMacrosFromLocalBase(string pathToDirectory) {
+    private bool GetAllMacrosFromLocalBase() {
         // Получаем путь к директории для синхронизации макросов
         SelectDirectory();
 
@@ -216,7 +228,12 @@ public class Macro : MacroProvider {
 
         //TODO Реализовать метод анализа макро объекта (который будет выбирать действие, которое нужно совершить над макросом
 
-        //TODO Реализовать метод вывода объекта в виде текста;
+        public override string ToString() {
+            return string.Format("{0}\nAction: {1}; Location: {2};",
+                                    this.NameMacro,
+                                    this.Action.ToString(),
+                                    this.Location.ToString());
+        }
 
         //TODO Реализовать метод, который будет производить действия над данный макросом в соответствии с тем, какое дайствие в нем выбрано
     }
@@ -231,7 +248,6 @@ public class Macro : MacroProvider {
         public DateTime Date { get; private set; }
 
         public SyncMetaData () {
-            this.ServerName = Context.Connection.ServerName;
         }
     }
 
