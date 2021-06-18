@@ -99,7 +99,7 @@ public class Macro : MacroProvider {
         foreach (ReferenceObject macroFromRef in macroReference) {
             //TODO Добавить проверку на то, что это макрос, а не блок схема
 
-            string nameOfMacro = macroFromRef[Guids.Properties.NameOfMacro];
+            string name = macroFromRef[Guids.Properties.NameOfMacro];
             string code = macroFromRef[Guids.Properties.CodeOfMacro];
             DateTime modification = macroFromRef.SystemFields.LastEdit;
 
@@ -107,7 +107,7 @@ public class Macro : MacroProvider {
                 // Данного объекта еще не было добавлено
                 MacroObject currentMacroObject = new MacroObject();
                 // Производим первичное наполнение объекта
-                currentMacroObject.NameMacro = nameOfMacro;
+                currentMacroObject.NameMacro = name;
                 currentMacroObject.CodeFromRemoteBase = code;
                 currentMacroObject.DateOfRemoteMacro = modification;
                 currentMacroObject.Location = LocationOfMacro.Remote;
@@ -145,6 +145,31 @@ public class Macro : MacroProvider {
 
         if (pathToDirectory != string.Empty) {
             // Производим поиск макросов, расположенных в локальной директории
+            foreach (string file in Directory.GetFiles(pathToDirectory, "*.cs")) {
+
+                // Получаем всю необходимую информацию из файла
+                string name = Path.GetFileNameWithoutExtension(file);
+                string code = File.ReadAllText(file);
+                DateTime modification = File.GetLastWriteTime(file);
+
+                // Производим создание нового MacroObject или обновление уже существующего
+                if (!dictOfMacros.ContainsKey(name)) {
+                    // Случай, когда данного макроса не было на удаленной базе
+                    MacroObject currentMacroObject = new MacroObject();
+                    currentMacroObject.NameMacro = name;
+                    currentMacroObject.CodeFromLocalBase = code;
+                    currentMacroObject.DateOfLocalMacro = modification;
+                    currentMacroObject.Location = LocationOfMacro.Local;
+
+                    dictOfMacros[name] = currentMacroObject;
+                }
+                else {
+                    // Случай, когда данный макрос уже существовал на удаленной базе
+                    dictOfMacros[name].CodeFromLocalBase = code;
+                    dictOfMacros[name].DateOfLocalMacro = modification;
+                    dictOfMacros[name].Location = LocationOfMacro.RemoteAndLocal;
+                }
+            }
         }
         else
             return false;
