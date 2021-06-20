@@ -89,7 +89,7 @@ public class Macro : MacroProvider {
         string message = "Список макросов, которые не требуют синхронизации:\n\n";
 
         foreach (MacroObject macroObject in sameOnBothBase) {
-            message += string.Format("- {0}\n", macroObject.ToString());
+            message += string.Format("- {0}\n", macroObject.ToString("{nam}"));
         }
 
         Message("Информация", message);
@@ -98,7 +98,7 @@ public class Macro : MacroProvider {
         message = "Список макросов, которых нет на локальной базе:\n\n";
 
         foreach (MacroObject macroObject in onlyOnRemote) {
-            message += string.Format("- {0}\n", macroObject.ToString());
+            message += string.Format("- {0}\n", macroObject.ToString("{nam}"));
         }
 
         Message("Информация", message);
@@ -107,7 +107,7 @@ public class Macro : MacroProvider {
         message = "Список макросов, которых нет на удаленной базе:\n\n";
 
         foreach (MacroObject macroObject in onlyOnLocal) {
-            message += string.Format("- {0}\n", macroObject.ToString());
+            message += string.Format("- {0}\n", macroObject.ToString("{nam}"));
         }
 
         Message("Информация", message);
@@ -116,7 +116,7 @@ public class Macro : MacroProvider {
         message = "Список макросов, по синхронизации которых требуется принять решение:\n\n";
 
         foreach (MacroObject macroObject in differentOnBothBase) {
-            message += string.Format("- {0}\n", macroObject.ToString());
+            message += string.Format("- {0}\n", macroObject.ToString("{nam}"));
         }
 
         Message("Информация", message);
@@ -347,6 +347,28 @@ public class Macro : MacroProvider {
                                     this.NameMacro,
                                     this.Action.ToString(),
                                     this.Location.ToString());
+        }
+
+        public string ToString(string template) {
+            // Метод, который возвращает строковое отображение объекта в зависимости от переданного значения
+            // Он распознает несколько ключевых слов внутри строки
+            // {act}, {loc}, {nam}, {loccod}, {remcode}, {locdat}, {remdat}
+            
+            template = template.Replace("{nam}", "{0}");
+            template = template.Replace("{act}", "{1}");
+            template = template.Replace("{loc}", "{2}");
+            template = template.Replace("{loccod}", "{3}");
+            template = template.Replace("{remcod}", "{4}");
+            template = template.Replace("{locdat}", "{5}");
+            template = template.Replace("{remdat}", "{6}");
+            
+            return string.Format(template, this.NameMacro,
+                                            this.Action.ToString(),
+                                            this.Location.ToString(),
+                                            this.CodeFromLocalBase,
+                                            this.CodeFromRemoteBase,
+                                            this.DateOfLocalMacro.ToString("dd.MM.yyyy"),
+                                            this.DateOfRemoteMacro.ToString("dd.MM.yyyy"));
         }
 
         //TODO Реализовать метод, который будет производить действия над данный макросом в соответствии с тем, какое дайствие в нем выбрано
