@@ -26,6 +26,12 @@ public class Macro : MacroProvider {
     private Dictionary<string, MacroObject> dictOfMacros = new Dictionary<string, MacroObject>();
     private string serverName = string.Empty;
     private string pathToDirectory = string.Empty;
+    
+    // Списки макросов
+    private List<MacroObject> onlyOnLocal = new List<MacroObject>();
+    private List<MacroObject> onlyOnRemote = new List<MacroObject>();
+    private List<MacroObject> differentOnBothBase = new List<MacroObject>();
+    private List<MacroObject> sameOnBothBase = new List<MacroObject>();
 
     #region Guids
 
@@ -67,11 +73,53 @@ public class Macro : MacroProvider {
         GetAllMacrosFromRemoteBase();
         GetAllMacrosFromLocalBase();
 
-        string message = string.Empty;
+        // Сортируем все полученные макросы для последующего анализа
+
         foreach (KeyValuePair<string, MacroObject> kvp in dictOfMacros) {
-            message += string.Format("{0}\n", kvp.Value.ToString());
+            if (kvp.Value.PerformAnalize()) {
+                SortingMacroToLists(kvp.Value);
+            }
+            else
+                Error(string.Format("Во время обработки {0} возникла ошибка, обратитесь к администратору для ее устранения\n{1}", kvp.Value.NameMacro, kvp.Value.ToString()));
         }
-        Message("Список макросов", message);
+
+        // Выводим получившиеся списки макросов
+
+        // Список макросов, над которыми не нужно производить никаких действий
+        string message = "Список макросов, которые не требуют синхронизации:\n\n";
+
+        foreach (MacroObject macroObject in sameOnBothBase) {
+            message += string.Format("- {0}\n", macroObject.ToString());
+        }
+
+        Message("Информация", message);
+
+        // Список макросов, которых нет на локальной машине
+        message = "Список макросов, которых нет на локальной базе:\n\n";
+
+        foreach (MacroObject macroObject in onlyOnRemote) {
+            message += string.Format("- {0}\n", macroObject.ToString());
+        }
+
+        Message("Информация", message);
+
+        // Список макросов, которых нет на удаленном сервере
+        message = "Список макросов, которых нет на удаленной базе:\n\n";
+
+        foreach (MacroObject macroObject in onlyOnLocal) {
+            message += string.Format("- {0}\n", macroObject.ToString());
+        }
+
+        Message("Информация", message);
+
+        // Список макросов, которые есть и там и там, но у них есть разница в коде
+        message = "Список макросов, по синхронизации которых требуется принять решение:\n\n";
+
+        foreach (MacroObject macroObject in differentOnBothBase) {
+            message += string.Format("- {0}\n", macroObject.ToString());
+        }
+
+        Message("Информация", message);
 
         Message("Информация", "Работа макроса завершена");
     }
@@ -100,6 +148,8 @@ public class Macro : MacroProvider {
             pathToDirectory = dialog.SelectedPath;
     }
     #endregion Method SelectDirectory
+
+    //TODO Предусмотреть возможность использованимя стандартной директории для синхронизации, которую можно прописать в глобальных переменных (или зашить в макрос)
 
     #region Method GetAllMacrosFromRemoteBase
     // Метод для получения всех макросов, которые есть в системном справочнике Макросы
@@ -189,6 +239,26 @@ public class Macro : MacroProvider {
         return true;
     }
     #endregion Method GetAllMacrosFromLocalBase
+
+    private void SortingMacroToLists(MacroObject macroObject) {
+        // TODO Реализовать метод сортировки
+        if (macroObject.Action == SyncAction.LeaveUntouched) {
+            sameOnBothBase.Add(macroObject);
+            return;
+        }
+        if (macroObject.Action == SyncAction.CreateLocalOrDeleteRemote) {
+            onlyOnRemote.Add(macroObject);
+            return;
+        }
+        if (macroObject.Action == SyncAction.CreateRemoteOrDeleteLocal) {
+            onlyOnLocal.Add(macroObject);
+            return;
+        }
+
+        // Все остальные случаи добавляются в список отличающихся макросов,
+        // которые при этом присутствуют на обеих базах
+        differentOnBothBase.Add(macroObject);
+    }
     
     // TODO
     // Реализовать метод, который будет обновлять (создавать) макросы на основании файлов в папке синхронизации
@@ -200,20 +270,20 @@ public class Macro : MacroProvider {
     // Дата класс, предназначенный для хранения всей важной информации, связанной с макросами
 
     private enum SyncAction {
-        UpdateFile,
-        CreateFile,
-        UpdateMacro,
-        CreateMacro,
-        DeleteMacro,
-        DeleteFile,
-        None
+        Unknown, // Стартовое действие, которое установлено по умолчанию до произведения анализа макросов на локальной и удаленной машине
+        Update, // Случай, когда не понятно, какой макрос новее
+        UpdateLocal, // Случай, когда макросы различаются и на удаленной машине более свежая версия
+        CreateLocalOrDeleteRemote, // Случай, когда на локальной машине отсутствует макрос, который присутствует на удаленной машине
+        UpdateRemote, // Случай, когда макросы различаются  и на локальной машине более свежая версия 
+        CreateRemoteOrDeleteLocal, // Случай, когда на удаленной машине отсутствует макрос, который присутствует на локальной машине
+        LeaveUntouched // Случай, когда макросы присутствуют на обоих базах и в их коде нет никаких отличий
     }
 
     private enum LocationOfMacro {
-        Remote,
-        Local,
-        RemoteAndLocal,
-        Unknown
+        Unknown, // Стартовое значение свойства, которое установлено по умолчанию до проведедния поиска макросов на удаленной базе и на локальной машине
+        Remote, // Макрос есть только на удаленной машине
+        Local, // Макрос есть только на локальной машине
+        RemoteAndLocal // Макрос есть на удаленной и на локальной машине
     }
 
     private class MacroObject {
@@ -223,10 +293,54 @@ public class Macro : MacroProvider {
         public DateTime DateOfLocalMacro { get; set; }
         public DateTime DateOfRemoteMacro { get; set; }
         //public Guid GuidOfMacro { get; set; }   TODO определиться с тем, нужно ли это свойство
-        public SyncAction Action { get; set; } = SyncAction.None;
+        public SyncAction Action { get; set; } = SyncAction.Unknown;
         public LocationOfMacro Location { get; set; } = LocationOfMacro.Unknown;
 
         //TODO Реализовать метод анализа макро объекта (который будет выбирать действие, которое нужно совершить над макросом
+        public bool PerformAnalize() {
+            // TODO Расставить ветки таким образом, чтобы с самого начала выполнялись самые распространенные случаи для увеличения быстродействия системы
+            // Случай, когда на локальном компьютере есть макрос, которого нет на удаленной базе
+            if (this.Location == LocationOfMacro.Local) {
+                this.Action = SyncAction.CreateRemoteOrDeleteLocal;
+                return true;
+            }
+            // Случай, когда на удаленной базе есть макрос, которого нет на локальной машине
+            if (this.Location == LocationOfMacro.Remote) {
+                this.Action = SyncAction.CreateLocalOrDeleteRemote;
+                return true;
+            }
+            // Если макрос есть а в локальной директории и на удаленной базе, необхомо проверить, есть ли разница в коде макросов
+            if (this.Location == LocationOfMacro.RemoteAndLocal) {
+                if (this.CodeFromRemoteBase == this.CodeFromLocalBase) {
+                    this.Action = SyncAction.LeaveUntouched;
+                    return true;
+                }
+                else {
+                    // Самый основной случай, когда будет разница между локальным репозиторием
+                    int dateDiff = this.DateOfRemoteMacro.CompareTo(this.DateOfLocalMacro);
+                    if (dateDiff > 0) {
+                        // Случай, когда макрос на удаленной машине свежее макроса на локальной машине
+                        this.Action = SyncAction.UpdateLocal;
+                        return true;
+                    }
+                    else if (dateDiff < 0) {
+                        // Случай, когда макрос на локальной машине свежее макроса на удаленной машине
+                        this.Action = SyncAction.UpdateRemote;
+                        return true;
+                    }
+                    else {
+                        // Редкий случай, когда дата макроса на локальной машине совпадает до секунды с датой
+                        // на удаленной машине (скорее всего такой вариант просто невозможен)
+                        this.Action = SyncAction.Update;
+                        return true;
+                    }
+                }
+            }
+            // Если код дошел до этой ветки, следовательно объект имеет необработанный тип LocationOfMacro,
+            // чего не должно происходить. В этом случае мы возвращаем false, чтобы обозначить, что возникла
+            // ошибка во время обработки
+            return false;
+        }
 
         public override string ToString() {
             return string.Format("{0}\nAction: {1}; Location: {2};",
