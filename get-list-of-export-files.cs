@@ -141,6 +141,27 @@ public class Macro : MacroProvider {
 
     #endregion Method ЭкспортироватьВсеВложенияИзделия
 
+    #region Method Экспортировать файлы изделия
+    public void ЭкспортироватьТолькоФайлыИзделия() {
+        List<ReferenceObject> listOfInitialObject = GetReferenceObjects();
+        if (listOfInitialObject.Count == 0)
+            return;
+
+        // Инициализируем список файлов, который будет хранить все объекты, для которых необходимо произвести экспорт
+        List<ReferenceObject> structureOfProduct = new List<ReferenceObject>();
+
+        // Получаем для выбранных изделий все входящие в них объекты
+        foreach (ReferenceObject refObj in listOfInitialObject) {
+            List<ReferenceObject> allElements = GetAllChildObjects(refObj);
+            structureOfProduct.AddRange(allElements);
+        }
+
+        // Получаем список файлов
+        List<ReferenceObject> allFiles = GetAttachmentFiles(structureOfProduct);
+        ExportWithoutLinks(allFiles);
+    }
+    #endregion Method Экспортировать файлы изделия
+
     #region Method ПроверитьЭкспортируемуюСтруктуру
 
     public void ПроверитьЭкспортируемуюСтруктуру() {
