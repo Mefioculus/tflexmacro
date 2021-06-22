@@ -2,7 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Windows.Forms;
+using System.Windows.Forms; // Для отрисовки диалоговых окон
+using System.Drawing; // Для работы с коордиранами
 using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
@@ -71,7 +72,8 @@ public class Macro : MacroProvider {
         serverName = Context.Connection.ServerName;
 
         GetAllMacrosFromRemoteBase();
-        GetAllMacrosFromLocalBase();
+        if (GetAllMacrosFromLocalBase() == false)
+            return;
 
         // Сортируем все полученные макросы для последующего анализа
 
@@ -133,20 +135,49 @@ public class Macro : MacroProvider {
     
     #region Method SelectDirectory
     // Метод выбора директории для синхронизации при помощи диалога Windows.Forms
-    private void SelectDirectory() {
-        FolderBrowserDialog dialog = new FolderBrowserDialog();
-        dialog.Description =
-            "Выберите директорию для проведения синхронизации макросов";
-        // Позволить пользователю создавать новую директорию из диалогового окна
-        dialog.ShowNewFolderButton = true;
-        // Данное свойство не принимает строки в качестве значения и требует специального класса SpecialFolder.
-        // Для того, чтобы покрыть все возможнные варианты, была выбрана директория "Мой компьютер", так как она позволяет
-        // получить доступ ко всему, что находится на компьютере
-        dialog.RootFolder = Environment.SpecialFolder.MyComputer;
+    // Для начала определяем, производилась ли ранее синхронизация для того, чтобы можно было выбрать ранее выбранную директорию
+    private bool SelectDirectory() {
+        // Для начала проверяем, есть ли в директории пользователя файл с историей синхронизаций
+        string pathToMyDocuments = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        string pathToLogFile = Path.Combine(pathToMyDocuments, nameOfLogFile);
+
+        // Список для хранения всех путей
+        List<string> pathsToSyncDirectories = new List<string>();
+
+        if (File.Exists(pathToLogFile)) {
+            // Файл лога существует, следовательно с него нужно прочитать его содержимое и сначала
+            // предложить пользователю выбрать из ранее выбранных директорий
+            
+            string line;
+            StreamReader file = new StreamReader(pathToLogFile);
+            while ((line = file.ReadLine()) != null) {
+                if (line != string.Empty)
+                    pathsToSyncDirectories.Add(line);
+            }
+        }
+
+        SelectPathFromListDialog dialog = new SelectPathFromListDialog(pathsToSyncDirectories);
 
         if (dialog.ShowDialog() == DialogResult.OK)
             pathToDirectory = dialog.SelectedPath;
+        else
+            return false;
+
+
+        // В конце мы добавляем выбранный путь в список (если такого пути еще не было в системе) и сохраняем его в log-файле
+        if (!pathsToSyncDirectories.Contains(pathToDirectory)) {
+            pathsToSyncDirectories.Add(pathToDirectory);
+            string allPaths = string.Empty;
+            foreach (string path in pathsToSyncDirectories) {
+                allPaths += string.Format("{0}\n", path);
+                allPaths.TrimEnd('\n');
+            }
+            File.WriteAllText(pathToLogFile, allPaths);
+        }
+
+        return true;
     }
+
     #endregion Method SelectDirectory
 
     //TODO Предусмотреть возможность использованимя стандартной директории для синхронизации, которую можно прописать в глобальных переменных (или зашить в макрос)
@@ -203,7 +234,8 @@ public class Macro : MacroProvider {
     // Данный метод должен запускаться после того, как произойдет чтение из удаленной базы
     private bool GetAllMacrosFromLocalBase() {
         // Получаем путь к директории для синхронизации макросов
-        SelectDirectory();
+        if (SelectDirectory() == false)
+            return false;
 
         if (pathToDirectory != string.Empty) {
             // Производим поиск макросов, расположенных в локальной директории
@@ -240,6 +272,7 @@ public class Macro : MacroProvider {
     }
     #endregion Method GetAllMacrosFromLocalBase
 
+    #region Method SortingMacroToLists
     private void SortingMacroToLists(MacroObject macroObject) {
         // TODO Реализовать метод сортировки
         if (macroObject.Action == SyncAction.LeaveUntouched) {
@@ -259,6 +292,7 @@ public class Macro : MacroProvider {
         // которые при этом присутствуют на обеих базах
         differentOnBothBase.Add(macroObject);
     }
+    #endregion Method SortingMacroToLists
     
     // TODO
     // Реализовать метод, который будет обновлять (создавать) макросы на основании файлов в папке синхронизации
@@ -269,6 +303,7 @@ public class Macro : MacroProvider {
 
     // Дата класс, предназначенный для хранения всей важной информации, связанной с макросами
 
+    #region Enums
     private enum SyncAction {
         Unknown, // Стартовое действие, которое установлено по умолчанию до произведения анализа макросов на локальной и удаленной машине
         Update, // Случай, когда не понятно, какой макрос новее
@@ -285,7 +320,9 @@ public class Macro : MacroProvider {
         Local, // Макрос есть только на локальной машине
         RemoteAndLocal // Макрос есть на удаленной и на локальной машине
     }
+    #endregion Enums
 
+    #region Class MacroObject
     private class MacroObject {
         public string NameMacro { get; set; }
         public string CodeFromLocalBase { get; set; }
@@ -373,7 +410,9 @@ public class Macro : MacroProvider {
 
         //TODO Реализовать метод, который будет производить действия над данный макросом в соответствии с тем, какое дайствие в нем выбрано
     }
+    #endregion Class MacroObject
 
+    #region Class SyncMetaData
     private class SyncMetaData {
         // Данный класс должен хранить данные о всех макросах, которые были перенесены путем синхронизации.
         // Так же он должен хранить данные о дате последней модификации макроса из справочника и дате, когда этот макрос был
@@ -386,6 +425,131 @@ public class Macro : MacroProvider {
         public SyncMetaData () {
         }
     }
+    #endregion Class SyncMetaData
+
+    #region SelectedPathFromList form
+    public class SelectPathFromListDialog : Form {
+        // Диалоговое окно, предоставляющее пользователю функцию выбора диалогового окна
+
+        #region Fields and Properties
+        public string SelectedPath = string.Empty;
+        private List<string> listOfPaths;
+        private Label label;
+        private ComboBox comboBox;
+        private Button buttonOk;
+        private Button buttonCancel;
+        private Button buttonBrowse;
+        #endregion Fields and Properties
+
+        #region Constructors
+        public SelectPathFromListDialog(List<string> listOfPaths) {
+            // Получаем список путей
+            this.listOfPaths = listOfPaths;
+
+            // Производим основные настройки формы
+            InitializeComponents();
+        }
+        #endregion Constructors
+
+        #region Method InitializeComponents
+        private void InitializeComponents() {
+            // Инициализация нового объкета label
+            this.label = new Label();
+            this.label.AutoSize = false;
+            this.label.Location = new Point(12, 9);
+            this.label.Size = new Size(237, 92);
+            //TODO Добавить ветвление диалога в зависимости от того, производилась ли уже выгрузка или еще нет
+            this.label.Text = "Выберите директорию из списка предложенных ниже (директории, в которые ранее вами производилась синхронизация), или же нажмите на кнопку \"Обзор\" для выбора произвольной директории";
+
+            // Инициализация объекта ComboBox
+            this.comboBox = new ComboBox();
+            this.comboBox.FormattingEnabled = true;
+            this.comboBox.Location = new Point(12, 104);
+            this.comboBox.Size = new Size(237, 21);
+            foreach (string path in this.listOfPaths) {
+                this.comboBox.Items.Add(path);
+            }
+
+            // Инициализация объекта ButtonOk
+            this.buttonOk = new Button();
+            this.buttonOk.Location = new Point(12, 146);
+            this.buttonOk.Size = new Size(75, 23);
+            this.buttonOk.Text = "Ок";
+            this.buttonOk.Click += new System.EventHandler(this.ButtonOk_Click);
+
+            // Инициализация объекта ButtonCancel
+            this.buttonCancel = new Button();
+            this.buttonCancel.Location = new Point(174, 146);
+            this.buttonCancel.Size = new Size(75, 23);
+            this.buttonCancel.Text = "Отмена";
+            this.buttonCancel.Click += new System.EventHandler(this.ButtonCancel_Click);
+
+            // Инициализация объекта ButtonBrowse
+            this.buttonBrowse = new Button();
+            this.buttonBrowse.Location = new Point(93, 146);
+            this.buttonBrowse.Size = new Size(75, 23);
+            this.buttonBrowse.Text = "Обзор";
+            this.buttonBrowse.Click += new System.EventHandler(this.ButtonBrowse_Click);
+
+            // Инициализация объекта SelestPathFromList
+            this.Text = "Выбор директории для синхронизации"; // Заголовок основного окна
+            this.ClientSize = new Size(265, 185);
+            this.FormBorderStyle = FormBorderStyle.FixedDialog; // Отключить возможность изменять размер диалогового окна
+            this.MaximizeBox = false; // Отключить кнопку разворачивания окна
+            this.MinimizeBox = false; // Отключить кнопку сворачивания окна
+            this.StartPosition = FormStartPosition.CenterScreen; // Располагать окно по центру
+
+            // Подключение компонентов в форму
+            this.Controls.Add(this.label);
+            // TODO Добавить отключение comboBox и кнопки ОК при отсутствии пунктов
+            this.Controls.Add(this.comboBox);
+            this.Controls.Add(this.buttonOk);
+            this.Controls.Add(this.buttonBrowse);
+            this.Controls.Add(this.buttonCancel);
+        }
+        #endregion Method InitializeComponents
+
+        #region Methods from button clicks
+        // Методы обработки событий кнопок
+        private void ButtonOk_Click(object sender, EventArgs e) {
+            // Данная кнопка будет подтвердать выбор, который был произведен в объекте ComboBox,
+            // после чего будет производить закрытие диалогового окна
+            this.SelectedPath = this.comboBox.Text;
+            this.DialogResult = DialogResult.OK;
+            this.Close();
+        }
+
+        private void ButtonCancel_Click(object sender, EventArgs e) {
+            // Данная кнопка будет производить закрытие диалогового окна без произведения выбора
+            // пути для синхронизации
+            this.DialogResult = DialogResult.Cancel;
+            this.Close();
+        }
+
+        private void ButtonBrowse_Click(object sender, EventArgs e) {
+            // Данная кнопка будет производить выбор директории для синхронизации
+            FolderBrowserDialog dialog = new FolderBrowserDialog();
+            dialog.Description =
+                "Выберите директорию для проведения синхронизации макросов";
+            // Позволить пользователю создавать новую директорию из данного диалога
+            dialog.ShowNewFolderButton = true;
+
+            dialog.RootFolder = Environment.SpecialFolder.MyComputer;
+
+            if (dialog.ShowDialog() == DialogResult.OK) {
+                this.SelectedPath = dialog.SelectedPath;
+                this.DialogResult = DialogResult.OK;
+                this.Close();
+            }
+            else {
+                this.DialogResult = DialogResult.Cancel;
+                this.Close();
+            }
+
+        }
+        #endregion Methods from button clicks
+    }
+    #endregion SelectedPathFromList form
 
     #endregion Service classes
 }
