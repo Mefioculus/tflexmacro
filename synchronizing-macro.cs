@@ -333,7 +333,6 @@ public class Macro : MacroProvider {
         public SyncAction Action { get; set; } = SyncAction.Unknown;
         public LocationOfMacro Location { get; set; } = LocationOfMacro.Unknown;
 
-        //TODO Реализовать метод анализа макро объекта (который будет выбирать действие, которое нужно совершить над макросом
         public bool PerformAnalize() {
             // TODO Расставить ветки таким образом, чтобы с самого начала выполнялись самые распространенные случаи для увеличения быстродействия системы
             // Случай, когда на локальном компьютере есть макрос, которого нет на удаленной базе
@@ -458,8 +457,10 @@ public class Macro : MacroProvider {
             this.label.AutoSize = false;
             this.label.Location = new Point(12, 9);
             this.label.Size = new Size(237, 92);
-            //TODO Добавить ветвление диалога в зависимости от того, производилась ли уже выгрузка или еще нет
-            this.label.Text = "Выберите директорию из списка предложенных ниже (директории, в которые ранее вами производилась синхронизация), или же нажмите на кнопку \"Обзор\" для выбора произвольной директории";
+            if (this.listOfPaths.Count != 0)
+                this.label.Text = "Выберите директорию из списка предложенных ниже (директории, в которые ранее вами производилась синхронизация), или же нажмите на кнопку \"Обзор\" для выбора произвольной директории";
+            else
+                this.label.Text = "Синхронизация под данным пользователем еще не производилась. Нажмите на кнопку \"Обзор\" для выбора директории для проведения синхронизации";
 
             // Инициализация объекта ComboBox
             this.comboBox = new ComboBox();
@@ -501,9 +502,12 @@ public class Macro : MacroProvider {
 
             // Подключение компонентов в форму
             this.Controls.Add(this.label);
-            // TODO Добавить отключение comboBox и кнопки ОК при отсутствии пунктов
-            this.Controls.Add(this.comboBox);
-            this.Controls.Add(this.buttonOk);
+            // Отрисовываем ComboBox и ButtonOk только в том случае, если возможно произвести выбор между ранее выбранными
+            // директориями
+            if (this.listOfPaths.Count != 0) {
+                this.Controls.Add(this.comboBox);
+                this.Controls.Add(this.buttonOk);
+            }
             this.Controls.Add(this.buttonBrowse);
             this.Controls.Add(this.buttonCancel);
         }
