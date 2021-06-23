@@ -57,6 +57,7 @@ public class Macro : MacroProvider {
     string simpleTemplate = "{0}\n";
     // Поле, которое будет хранить логи экспорта
     private List<ExportLog> listOfExportedLogs = null;
+    private string pathToExportFile = string.Empty;
 
     #endregion Fields and Properties
 
@@ -131,36 +132,24 @@ public class Macro : MacroProvider {
         }
         Message("Список экспортируемых объектов", message);
 
-        listAllObjectsOnExport.AddRange(GetAttachmentFiles(listAllObjectsOnExport));
-        //List<ReferenceObject> AllFiles = GetAttachmentFiles(listAllObjectOnExport);
+        // Получаем путь для сохранения ddx файла
+        pathToExportFile = GetPathToSaveData("ddx");
+        // Производим экспорт структруры отдельно
         ExportWithoutLinks(listAllObjectsOnExport);
+        // Дополняем название файла под файловый экспорт
+        pathToExportFile = pathToExportFile.Replace(".DDX", ".ddx"); // В том случае, если расширение автоматически было прописано заглавными буквами
+        
+        // Очищаем логи для того, чтобы они не экспортировались дважды
+        listOfExportedLogs = null;
+        pathToExportFile = pathToExportFile.Replace(".ddx", " (files).ddx");
+        // Производим экспорт файлов отдельно
+        ExportWithoutLinks(GetAttachmentFiles(listAllObjectsOnExport));
 
 
         Message("Информация", "Работа по экспорту изделий завершена");
     }
 
     #endregion Method ЭкспортироватьВсеВложенияИзделия
-
-    #region Method Экспортировать файлы изделия
-    public void ЭкспортироватьТолькоФайлыИзделия() {
-        List<ReferenceObject> listOfInitialObject = GetReferenceObjects();
-        if (listOfInitialObject.Count == 0)
-            return;
-
-        // Инициализируем список файлов, который будет хранить все объекты, для которых необходимо произвести экспорт
-        List<ReferenceObject> structureOfProduct = new List<ReferenceObject>();
-
-        // Получаем для выбранных изделий все входящие в них объекты
-        foreach (ReferenceObject refObj in listOfInitialObject) {
-            List<ReferenceObject> allElements = GetAllChildObjects(refObj);
-            structureOfProduct.AddRange(allElements);
-        }
-
-        // Получаем список файлов
-        List<ReferenceObject> allFiles = GetAttachmentFiles(structureOfProduct);
-        ExportWithoutLinks(allFiles);
-    }
-    #endregion Method Экспортировать файлы изделия
 
     #region Method ПроверитьЭкспортируемуюСтруктуру
 
@@ -326,9 +315,11 @@ public class Macro : MacroProvider {
         }
         
         // Написать диалог сохранения файла при помощи WinForms
-        string pathToExportFile = GetPathToSaveData("ddx");
         if (pathToExportFile == string.Empty) {
-            return;
+            pathToExportFile = GetPathToSaveData("ddx");
+            if (pathToExportFile == string.Empty) {
+                return;
+            }
         }
 
         // Экспорт файлов
