@@ -70,3 +70,50 @@ foreach (ReferenceObject process in techReference.Objects) {
 Message("Информация", message);
 
 #endregion Получение списка цехопереходов, которые наследуют свои доступы
+
+#region Получение списка переменных и списка свойств из документа CAD
+
+// Для того, чтобы данный макрос работал, потребуется подключить следующие пространства имен
+//using TFlex.DOCs.Model.FilePreview.CADService; // Данное пространство имен требуется для классов, связанных с документом CAD
+
+// Макрос для получения всей информации из CAD документа, которую только можно получить при помощи
+// встроенного в DOCs функционала
+
+string pathToCadFile = "C:\\\\testDocument.grb";
+
+CadDocumentProvider provider = CadDocumentProvider.Connect(Context.Connection, ".grb");
+
+// Открываем документ в режиме чтения
+using (CadDocument document = provider.OpenDocument(pathToCadFile, true)) {
+    // Проверка, был ли открыт документ
+    if (document == null) {
+        string fileName = Path.GetFileName(pathToCadFile);
+        Message("Ошибка экспорта", "Файл '{0}' не может быть открыт", fileName);
+        return;
+    }
+
+    // Получаем список переменных документа
+    VariableCollection variables = document.GetVariables();
+
+    string message = "Список переменных CAD документа:";
+    // Отображаем переменные
+    foreach (Variable cadVar in variables) {
+        message += string.Format("\nName: '{0}'; Value: '{1}'", cadVar.Name, cadVar.Value.ToString());
+    }
+    Message("Информация", message);
+
+    // Получаем список фрагментов документа
+    FragmentCollection fragments = document.GetFragments3D();
+
+    foreach (var fragment in fragments) {
+        message = string.Format("Список свойств CAD фрагмента '{0}':", fragment.ToString());
+        var properties = fragment.GetProperties();
+        message = "Список свойств CAD документа:";
+        foreach (var property in properties) {
+            message += string.Format("\n{0}", property.ToString());
+        }
+        Message("Информация", message);
+    }
+}
+#endregion Получение списка переменных и списка свойств из документа CAD
+
