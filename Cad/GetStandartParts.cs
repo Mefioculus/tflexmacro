@@ -13,7 +13,7 @@ namespace NewMacroNamespace
 {
 	public class NewMacroClass {
         #region Entry points
-		public static void NewMacro() {
+		public static void ВыгрузитьПереченьСтандартныхИзделий() {
 			// Метод для получения стандартных изделий
 
 			List<string> files = GetPathsToFiles();
