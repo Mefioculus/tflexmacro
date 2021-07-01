@@ -20,14 +20,12 @@ namespace NewMacroNamespace
             if (files.Count == 0)
                 return;
 
-			string message = string.Empty;
-
-            List<StData> allElementInProductStructure = new List<StData>();
+            CollectionOfStData loadData = new CollectionOfStData();
             foreach (string file in files) {
-                allElementInProductStructure.AddRange(GetStandartParts(file));
+                loadData.AddRange(GetStandartParts(file));
             }
 
-            WriteResultInFile(allElementInProductStructure);
+            WriteResultInFile(loadData);
 
 		}
         #endregion Entry points
@@ -71,10 +69,10 @@ namespace NewMacroNamespace
 
         #region Method GetStandartParts
 		// Метод для получения данных о входящих стандартных изделиях
-		private static List<StData> GetStandartParts(string pathToFile) {
+		private static CollectionOfStData GetStandartParts(string pathToFile) {
             // Данный метод будет открывать документ, получать из документа необходимые данные
             // размещать их в классе контейнере, закрывать документ
-            List<StData> result = new List<StData>();
+            CollectionOfStData result = new CollectionOfStData();
             // Открываем документ только на чтение в невидимом режиме
             Document document = TFlex.Application.OpenDocument(pathToFile, false, true);
             foreach (ProductStructure specification in document.GetProductStructures()) {
@@ -86,7 +84,7 @@ namespace NewMacroNamespace
                         int quantity = 0;
                         if (element.GetIntProperty("Количество") != null)
                             quantity = (int)element.GetIntProperty("Количество");
-                        result.Add(new StData(Path.GetFileNameWithoutExtension(pathToFile), name, quantity));
+                        result.Add(Path.GetFileNameWithoutExtension(pathToFile), name, quantity);
                     }
                 }
             }
@@ -99,8 +97,7 @@ namespace NewMacroNamespace
         #endregion Method GetStandartParts
 
         #region Method WriteResultInFile
-        private static void WriteResultInFile(List<StData> result) {
-            string stringOfData = string.Empty;
+        private static void WriteResultInFile(CollectionOfStData data) {
             // Запрашиваем у пользователя путь для сохранения результатов выгрузки
             Forms.SaveFileDialog dialog = new Forms.SaveFileDialog();
             dialog.Filter = "Comma-Separated Values files (*.csv)|*.csv|All files (*.txt)|*.txt";
@@ -111,14 +108,8 @@ namespace NewMacroNamespace
             if (dialog.ShowDialog() == Forms.DialogResult.OK) {
                 // Получаем кодировку, в которую будем производить запись
                 Encoding targetEncoding = Encoding.GetEncoding(1251);
-                using (StreamWriter sw = new StreamWriter(dialog.FileName, false, targetEncoding)) {
-                    // Пишем заголовок
-                    sw.WriteLine("Файл;Стандартное изделие;Количество");
-                    // Пишем регулярную часть
-                    foreach (StData data in result) {
-                        sw.WriteLine(data.ToString());
-                    }
-                }
+
+                data.ExportToCsv(dialog.FileName, false, targetEncoding);
             }
         }
         #endregion Method WriteResultInFile
@@ -131,6 +122,7 @@ namespace NewMacroNamespace
 			public string NameOfAssembly;
 			public string NameOfPart;
 			public int Quantity;
+            public static string CsvTableHead = "Файл;Стандартное изделие;Количество";
 
 			public StData(string nameAssembly, string namePart, int quant) {
                 // Для того, чтобы в названиях значений не оказалось символов, которые могут использоваться в
@@ -147,8 +139,90 @@ namespace NewMacroNamespace
                             this.NameOfPart,
                             this.Quantity.ToString());
             }
+
+            public string ToString(string option) {
+                string result = string.Empty;
+                // TODO предусмотреть другие варианты вывода информации
+                switch (option) {
+                    case "csv":
+                        result = string.Format("{0}; {1}; {2}",
+                                        this.NameOfAssembly,
+                                        this.NameOfPart,
+                                        this.Quantity.ToString());
+                        break;
+                    case "text":
+                        result = string.Empty;
+                        break;
+                    default:
+                        break;
+                }
+
+                return result;
+            }
 		}
         #endregion Class StData
+
+        #region Class CollectionOfStData
+        private class CollectionOfStData {
+            private List<StData> data;
+
+            public int Count {
+                get {
+                    return data.Count;
+                }
+            }
+
+            public CollectionOfStData () {
+                // Конструктор
+                this.data = new List<StData>();
+            }
+
+            // Индексатор
+            public StData this[int index] {
+                get {
+                    return data[index];
+                }
+                set {
+                    data[index] = value;
+                }
+            }
+
+            public void Add(string file, string name, int quantity) {
+                StData data = new StData(file, name, quantity);
+                this.data.Add(data);
+            }
+
+            public void AddRange(CollectionOfStData collection) {
+                for (int i = 0; i < collection.Count; i++) {
+                    string nameAssembly = collection[i].NameOfAssembly;
+                    string namePart = collection[i].NameOfPart;
+                    int quantity = collection[i].Quantity;
+
+                    this.Add(nameAssembly, namePart, quantity);
+                }
+            }
+
+            public override string ToString() {
+                // TODO Реализовать вывод данный в строку
+                string result = string.Empty;
+                return result;
+            }
+
+            public void ExportToCsv(string pathToFile, bool append, Encoding encoding) {
+                // TODO Метод для экспортирования данных в CSV
+                if (this.data.Count != 0) {
+                    using (StreamWriter sw = new StreamWriter(pathToFile, append, encoding)) {
+                        sw.WriteLine(StData.CsvTableHead);
+                        foreach (StData row in this.data) {
+                            sw.WriteLine(row.ToString("csv"));
+                        }
+                    }
+                }
+                else
+                    Forms.MessageBox.Show("Так как файл не содержит информации, он не будет создан", "Ошибка");
+            }
+        }
+        #endregion Class CollectionOfStData
         #endregion ServiceClasses
 	}
 }
