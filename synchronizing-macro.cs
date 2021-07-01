@@ -4,12 +4,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms; // Для отрисовки диалоговых окон
 using System.Drawing; // Для работы с коордиранами
+using DiffPlex;
+using DiffBuilder;
+using DiffBuilder.Model;
 using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 
 
-
+// Для работы макроса потребуется подключение сторонней библиотеки
+// DiffPlex.dll
 // Макрос для синхронизации макросов, которые находятся в справочнике "Макросы"
 
 public class Macro : MacroProvider {
@@ -274,7 +278,6 @@ public class Macro : MacroProvider {
 
     #region Method SortingMacroToLists
     private void SortingMacroToLists(MacroObject macroObject) {
-        // TODO Реализовать метод сортировки
         if (macroObject.Action == SyncAction.LeaveUntouched) {
             sameOnBothBase.Add(macroObject);
             return;
@@ -287,7 +290,6 @@ public class Macro : MacroProvider {
             onlyOnLocal.Add(macroObject);
             return;
         }
-
         // Все остальные случаи добавляются в список отличающихся макросов,
         // которые при этом присутствуют на обеих базах
         differentOnBothBase.Add(macroObject);
@@ -324,6 +326,8 @@ public class Macro : MacroProvider {
 
     #region Class MacroObject
     private class MacroObject {
+
+        #region Fields and Properties
         public string NameMacro { get; set; }
         public string CodeFromLocalBase { get; set; }
         public string CodeFromRemoteBase { get; set; }
@@ -332,7 +336,9 @@ public class Macro : MacroProvider {
         //public Guid GuidOfMacro { get; set; }   TODO определиться с тем, нужно ли это свойство
         public SyncAction Action { get; set; } = SyncAction.Unknown;
         public LocationOfMacro Location { get; set; } = LocationOfMacro.Unknown;
+        #endregion Fields and Properties
 
+        #region Method PerformAnalize
         public bool PerformAnalize() {
             // TODO Расставить ветки таким образом, чтобы с самого начала выполнялись самые распространенные случаи для увеличения быстродействия системы
             // Случай, когда на локальном компьютере есть макрос, которого нет на удаленной базе
@@ -377,7 +383,9 @@ public class Macro : MacroProvider {
             // ошибка во время обработки
             return false;
         }
+        #endregion Method PerformAnalize
 
+        #region Method ToString
         public override string ToString() {
             return string.Format("{0}\nAction: {1}; Location: {2};",
                                     this.NameMacro,
@@ -406,8 +414,69 @@ public class Macro : MacroProvider {
                                             this.DateOfLocalMacro.ToString("dd.MM.yyyy"),
                                             this.DateOfRemoteMacro.ToString("dd.MM.yyyy"));
         }
+        #endregion Method ToString
 
-        //TODO Реализовать метод, который будет производить действия над данный макросом в соответствии с тем, какое дайствие в нем выбрано
+        #region Method GetDiff
+        public string GetDiff() {
+
+            string difference = string.Empty;
+
+            // Производим проверку, происходила ли уже проверка данных
+            if (this.Action = SyncAction.Unknown) {
+                this.PerformAnalize();
+            }
+
+            // Случай, когда сравнение производить не требуется
+            if (this.Action = SyncAction.LeaveUntouched) {
+                return difference;
+            }
+
+
+            string oldText = string.Empty();
+            string newText = string.Empty();
+            if (this.DateOfLocalMacro.CompareTo(this.DateOfRemoteMacro) < 0) {
+                // Последники изменялись данные на локальной базе 
+                oldText = this.CodeFromRemoteBase;
+                newText = this.CodeFromLocalBase;
+
+                difference = "Сравнение кода на удаленной базе с кодом на локальной базе:\n\n";
+            }
+            else {
+                // Последними изменялись данные на удаленной базе
+                oldText = this.CodeFromLocalBase;
+                newText = this.CodeFromRemoteBase;
+
+                difference = "Сравнение кода на локальной базе с кодом на удаленной базе:\n\n";
+            }
+
+            Differ differ = new Differ();
+            InlineBuilder builder = new InlineBuilder(differ);
+            DiffPaneModel result = builder.BuildDiffModel(oldText, newText);
+
+            foreach (DiffPiece line in result.Lines) {
+                // Производим анализ строк
+                if (line.Type == ChangeType.Inserted) {
+                    difference += "+  ";
+                }
+                if (line.Type == ChangeType.Deleted) {
+                    difference += "-  ";
+                }
+                if (line.Type == ChangeType.Modified) {
+                    difference += "*  ";
+                }
+                if (line.Type == ChangeType.Imaginary) {
+                    difference += "?  ";
+                }
+                if (line.Type == ChangeType.Unchanged) {
+                    difference += "   ";
+                }
+                
+                difference += string.Format("{0}\n", line.Text);
+            }
+
+            return difference;
+        }
+        #endregion Method GetDiff
     }
     #endregion Class MacroObject
 
