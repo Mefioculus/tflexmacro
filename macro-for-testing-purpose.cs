@@ -138,4 +138,51 @@ public void ПолучитьВсеПодключенияОбъекта() {
 
 #endregion Разбор содержимого подключения
 
+#region Получение данных из таблицы FoxPro 
+
+// Данный код требует для работы подключения пространства имен System.Reflections;
+public void ПолучитьДанныеИзDBF() {
+    string pathToDbfFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "spec.dbf");
+    string pathToDbfDataReader = @"D:\Библиотеки dotnet\dbfdatareader.0.7.0\lib\net48\DbfDataReader.dll";
+
+    Assembly dbfDataReader = Assembly.LoadFrom(pathToDbfDataReader);
+
+    Type dataReaderType = dbfDataReader.GetType("DbfDataReader.DbfDataReader");
+    if (dataReaderType == null) {
+        Message("Ошибка", "Не получилось извлечь тип");
+        return;
+    }
+
+    // Получаем необходимые методы данного класса
+    MethodInfo read = dataReaderType.GetMethod("Read");
+    MethodInfo getString = dataReaderType.GetMethod("GetString");
+
+    object obj = Activator.CreateInstance(dataReaderType, new object[] {pathToDbfFile});
+    
+
+    List<string> result = new List<string>();
+    while ((bool)read.Invoke(obj, new object[] {})) {
+        result.Add((string)getString.Invoke(obj, new object[] {1}));
+    }
+
+    string message = string.Join("\n", result);
+
+    Message("", message);
+    Message("", "Работа макроса завершена");
+
+    
+    /*
+    string pathToFile = "path/to/file.dbf";
+    using (DbfDataReader dataReader = new DbfDataReader(pathToFile)) {
+        while (dataReader.Read()) {
+            var value = dataReader.GetString(0);
+        }
+    }
+    */
+}
+
+
+
+
+#endregion Получение данных из таблицы FoxPro
 
