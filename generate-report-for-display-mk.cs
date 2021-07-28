@@ -9,16 +9,14 @@ using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.References;
 
-using System.Data; // Для подключения к базе данных FoxPro
-using System.Data.OleDb; // Для подключения к базе данных FoxPro
+using System.Reflection; // Для подключения сторонней библиотеки (иначе подключить ее не получилось)
 using Newtonsoft.Json; // Для сериализации информации
 
 // Для работы данного макроса так же потребуется использование дополнительных библиотек
 // Ссылки:
 // - Newtonsoft.Json.dll
 // Библиотеки:
-// - Syste.Data.dll - Для подключения к базе данных
-// - System.Data.DataSetExtensions.dll - Для преобразования DataTable в Enumerable<DataRow>()
+// - DbfDataReader.dll - Данная библиотека подключается через Reflection в коде макроса
 
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
@@ -32,7 +30,20 @@ public class Macro : MacroProvider {
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
     private string[] arrayOfDbFiles = new string[] {"spec.dbf", "mars.dbc", "mars.dct"};
-    private Dictionary<string, DataTable> dataTables;
+
+    // Поля для хранения классов и методов, необходимых для использования библиотеки
+    // через Reflection
+    Type dataReaderType;
+    MethodInfo readMethod;
+    MethodInfo getStringMethod;
+    MethodInfo closeMethod;
+
+    // Опции для проведения чтения dbf таблиц
+    DbfDataReader.DbfDataReaderOptions dataReaderOptions = new DbfDataReader.DbfDataReaderOptions() {
+        SkipDeletedRecords = true;
+        Encoding = System.Text.Encoding.GetEncoding(1251);
+    }
+
     #endregion Fields and Properties
 
     #region Entry Points
@@ -40,8 +51,13 @@ public class Macro : MacroProvider {
         // Копируем все необходимые файлы баз данных
         CopyDataBaseFiles();
 
-        // Производим чтение всех таблиц
-        dataTables = GetDataTables(new string[] {"spec"});
+        // Инициализируем объекты для чтения базы данных
+        // Если во время инициализации не инициализировались все объекты, проинформаровать пользователя
+        // и завершить работу макроса
+        if (!InitDbfLibraryWithReflection()) {
+            Message("Произошла ошибка при инициализации библиотеки DbfDataReader. Обратитесь к администратору для ее устранения");
+            return;
+        }
 
         List<SpecRow> reportTable = GetCompositionOfProduct();
         if (reportTable.Count == 0) {
@@ -106,6 +122,48 @@ public class Macro : MacroProvider {
     }
     #endregion Method GetPathToDBFile
 
+    #region Method InitDbfLibraryWithReflection
+    private bool InitDbfLibraryWithReflection() {
+        // Данный метод будет производить поиск нужной библиотеки в справочнике и возвращать путь на локальной машине
+
+        FileReference fileReference = new FileReference(Context.Connection);
+        
+        // Находим файл библиотеки
+        FileObject libFile = fileReference.Find(new Guid("e9f3174e-43d0-46c9-9b57-35b5733a5131"));
+
+        if (libFile == null) {
+            Message("Ошибка", "В файловом справочнике не была обнаружена библиотека для работы с dbf файлами");
+            return;
+        }
+
+        libFile.GetHeadRevision();
+        string pathToLib = libFile.LocalPath;
+
+        if (!pathToLib.ToLower().Contains("dbfdatareader.dll")) {
+            Message("Ошибка", "Проблема при открытии файла библиотеки. Найденный файл не является искомой библиотекой");
+            return;
+        }
+
+        Assembly dbfDataReaderAssembly = Assembly.LoadFrom(pathToLib);
+        if (dbfDataReaderAssembly == null)
+            return false;
+        dataReaderType = dbfDataReaderAssembly.GetType("DbfDataReader.DbfDataReader");
+        
+        if (dataReaderType == null)
+            return false;
+
+        readMethod = dataReaderType.GetMethod("Read");
+        getStringMethod = dataReaderType.GetMethod("GetString");
+        closeMethod = dataReaderType.GetMethod("Close");
+
+        // Если хотя бы один из методов не был загружен, возвращаем false
+        if ((readMethod == null) || (getStringMethod == null) || (closeMethod || null))
+            return false;
+
+        return true;
+    }
+    #endregion Method InitDbfLibraryWithReflection
+
     #region Method GetCompositionOfProduct
     private List<SpecRow> GetCompositionOfProduct() {
         List<SpecRow> result = new List<SpecRow>();
@@ -115,92 +173,71 @@ public class Macro : MacroProvider {
 
         // Осуществляем в таблице поиск данного изделия.
         // Если данное изделие не было обнаружено, оповещаем об этом пользователя и завершаем работу макроса
-        DataRow product = dataTables["spec"].AsEnumerable().FirstOrDefault(dataRow => ((string)dataRow["shifr"]).Trim() == nameOfProduct);
-        if (product != null) {
-            result.Add(new SpecRow( 
-                    ((string)product["shifr"]).Trim(),
-                    ((string)product["naim"]).Trim(),
-                    ((string)product["izd"]).Trim()
-                    ));
-        }
-        else {
-            Message("Информация", string.Format("Изделие с обозначением '{0}' не было найдено", nameOfProduct));
-            return result;
-        }
-        
-        // Производим рекурсивное конструирование дерева
-        result.AddRange(GetCompositionOfProductRecursively(nameOfProduct, dataTables["spec"]));
+        List<SpecRow> specTable = GetSpecTable();
 
+        List<SpecRow> result = GetCompositionOfProductRecursively(nameOfProduct, specTable);
+        
         // Удаляем все дубликаты и возвращаем полученные данные
         return result.Distinct().ToList<SpecRow>();
     }
     #endregion Method GetCompositionOfProduct
 
-    #region Method GetDataTables
-    // Метод для чтения данных из DBF
-    private Dictionary<string, DataTable> GetDataTables (string[] dbfFiles) {
-        //TODO переписать данный метод с учетом работы через базы данных
-        Dictionary<string, DataTable> result = new Dictionary<string, DataTable>();
+    #region Method GetSpecTable
+    // Метод для получения данных из таблицы Spec
+    private List<SpecRow> GetSpecTable() {
+        List<SpecRow> result = new List<SpecRow>();
 
-        // Создаем подкючение к базе dbf
-        OleDbConnection connection = new OleDbConnection();
-        string stringConnection = string.Format("Provider=VFPOLEDB.1;Data Source=\"{0}\"", pathToTempDirectoryFoxProDb);
-        string errors = string.Empty;
+        // Получаем путь к таблице dbf
+        string pathToDbFile = GetPathToDBFile("spec");
 
-        connection.ConnectionString = stringConnection;
-        connection.Open()
-
-        foreach (string file in dbfFiles) {
-            string pathToFile = GetPathToDBFile(file);
-            if (File.Exists(pathToFile)) {
-                OleDbDataAdapter dataAdapter = new OleDbDataAdapter(string.Format("select * from {0}", Path.GetFileName(pathToFile)), connection);
-                DataTable dataTable = new DataTable();
-                dataAdapter.Fill(dataTable);
-
-                result["file"] = dataTable;
-            }
-            else
-                errors += string.Format("- {0}\n", file);
-
-            if (errors != string.Empty) {
-                errors = string.Format("Во процессе чтения dbf таблиц не были обнаружены следующие файлы:\n", errors);
-                Message("Ошибка", errors);
-                // Возвращаем пустой словарь для того, чтобы работа макроса завершилась
-                return new Dictionary<string, DataTable>();
-            }
-            
+        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToFile, dataReaderOptions});
+        List<SpecRow> result = new List<SpecRow>();
+        
+        // Производим чтение до тех пор, пока в базе есть данные 
+        while ((bool)readMethod.Invoke(reader, new object[] {})) {
+            SpecRow row = new SpecRow(
+                    (string)getStringMethod.Invoke(reader, new object[] {1}),
+                    (string)getStringMethod.Invoke(reader, new object[] {2}),
+                    (string)getStringMethod.Invoke(reader, new object[] {4}),
+                    );
+            result.Add(row);
         }
-        connection.Close();
+        // Закрываем reader
+        closeMethod.Invoke(reader, new object[] {});
 
         return result;
     }
-    #endregion Method GetDataTables
+
+    #endregion Method GetSpecTable
     
     #region Method GetCompositionOfProductRecursively
     // Метод для получения данных о составе изделия рекурсивно
-    private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, DataTable table) {
+    private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, List<SpecRow> table) {
         List<SpecRow> result = new List<SpecRow>();
 
-        var children = table.AsEnumerable().Where(dataRow => ((string)dataRow["shifr"]).Trim() == nameOfProduct);
+        SpecRow currentProduct = table.FirstOrDefault(row => row.Shifr == nameOfProduct);
+        if (currentProduct == null)
+            return result;
+        else
+            result.Add(currentProduct);
+
+        var children = table.Where(row => row.Parent == nameOfProduct);
         if (children.Count() != 0)
-            foreach (DataRow row in children) {
-                result.Add(new SpecRow(
-                        ((string)row["shifr"]).Trim(),
-                        ((string)row["naim"]).Trim(),
-                        ((string)row["izd"]).Trim()
-                        ));
-                result.AddRange(GetCompositionOfProductRecursively(result[result.Count - 1].Shifr, table));
-            }
+            foreach (SpecRow row in children)
+                result.AddRange(GetCompositionOfProductRecursively(row.Shifr, table));
+
         return result;
     }   
     #endregion Method GetCompositionOfProductRecursively
 
+    #region Method GetNameOfProduct
     // Метод для запроса у пользователя имени изделия
     private string GetNameOfProduct() {
         //TODO Реализовать метод запроса изделия у пользователя
         // Пока что возвращаем тестовое обозначение для ускорения тестирования
         return "8A3049047";
     }
+    #endregion Method GetNameOfProduct
 
     #endregion Methods for getting composition of product
 
