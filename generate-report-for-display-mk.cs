@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.References;
+using TFlex.DOCs.Model.References.Files;
 
 using System.Reflection; // Для подключения сторонней библиотеки (иначе подключить ее не получилось)
 using Newtonsoft.Json; // Для сериализации информации
@@ -33,16 +34,16 @@ public class Macro : MacroProvider {
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
-    Type dataReaderType;
-    MethodInfo readMethod;
-    MethodInfo getStringMethod;
-    MethodInfo closeMethod;
+    private Type dataReaderType;
+    private MethodInfo readMethod;
+    private MethodInfo getStringMethod;
+    private MethodInfo closeMethod;
 
     // Опции для проведения чтения dbf таблиц
     DbfDataReader.DbfDataReaderOptions dataReaderOptions = new DbfDataReader.DbfDataReaderOptions() {
-        SkipDeletedRecords = true;
-        Encoding = System.Text.Encoding.GetEncoding(1251);
-    }
+        SkipDeletedRecords = true,
+        Encoding = System.Text.Encoding.GetEncoding(1251)
+    };
 
     #endregion Fields and Properties
 
@@ -55,7 +56,7 @@ public class Macro : MacroProvider {
         // Если во время инициализации не инициализировались все объекты, проинформаровать пользователя
         // и завершить работу макроса
         if (!InitDbfLibraryWithReflection()) {
-            Message("Произошла ошибка при инициализации библиотеки DbfDataReader. Обратитесь к администратору для ее устранения");
+            Message("Ошибка", "При инициализации библиотеки DbfDataReader произошла ошибка. Обратитесь к администратору для ее устранения");
             return;
         }
 
@@ -129,11 +130,11 @@ public class Macro : MacroProvider {
         FileReference fileReference = new FileReference(Context.Connection);
         
         // Находим файл библиотеки
-        FileObject libFile = fileReference.Find(new Guid("e9f3174e-43d0-46c9-9b57-35b5733a5131"));
+        FileObject libFile = fileReference.Find(new Guid("e9f3174e-43d0-46c9-9b57-35b5733a5131")) as FileObject;
 
         if (libFile == null) {
             Message("Ошибка", "В файловом справочнике не была обнаружена библиотека для работы с dbf файлами");
-            return;
+            return false;
         }
 
         libFile.GetHeadRevision();
@@ -141,7 +142,7 @@ public class Macro : MacroProvider {
 
         if (!pathToLib.ToLower().Contains("dbfdatareader.dll")) {
             Message("Ошибка", "Проблема при открытии файла библиотеки. Найденный файл не является искомой библиотекой");
-            return;
+            return false;
         }
 
         Assembly dbfDataReaderAssembly = Assembly.LoadFrom(pathToLib);
@@ -157,7 +158,7 @@ public class Macro : MacroProvider {
         closeMethod = dataReaderType.GetMethod("Close");
 
         // Если хотя бы один из методов не был загружен, возвращаем false
-        if ((readMethod == null) || (getStringMethod == null) || (closeMethod || null))
+        if ((readMethod == null) || (getStringMethod == null) || (closeMethod == null))
             return false;
 
         return true;
@@ -166,8 +167,6 @@ public class Macro : MacroProvider {
 
     #region Method GetCompositionOfProduct
     private List<SpecRow> GetCompositionOfProduct() {
-        List<SpecRow> result = new List<SpecRow>();
-
         // Запрашиваем у пользователя имя изделия для поиска данных
         string nameOfProduct = GetNameOfProduct();
 
@@ -190,15 +189,14 @@ public class Macro : MacroProvider {
         // Получаем путь к таблице dbf
         string pathToDbFile = GetPathToDBFile("spec");
 
-        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToFile, dataReaderOptions});
-        List<SpecRow> result = new List<SpecRow>();
+        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToDbFile, dataReaderOptions});
         
         // Производим чтение до тех пор, пока в базе есть данные 
         while ((bool)readMethod.Invoke(reader, new object[] {})) {
             SpecRow row = new SpecRow(
                     (string)getStringMethod.Invoke(reader, new object[] {1}),
                     (string)getStringMethod.Invoke(reader, new object[] {2}),
-                    (string)getStringMethod.Invoke(reader, new object[] {4}),
+                    (string)getStringMethod.Invoke(reader, new object[] {4})
                     );
             result.Add(row);
         }
