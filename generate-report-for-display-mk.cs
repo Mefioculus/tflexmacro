@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text; // Для работы с кодировками
 using System.Collections;
 using System.Collections.Generic;
 using System.Windows.Forms;
@@ -60,15 +61,17 @@ public class Macro : MacroProvider {
             return;
         }
 
-        List<SpecRow> reportTable = GetCompositionOfProduct();
-        if (reportTable.Count == 0) {
+        Dictionary<string, List<SpecRow>> reportTables = GetCompositionOfProducts();
+        if (reportTables.Count == 0) {
             DeleteTemporaryFiles();
-            Message("Информация", "В процессе работы макроса возникли ошибки, отчет не был сформирован");
+            Message("Информация", "В процессе работы макроса не было сформировано ни одного отчета");
             return;
         }
 
-        Message("", string.Join("\n", reportTable));
-        
+        FetchInfoAboutMK(reportTables);
+
+        PrintReports(reportTables);
+
         // Удаляем все скопированные ранее файлы баз данных данных,
         // так как в дальнейшем они не нужны
         DeleteTemporaryFiles();
@@ -109,9 +112,17 @@ public class Macro : MacroProvider {
             }
         }
     }
+
+    private string GetDirectory() {
+        // TODO Реализовать запрос папки для сохранения отчетов от пользователей
+        string result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "TestReports");
+        if (!Directory.Exists(result))
+            Directory.CreateDirectory(result);
+
+        return result;
+    }
     #endregion Input and Output operations methods
 
-    //TODO Реализовать методы чтения базы данных и формирования состава на одно изделие
     #region Methods for getting composition of product
 
     #region Method GetPathToDBFile
@@ -165,21 +176,27 @@ public class Macro : MacroProvider {
     }
     #endregion Method InitDbfLibraryWithReflection
 
-    #region Method GetCompositionOfProduct
-    private List<SpecRow> GetCompositionOfProduct() {
+    #region Method GetCompositionOfProducts
+    private Dictionary<string, List<SpecRow>> GetCompositionOfProducts() {
         // Запрашиваем у пользователя имя изделия для поиска данных
-        string nameOfProduct = GetNameOfProduct();
+        string[] namesOfProduct = GetNamesOfProduct();
 
         // Осуществляем в таблице поиск данного изделия.
         // Если данное изделие не было обнаружено, оповещаем об этом пользователя и завершаем работу макроса
         List<SpecRow> specTable = GetSpecTable();
 
-        List<SpecRow> result = GetCompositionOfProductRecursively(nameOfProduct, specTable);
+        Dictionary<string, List<SpecRow>> result = new Dictionary<string, List<SpecRow>>();
+        foreach (string name in namesOfProduct) {
+            List<SpecRow> reportData = GetCompositionOfProductRecursively(name, specTable);
+            if (reportData != null) {
+                // Удаляем дубликаты из таблицы и подключаем ее к результату
+                result[name] = reportData.Distinct().ToList<SpecRow>();
+            }
+        }
         
-        // Удаляем все дубликаты и возвращаем полученные данные
-        return result.Distinct().ToList<SpecRow>();
+        return result;
     }
-    #endregion Method GetCompositionOfProduct
+    #endregion Method GetCompositionOfProducts
 
     #region Method GetSpecTable
     // Метод для получения данных из таблицы Spec
@@ -214,8 +231,10 @@ public class Macro : MacroProvider {
         List<SpecRow> result = new List<SpecRow>();
 
         SpecRow currentProduct = table.FirstOrDefault(row => row.Shifr == nameOfProduct);
-        if (currentProduct == null)
+        if (currentProduct == null) {
+            Message("Ошибка", string.Format("Изделие '{0}' не было найдено", nameOfProduct));
             return result;
+        }
         else
             result.Add(currentProduct);
 
@@ -228,19 +247,40 @@ public class Macro : MacroProvider {
     }   
     #endregion Method GetCompositionOfProductRecursively
 
-    #region Method GetNameOfProduct
+    #region Method GetNamesOfProduct
     // Метод для запроса у пользователя имени изделия
-    private string GetNameOfProduct() {
+    private string[] GetNamesOfProduct() {
         //TODO Реализовать метод запроса изделия у пользователя
         // Пока что возвращаем тестовое обозначение для ускорения тестирования
-        return "8A3049047";
+        return new string [] {"8А3049047"};
     }
-    #endregion Method GetNameOfProduct
+    #endregion Method GetNamesOfProduct
 
     #endregion Methods for getting composition of product
 
+    private void FetchInfoAboutMK(Dictionary<string, List<SpecRow>> data) {
 
-    //TODO Класc WinForms для отображения диалога запроса имени изделия
+    }
+
+    #region Methods for generate output report file
+
+    private void PrintReports(Dictionary<string,List<SpecRow>> dataOnPrint) {
+        string pathToDirectoryToSave = GetDirectory();
+
+        foreach (KeyValuePair<string, List<SpecRow>> kvp in dataOnPrint) {
+            PrintReport(pathToDirectoryToSave, kvp.Key, kvp.Value);
+        }
+    }
+
+    private void PrintReport(string directory, string nameOfProduct, List<SpecRow> data) {
+        string text = SpecRow.GetHeader();
+        text += string.Join("\n", data);
+        string pathToFile = string.Format("{0}.csv", Path.Combine(directory, nameOfProduct));
+        File.WriteAllText(pathToFile, text, Encoding.GetEncoding(1251));
+    }
+
+    #endregion Methods for generate output report file
+
     #region serviceClasses
     private class SpecRow {
         public string Shifr { get; set; }
@@ -257,7 +297,11 @@ public class Macro : MacroProvider {
         }
 
         public override string ToString() {
-            return string.Format("{0, -25} | {1, -50} | {2, -25}", Shifr, Name, Parent);
+            return string.Format("{0};{1};{2}", Shifr, Name, Parent);
+        }
+
+        public static string GetHeader() {
+            return "Шифр;Наименование;Родитель\n";
         }
     }
     #endregion serviceClasses
