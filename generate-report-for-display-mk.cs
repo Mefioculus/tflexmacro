@@ -31,7 +31,7 @@ public class Macro : MacroProvider {
     private string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
-    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "trud.dbf"};
+    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "trud.dbf", "trud.dbt", "trud.fpt", "trud.tbk", "trud.cdx"};
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
@@ -160,6 +160,7 @@ public class Macro : MacroProvider {
         }
     }
 
+    #region Method GetDirectory 
     private string GetDirectory() {
         // TODO Реализовать запрос папки для сохранения отчетов от пользователей
         string result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "TestReports");
@@ -168,6 +169,7 @@ public class Macro : MacroProvider {
 
         return result;
     }
+    #endregion Method GetDirectory 
     #endregion Input and Output operations methods
 
     #region Methods for getting composition of product
@@ -256,21 +258,60 @@ public class Macro : MacroProvider {
         object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToDbFile, dataReaderOptions});
         
         // Производим чтение до тех пор, пока в базе есть данные 
-        while ((bool)readMethod.Invoke(reader, new object[] {})) {
-            SpecRow row = new SpecRow(
-                    (string)getStringMethod.Invoke(reader, new object[] {1}),
-                    (string)getStringMethod.Invoke(reader, new object[] {2}),
-                    (string)getStringMethod.Invoke(reader, new object[] {4})
-                    );
-            result.Add(row);
+        try {
+            while ((bool)readMethod.Invoke(reader, new object[] {})) {
+                SpecRow row = new SpecRow(
+                        (string)getStringMethod.Invoke(reader, new object[] {1}),
+                        (string)getStringMethod.Invoke(reader, new object[] {2}),
+                        (string)getStringMethod.Invoke(reader, new object[] {4})
+                        );
+                result.Add(row);
+            }
         }
-        // Закрываем reader
-        closeMethod.Invoke(reader, new object[] {});
+        finally {
+            // Закрываем reader
+            closeMethod.Invoke(reader, new object[] {});
+        }
 
         return result;
     }
 
     #endregion Method GetSpecTable
+
+    #region Method GetTrudTable
+    // Метод для получения данных из таблицы Spec
+    private List<TrudRow> GetTrudTable() {
+        List<TrudRow> result = new List<TrudRow>();
+
+        // Получаем путь к таблице dbf
+        string pathToDbFile = GetPathToDBFile("trud");
+
+        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToDbFile, dataReaderOptions});
+        
+        // Производим чтение до тех пор, пока в базе есть данные 
+        try {
+            while ((bool)readMethod.Invoke(reader, new object[] {})) {
+                TrudRow row = new TrudRow() {
+                    Shifr = (string)getStringMethod.Invoke(reader, new object[] {0}),
+                    Izg = (string)getStringMethod.Invoke(reader, new object[] {1}),
+                    Num_op = (string)getStringMethod.Invoke(reader, new object[] {2}),
+                    Shifr_op = (string)getStringMethod.Invoke(reader, new object[] {3}),
+                    Op_op = (string)getStringMethod.Invoke(reader, new object[] {12}),
+                    Naim_st = (string)getStringMethod.Invoke(reader, new object[] {13}),
+                    Prof = (string)getStringMethod.Invoke(reader, new object[] {14})
+                };
+
+            }
+        }
+        finally {
+            // Закрываем reader
+            closeMethod.Invoke(reader, new object[] {});
+        }
+
+        return result;
+    }
+
+    #endregion Method GetTrudTable
     
     #region Method GetCompositionOfProductRecursively
     // Метод для получения данных о составе изделия рекурсивно
@@ -306,6 +347,7 @@ public class Macro : MacroProvider {
     #endregion Methods for getting composition of product
 
     #region Fetchng data about mk from Tflex and FoxPro
+    #region Main method FetchInfoAboutMK
     private void FetchInfoAboutMK(Dictionary<string, List<SpecRow>> data) {
         foreach (KeyValuePair<string, List<SpecRow>> kvp in data) {
             FetchDataFromTFlex(kvp.Value);
@@ -313,7 +355,9 @@ public class Macro : MacroProvider {
             SetStatus(kvp.Value);
         }
     }
+    #endregion Main method FetchInfoAboutMK
 
+    #region Method FetchDataFromTFlex
     // Метод для получения сведений о наличии МК в архиве ОГТ
     private void FetchDataFromTFlex(List<SpecRow> table) {
         // Получаем справочник архива ОГТ
@@ -337,16 +381,72 @@ public class Macro : MacroProvider {
 
         // Получаем все объекты справочника
     }
+    #endregion Method FetchDataFromTFlex
 
+    #region Method FetchDataFromFox
     // Метод для получения сведений о том, какие сведения нормы на данную ДСЕ
     // в FoxPro
-    private void FetchDataFromFox(List<SpecRow> table) {
+    private void FetchDataFromFox(List<SpecRow> specTable) {
+        // TODO Реализовать получение данных из таблицы TRUD
         // Получаем таблицу TRUD
-    }
+        List<TrudRow> trudTable = GetTrudTable();
 
+        foreach (SpecRow sRow in specTable) {
+
+            string march = string.Empty; // аккумулятор маршрута технологии
+            string prevCeh = string.Empty; // данные о предыдущем цехозаходе для определения маршрута
+            string errMessage = string.Empty; // аккумулятор ошибок в ходе просмотра технологии
+            List<string>tempErrMessage = new List<string>(); // аккумулятор ошибок в ходе просмотра одной операции технологии
+
+            foreach (TrudRow tRow in trudTable.Where(r => r.Shifr == sRow.Shifr)) {
+                // Составляем маршрут
+                if (prevCeh != tRow.Izg)
+                    march += march == string.Empty ? tRow.Izg : string.Format("-{0}", tRow.Izg);
+                prevCeh = tRow.Izg;
+
+                if (string.IsNullOrWhiteSpace(tRow.Op_op))
+                    tempErrMessage.Add("описание");
+
+                if (string.IsNullOrWhiteSpace(tRow.Naim_st))
+                    tempErrMessage.Add("оборудование");
+
+
+                if (string.IsNullOrWhiteSpace(tRow.Prof))
+                    tempErrMessage.Add("профессия");
+
+                if (tempErrMessage.Count > 0) {
+                    errMessage += string.Format("в ор {0}.{1}.{2} отсутствуют данные о: {3}; ", tRow.Izg, tRow.Num_op, tRow.Shifr_op, string.Join(", ", tempErrMessage));
+                }
+
+                sRow.ErrorMessage = errMessage;
+                sRow.TechRoute = march;
+
+                // Обнуление временный переменных
+                tempErrMessage.Clear();
+                march = string.Empty;
+
+                // Присвоение статусов
+                if (string.IsNullOrWhiteSpace(sRow.TechRoute)) {
+                    sRow.FoxProMK = StatusMKFoxPro.NotFound;
+                    continue;
+                }
+
+                // Присваиваем статус по наличию ошибок
+                sRow.FoxProMK = string.IsNullOrWhiteSpace(sRow.ErrorMessage) ? StatusMKFoxPro.ExistWithoutError : StatusMKFoxPro.ExistWithError;
+            }
+        }
+
+
+    }
+    #endregion Method FetchDataFromFox
+
+
+    #region Method SetStatus
     // Установка статуса текущей ДСЕ
     private void SetStatus(List<SpecRow> table) {
+        // TODO
     }
+    #endregion Method SetStatus
     #endregion Fetchng data about mk from Tflex and FoxPro
 
     #region Methods for generate output report file
@@ -380,8 +480,9 @@ public class Macro : MacroProvider {
 
     private enum StatusMKFoxPro {
         NotProcessed, // Дефолтный статус
-        Locked, // В Fox заблокировано редактирование технологии
-        Unlocked // В Fox разблокировано редактирование технологии
+        NotFound, // Технология не найдена
+        ExistWithError, // Технология найдена, но обнаружены замечания 
+        ExistWithoutError // Технология найдена, замечаний нет
     }
 
     private enum StatusOfDSE {
@@ -393,10 +494,13 @@ public class Macro : MacroProvider {
     }
     #endregion Enums
 
+    #region Class SpecRow
     private class SpecRow {
         public string Shifr { get; set; }
         public string Name { get; set; }
         public string Parent { get; set; }
+        public string TechRoute { get; set; }
+        public string ErrorMessage { get; set; }
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
         public StatusOfDSE Status { get; set; }
@@ -413,19 +517,35 @@ public class Macro : MacroProvider {
 
         public override string ToString() {
             return string.Format(
-                    "{0};{1};{2};{3};{4};{5}",
+                    "{0};{1};{2};{3};{4};{5};{6};{7}",
                     Shifr,
                     Name,
                     Parent,
                     FoxProMK.ToString(),
                     TFlexMK.ToString(),
-                    Status.ToString()
+                    Status.ToString(),
+                    TechRoute,
+                    ErrorMessage
                     );
         }
 
         public static string GetHeader() {
-            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус\n";
+            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Маршрут;Возникшие замечания\n";
         }
     }
+    #endregion Class SpecRow
+
+    #region Class TrudRow
+    // Класс для временного хранения выгруженных данных из таблицы Trud FoxPro
+    private class TrudRow {
+        public string Shifr { get; set; } //0
+        public string Izg { get; set; } //1
+        public string Num_op { get; set; } //2
+        public string Shifr_op { get; set; } //3
+        public string Op_op { get; set; } //12
+        public string Naim_st { get; set; } //13
+        public string Prof { get; set; } //14
+    }
+    #endregion Class TrudRow
     #endregion serviceClasses
 }
