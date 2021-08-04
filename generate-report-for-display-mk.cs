@@ -300,6 +300,7 @@ public class Macro : MacroProvider {
                     Naim_st = (string)getStringMethod.Invoke(reader, new object[] {13}),
                     Prof = (string)getStringMethod.Invoke(reader, new object[] {14})
                 };
+                result.Add(row);
 
             }
         }
@@ -393,58 +394,115 @@ public class Macro : MacroProvider {
 
         foreach (SpecRow sRow in specTable) {
 
-            string march = string.Empty; // аккумулятор маршрута технологии
-            string prevCeh = string.Empty; // данные о предыдущем цехозаходе для определения маршрута
             string errMessage = string.Empty; // аккумулятор ошибок в ходе просмотра технологии
-            List<string>tempErrMessage = new List<string>(); // аккумулятор ошибок в ходе просмотра одной операции технологии
+            List<string>listOfEmptyCells = new List<string>(); // аккумулятор ошибок в ходе просмотра одной операции технологии
+            List<string>listOfCeh = new List<string>(); // аккумулятор маршрута
+            List<string>listOfErrors = new List<string>(); // список всех ошибок
 
             foreach (TrudRow tRow in trudTable.Where(r => r.Shifr == sRow.Shifr)) {
                 // Составляем маршрут
-                if (prevCeh != tRow.Izg)
-                    march += march == string.Empty ? tRow.Izg : string.Format("-{0}", tRow.Izg);
-                prevCeh = tRow.Izg;
+                if (listOfCeh.Count == 0)
+                    listOfCeh.Add(tRow.Izg);
+                else {
+                    if (listOfCeh[listOfCeh.Count - 1] != tRow.Izg)
+                        listOfCeh.Add(tRow.Izg);
+                }
 
+                // Составляем список замечаний, которые возникли в процессе
                 if (string.IsNullOrWhiteSpace(tRow.Op_op))
-                    tempErrMessage.Add("описание");
+                    listOfEmptyCells.Add("описание");
 
                 if (string.IsNullOrWhiteSpace(tRow.Naim_st))
-                    tempErrMessage.Add("оборудование");
+                    listOfEmptyCells.Add("оборудование");
 
 
                 if (string.IsNullOrWhiteSpace(tRow.Prof))
-                    tempErrMessage.Add("профессия");
+                    listOfEmptyCells.Add("профессия");
 
-                if (tempErrMessage.Count > 0) {
-                    errMessage += string.Format("в ор {0}.{1}.{2} отсутствуют данные о: {3}; ", tRow.Izg, tRow.Num_op, tRow.Shifr_op, string.Join(", ", tempErrMessage));
+                if (listOfEmptyCells.Count > 0) {
+                    if (listOfEmptyCells.Count == 3)
+                        listOfErrors.Add(string.Format("оп {0}.{1}.{2} пустая", tRow.Izg, tRow.Num_op, tRow.Shifr_op));
+                    else
+                        listOfErrors.Add(string.Format("в оп {0}.{1}.{2} отсутствуют данные о: {3}, ", tRow.Izg, tRow.Num_op, tRow.Shifr_op, string.Join(", ", listOfEmptyCells)));
                 }
 
-                sRow.ErrorMessage = errMessage;
-                sRow.TechRoute = march;
 
                 // Обнуление временный переменных
-                tempErrMessage.Clear();
-                march = string.Empty;
+                listOfEmptyCells.Clear();
 
-                // Присвоение статусов
-                if (string.IsNullOrWhiteSpace(sRow.TechRoute)) {
-                    sRow.FoxProMK = StatusMKFoxPro.NotFound;
-                    continue;
-                }
-
-                // Присваиваем статус по наличию ошибок
-                sRow.FoxProMK = string.IsNullOrWhiteSpace(sRow.ErrorMessage) ? StatusMKFoxPro.ExistWithoutError : StatusMKFoxPro.ExistWithError;
             }
+
+            sRow.ErrorMessage = string.Join(", ", listOfErrors);
+            sRow.TechRoute = string.Join("-", listOfCeh);
+            listOfCeh.Clear();
+            listOfErrors.Clear();
+
+            // Присвоение статусов
+            if (string.IsNullOrWhiteSpace(sRow.TechRoute)) {
+                sRow.FoxProMK = StatusMKFoxPro.NotFound;
+                continue;
+            }
+
+            // Присваиваем статус по наличию ошибок
+            sRow.FoxProMK = string.IsNullOrWhiteSpace(sRow.ErrorMessage) ? StatusMKFoxPro.ExistWithoutError : StatusMKFoxPro.ExistWithError;
         }
 
 
     }
     #endregion Method FetchDataFromFox
 
-
     #region Method SetStatus
     // Установка статуса текущей ДСЕ
     private void SetStatus(List<SpecRow> table) {
-        // TODO
+        foreach (SpecRow row in table) {
+            // В фоксе не были найдены операции
+            if (row.FoxProMK == StatusMKFoxPro.NotFound) {
+                switch (row.TFlexMK) {
+                    // В архиве не была найдено данных по этой ДСЕ
+                    case StatusMKArchive.NotFound:
+                        row.Status = StatusOfDSE.NeedQualification;
+                        break;
+                    // В архиве есть ДСЕ, но на нее отсутствует технология
+                    case StatusMKArchive.NotExist:
+                        row.Status = StatusOfDSE.Creating;
+                        break;
+                    // В архиве есть ДСЕ и на нее присутствует технология
+                    case StatusMKArchive.Exist:
+                        row.Status = StatusOfDSE.NeedQualification;
+                        break;
+                    // Данные о наличии или отсутствии записи не были обработаны
+                    default:
+                        row.Status = StatusOfDSE.NeedQualification;
+                        break;
+                }
+            }
+
+            // в фоксе была найдена технология
+            if (row.FoxProMK == StatusMKFoxPro.ExistWithoutError) {
+                switch (row.TFlexMK) {
+                    // В архиве отсутствует информация по данной ДСЕ
+                    case StatusMKArchive.NotFound:
+                        row.Status = StatusOfDSE.NeedQualification;
+                        break;
+                    // В архиве есть ДСЕ но на нее отсутствует технология
+                    case StatusMKArchive.NotExist:
+                        row.Status = StatusOfDSE.Reworking;
+                        break;
+                    // В архиве есть МК на данное изделие
+                    case StatusMKArchive.Exist:
+                        row.Status = StatusOfDSE.Done;
+                        break;
+                    default:
+                        row.Status = StatusOfDSE.NeedQualification;
+                        break;
+                }
+            }
+
+            // В фоксе была найдена МК с пустыми операциями
+            if (row.FoxProMK == StatusMKFoxPro.ExistWithError) {
+                row.Status = StatusOfDSE.NeedQualification;
+            }
+        }
     }
     #endregion Method SetStatus
     #endregion Fetchng data about mk from Tflex and FoxPro
@@ -504,6 +562,9 @@ public class Macro : MacroProvider {
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
         public StatusOfDSE Status { get; set; }
+        public string FoxStatus => GetFoxStatus();
+        public string ArchiveStatus => GetArchiveStatus();
+        public string DSEStatus => GetDSEStatus();
 
         public SpecRow (string shifr, string name, string parent) {
             this.Shifr = shifr;
@@ -521,9 +582,9 @@ public class Macro : MacroProvider {
                     Shifr,
                     Name,
                     Parent,
-                    FoxProMK.ToString(),
-                    TFlexMK.ToString(),
-                    Status.ToString(),
+                    FoxStatus,
+                    ArchiveStatus,
+                    DSEStatus,
                     TechRoute,
                     ErrorMessage
                     );
@@ -532,6 +593,68 @@ public class Macro : MacroProvider {
         public static string GetHeader() {
             return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Маршрут;Возникшие замечания\n";
         }
+
+        #region Methods for localization of statuses
+        private string GetFoxStatus() {
+            string result = string.Empty;
+            switch (this.FoxProMK) {
+                case StatusMKFoxPro.NotFound:
+                    result = "Технология не найдена";
+                    break;
+                case StatusMKFoxPro.ExistWithError:
+                    result = "Технология пустая";
+                    break;
+                case StatusMKFoxPro.ExistWithoutError:
+                    result = "Технология найдена";
+                    break;
+                default:
+                    result = "Не обработано";
+                    break;
+            }
+            return result;
+        }
+
+        private string GetArchiveStatus() {
+            string result = string.Empty;
+            switch (this.TFlexMK) {
+                case StatusMKArchive.NotFound:
+                    result = "Отсутствует изделие";
+                    break;
+                case StatusMKArchive.Exist:
+                    result = "Технология найдена";
+                    break;
+                case StatusMKArchive.NotExist:
+                    result = "Технология не найдена";
+                    break;
+                default:
+                    result = "Не обработано";
+                    break;
+            }
+            return result;
+        }
+
+        private string GetDSEStatus() {
+            string result = string.Empty;
+            switch (this.Status) {
+                case StatusOfDSE.Done:
+                    result = "Готово";
+                    break;
+                case StatusOfDSE.Reworking:
+                    result = "Корректируется";
+                    break;
+                case StatusOfDSE.Creating:
+                    result = "Создается";
+                    break;
+                case StatusOfDSE.NeedQualification:
+                    result = "Результаты требуют уточнения";
+                    break;
+                default:
+                    result = "Не обработано";
+                    break;
+            }
+            return result;
+        }
+        #endregion Methods for localization of statuses
     }
     #endregion Class SpecRow
 
