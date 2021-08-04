@@ -5,6 +5,7 @@ using System.Text; // Для работы с кодировками
 using System.Collections;
 using System.Collections.Generic;
 using System.Windows.Forms;
+using System.Drawing;
 
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
@@ -80,8 +81,9 @@ public class Macro : MacroProvider {
         }
 
         Dictionary<string, List<SpecRow>> reportTables = GetCompositionOfProducts();
+        if (reportTables == null)
+            return;
         if (reportTables.Count == 0) {
-            DeleteTemporaryFiles();
             Message("Информация", "В процессе работы макроса не было сформировано ни одного отчета");
             return;
         }
@@ -90,8 +92,6 @@ public class Macro : MacroProvider {
 
         PrintReports(reportTables);
 
-        // Удаляем все скопированные ранее файлы баз данных данных,
-        // так как в дальнейшем они не нужны
         Message("Информация", "Работа макроса успешно завершена");
     }
     #endregion Entry Points
@@ -227,12 +227,16 @@ public class Macro : MacroProvider {
 
     #region Method GetCompositionOfProducts
     private Dictionary<string, List<SpecRow>> GetCompositionOfProducts() {
-        // Запрашиваем у пользователя имя изделия для поиска данных
-        string[] namesOfProduct = GetNamesOfProduct();
-
-        // Осуществляем в таблице поиск данного изделия.
-        // Если данное изделие не было обнаружено, оповещаем об этом пользователя и завершаем работу макроса
+        // Производим чтение таблицы с данными
         List<SpecRow> specTable = GetSpecTable();
+        // Получаем список изделий для того, чтобы пользователь мог выбрать из них те, на которые
+        // нужно созать отчеты
+        string[] allProducts = specTable.Select(row => row.Parent).Distinct().ToArray();
+
+        // Запрашиваем у пользователя имя изделия для поиска данных
+        string[] namesOfProduct = GetNamesOfProduct(allProducts);
+        if (namesOfProduct.Length == 0)
+            return null;
 
         Dictionary<string, List<SpecRow>> result = new Dictionary<string, List<SpecRow>>();
         foreach (string name in namesOfProduct) {
@@ -338,10 +342,13 @@ public class Macro : MacroProvider {
 
     #region Method GetNamesOfProduct
     // Метод для запроса у пользователя имени изделия
-    private string[] GetNamesOfProduct() {
-        //TODO Реализовать метод запроса изделия у пользователя
+    private string[] GetNamesOfProduct(string[] allProducts) {
         // Пока что возвращаем тестовое обозначение для ускорения тестирования
-        return new string [] {"8А3049047"};
+        SelectProductDialog dialog = new SelectProductDialog(allProducts);
+        if (dialog.ShowDialog() == DialogResult.OK) {
+            return dialog.SelectedProducts;
+        }
+        return new string[] {};
     }
     #endregion Method GetNamesOfProduct
 
@@ -670,5 +677,198 @@ public class Macro : MacroProvider {
         public string Prof { get; set; } //14
     }
     #endregion Class TrudRow
+
+    #region Select product for reporting form
+    // Диалоговое окно для выбора изделий, на которые будет формироваться отчет
+    private class SelectProductDialog : Form {
+        
+        #region Fields and Properties
+        private string[] allProducts;
+        private TextBox inputField;
+        private ListBox foundItems;
+        private ListBox selectedItems;
+        private Label annotationFoundItems;
+        private Label annotationSelectedItems;
+        private Button buttonOk;
+        private Button buttonCancel;
+        private Button buttonSearch;
+        private Button buttonAdd;
+        private Button buttonDelete;
+
+        public string[] SelectedProducts { get; set; }
+
+        #endregion Fields and Properties
+
+        #region Constructors
+        public SelectProductDialog(string[] allProducts) {
+            // Получаем список всех изделий
+            this.allProducts = allProducts;
+            this.SuspendLayout(); // Если я правильно понял, мы тормозим отрисовку до тех пор,
+            // пока не инициализируем все объекты
+
+            // Производим основные настройки формы
+            InitializeComponents();
+
+            this.ResumeLayout(false);
+            this.PerformLayout();
+        }
+        #endregion Constructors
+
+        #region Method InitializeComponents
+        private void InitializeComponents() {
+            // Инициализация поля для ввода названия изделия
+            this.inputField = new TextBox();
+            this.inputField.Name = "inputField";
+            this.inputField.Location = new Point(30, 21);
+            this.inputField.Size = new Size(250, 20);
+            this.inputField.TabIndex = 7;
+
+            // Инициализация текста аннотации для списка найденных позиций
+            this.annotationFoundItems = new Label();
+            this.annotationFoundItems.Name = "annotationFoundItems";
+            this.annotationFoundItems.Location = new Point(27, 75);
+            this.annotationFoundItems.Size = new Size(253, 23);
+            this.annotationFoundItems.TabIndex = 8;
+            this.annotationFoundItems.Text = "Найденные позиции";
+            this.annotationFoundItems.TextAlign = ContentAlignment.MiddleCenter;
+
+            // Инициализация текста аннотации для списка выбранных позиций
+            this.annotationSelectedItems = new Label();
+            this.annotationSelectedItems.Name = "annotationSelectedItems";
+            this.annotationSelectedItems.Location = new Point(364, 75);
+            this.annotationSelectedItems.Size = new Size(253, 23);
+            this.annotationSelectedItems.TabIndex = 9;
+            this.annotationSelectedItems.Text = "Позиции для формирования отчетов";
+            this.annotationSelectedItems.TextAlign = ContentAlignment.MiddleCenter;
+
+            // Инициализация списка найденных позиций
+            this.foundItems = new ListBox();
+            this.foundItems.Name = "foundItems";
+            this.foundItems.FormattingEnabled = true;
+            this.foundItems.Location = new Point(30, 101);
+            this.foundItems.Size = new Size(250, 303);
+            this.foundItems.TabIndex = 0;
+            
+            // Инициализация списка выбранных позиций
+            this.selectedItems = new ListBox();
+            this.selectedItems.Name = "selectedItems";
+            this.selectedItems.FormattingEnabled = true;
+            this.selectedItems.Location = new Point(367, 101);
+            this.selectedItems.Size = new Size(250, 303);
+            this.selectedItems.TabIndex = 6;
+
+            // Инициализация кнопки подтверждения 
+            this.buttonOk = new Button();
+            this.buttonOk.Name = "buttonOk";
+            this.buttonOk.Location = new Point(461, 415);
+            this.buttonOk.Size = new Size(75, 23);
+            this.buttonOk.TabIndex = 4;
+            this.buttonOk.Text = "Ок";
+            this.buttonOk.UseVisualStyleBackColor = true;
+            this.buttonOk.Click += new EventHandler(this.ButtonOk_Click);
+            
+            // Инициализация кнопки отмены 
+            this.buttonCancel = new Button();
+            this.buttonCancel.Name = "buttonCancel";
+            this.buttonCancel.Location = new Point(542, 415);
+            this.buttonCancel.Size = new Size(75, 23);
+            this.buttonCancel.TabIndex = 5;
+            this.buttonCancel.Text = "Отмена";
+            this.buttonCancel.UseVisualStyleBackColor = true;
+            this.buttonCancel.Click += new EventHandler(this.ButtonCancel_Click);
+
+            // Инициализация кнопки поиска 
+            this.buttonSearch = new Button();
+            this.buttonSearch.Name = "buttonSearch";
+            this.buttonSearch.Location = new Point(286, 21);
+            this.buttonSearch.Size = new Size(76, 23);
+            this.buttonSearch.TabIndex = 1;
+            this.buttonSearch.Text = "Поиск";
+            this.buttonSearch.UseVisualStyleBackColor = true;
+            this.buttonSearch.Click += new EventHandler(this.ButtonSearch_Click);
+
+            // Инициализация кнопки добавления 
+            this.buttonAdd = new Button();
+            this.buttonAdd.Name = "buttonAdd";
+            this.buttonAdd.Location = new Point(286, 226);
+            this.buttonAdd.Size = new Size(75, 23);
+            this.buttonAdd.TabIndex = 2;
+            this.buttonAdd.Text = "->";
+            this.buttonAdd.UseVisualStyleBackColor = true;
+            this.buttonAdd.Click += new EventHandler(this.ButtonAdd_Click);
+
+            // Инициализация кнопки удаления
+            this.buttonDelete = new Button();
+            this.buttonDelete.Name = "buttonDelete";
+            this.buttonDelete.Location = new Point(286, 255);
+            this.buttonDelete.Size = new Size(75, 23);
+            this.buttonDelete.TabIndex = 3;
+            this.buttonDelete.Text = "<-";
+            this.buttonDelete.UseVisualStyleBackColor = true;
+            this.buttonDelete.Click += new EventHandler(this.ButtonDelete_Click);
+
+            // Инициализация формы
+            this.AutoScaleDimensions = new SizeF(6F, 13F);
+            this.AutoScaleMode = AutoScaleMode.Font;
+            this.ClientSize = new Size(647, 450);
+            this.Controls.Add(this.annotationFoundItems);
+            this.Controls.Add(this.annotationSelectedItems);
+            this.Controls.Add(this.inputField);
+            this.Controls.Add(this.selectedItems);
+            this.Controls.Add(this.foundItems);
+            this.Controls.Add(this.buttonOk);
+            this.Controls.Add(this.buttonCancel);
+            this.Controls.Add(this.buttonSearch);
+            this.Controls.Add(this.buttonAdd);
+            this.Controls.Add(this.buttonDelete);
+            this.Name = "Form1";
+            this.Text = "Выбор изделия для формирования отчетов";
+        }
+        #endregion Method InitializeComponents
+
+        #region Methods from button clics
+        private void ButtonOk_Click(object sender, EventArgs e) {
+            // Получаем выбранные элементы
+
+            this.DialogResult = DialogResult.OK;
+            this.Close();
+        }
+        private void ButtonCancel_Click(object sender, EventArgs e) {
+            this.DialogResult = DialogResult.Cancel;
+            this.Close();
+        }
+        
+        #region ButtonSearch_Click
+        private void ButtonSearch_Click(object sender, EventArgs e) {
+            // Данное действие будет производиться по нажатию на кнопку "Поиск"
+            // и будет производить поиск среди всех изделий только те, которые необходимы
+            string searchText = inputField.Text;
+            string[] resultOfSearch = null;
+            if (!string.IsNullOrWhiteSpace(searchText)) {
+                resultOfSearch = this.allProducts.Where(product => product.Contains(searchText)).ToArray();
+            }
+            inputField.Text = string.Empty;
+
+
+            // Выводим результаты поиска в ListBox
+            this.foundItems.BeginUpdate();
+            // Очищаем коллекцию, если в ней до этого были объекты
+            this.foundItems.Items.Clear();
+
+            // Добавляем найденные элементы
+            foreach (string shifrOfProduct in resultOfSearch) {
+                this.foundItems.Items.Add(shifrOfProduct);
+            }
+            this.foundItems.EndUpdate();
+        }
+        #endregion ButtonSearch_Click
+
+        private void ButtonAdd_Click(object sender, EventArgs e) {
+        }
+        private void ButtonDelete_Click(object sender, EventArgs e) {
+        }
+        #endregion Methods from button clics
+    }
+    #endregion Select product for reporting form
     #endregion serviceClasses
 }
