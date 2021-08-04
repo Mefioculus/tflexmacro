@@ -829,14 +829,21 @@ public class Macro : MacroProvider {
         #region Methods from button clics
         private void ButtonOk_Click(object sender, EventArgs e) {
             // Получаем выбранные элементы
-
+            int count = this.selectedItems.Items.Count;
+            this.SelectedProducts = new string[count];
+            for (int i = 0; i < count; i++) {
+                this.SelectedProducts[i] = (string)this.selectedItems.Items[i];
+            }
             this.DialogResult = DialogResult.OK;
             this.Close();
         }
+
+        #region ButtonCancel_Click
         private void ButtonCancel_Click(object sender, EventArgs e) {
             this.DialogResult = DialogResult.Cancel;
             this.Close();
         }
+        #endregion ButtonCancel_Click
         
         #region ButtonSearch_Click
         private void ButtonSearch_Click(object sender, EventArgs e) {
@@ -863,10 +870,30 @@ public class Macro : MacroProvider {
         }
         #endregion ButtonSearch_Click
 
+        #region ButtonAdd_Click
         private void ButtonAdd_Click(object sender, EventArgs e) {
+            // Получаем выбранный объект из foundItems
+            string nameProd = this.foundItems.SelectedItem != null ? (string)this.foundItems.SelectedItem : string.Empty;
+
+            if (nameProd != string.Empty) {
+                this.selectedItems.BeginUpdate();
+                this.selectedItems.Items.Add(nameProd);
+                this.selectedItems.EndUpdate();
+            }
         }
+        #endregion ButtonAdd_Click
+
+        #region ButtonDelete_Click
         private void ButtonDelete_Click(object sender, EventArgs e) {
+            object productOnRemove = this.selectedItems.SelectedItem;
+            
+            if (productOnRemove != null) {
+                this.selectedItems.BeginUpdate();
+                this.selectedItems.Items.Remove(productOnRemove);
+                this.selectedItems.EndUpdate();
+            }
         }
+        #endregion ButtonDelete_Click
         #endregion Methods from button clics
     }
     #endregion Select product for reporting form
