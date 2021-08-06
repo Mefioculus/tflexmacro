@@ -32,7 +32,7 @@ public class Macro : MacroProvider {
     private string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
-    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.dbt", "trud.fpt", "trud.tbk", "trud.cdx"};
+    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.fpt", "trud.tbk", "trud.cdx"};
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
@@ -71,7 +71,8 @@ public class Macro : MacroProvider {
     #region Entry Points
     public override void Run() {
         // Копируем все необходимые файлы баз данных
-        CopyDataBaseFiles();
+        if (!CopyDataBaseFiles())
+            return;
 
         // Инициализируем объекты для чтения базы данных
         // Если во время инициализации не инициализировались все объекты, проинформаровать пользователя
@@ -101,54 +102,70 @@ public class Macro : MacroProvider {
     // Методы для копирования и удаления временных файлов базы данных
     // (Необходимо для того, чтобы не открывать файлы рабочей базы данных,
     // вся работа должна производиться над локальными копиями необходимых файлов)
-    private void CopyDataBaseFiles() {
-        string message = string.Empty;
-        string headTemplate = "Во время копирования файлов базы данных не были обнаружены следующие файлы:\n";
-        string regularTemplate = "- {0};\n";
 
-        foreach (string file in arrayOfDbFiles) {
-            string source = Path.Combine(pathToSourceDirectoryFoxProDb, file);
-            string destination = Path.Combine(pathToTempDirectoryFoxProDb, file);
-            
-            if (File.Exists(source)) {
-                // Перед копированием проводим проверку на то, необходимо ли производить копирование
-                if (NeedACopy(source, destination))
-                    File.Copy(source, destination, true);
-            }
-            else {
-                if (message == string.Empty) {
-                    message += headTemplate;
-                }
-                message += string.Format(regularTemplate, file);
+    private bool CopyDataBaseFiles() {
+        // TODO Реализовать новую версию метода по копированию файлов
+        // Формируем список объектов, которые хранят данные о названии файла, пути его источика и пути, куда он должен быть сохранен
+        List<DataFileInfo> files = arrayOfDbFiles
+            .Select(fileName => new DataFileInfo(fileName, pathToSourceDirectoryFoxProDb, pathToTempDirectoryFoxProDb))
+            .ToList<DataFileInfo>();
+
+        // Проверяем, все ли файлы есть в папке источнике
+        if (!CheckSourceFiles(files))
+            return false;
+
+        // Производим копирование отсутствующих файлов
+        foreach (DataFileInfo file in files.Where(f => f.NeedCopy)) {
+            // Производим копирование файла
+            File.Copy(file.PathToSourceFile, file.PathToDestinationFile, true);
+        }
+
+        var filesOnUpdate = files
+            .Where(f => (!f.NeedCopy) && (f.NeedUpdate))
+            .ToList<DataFileInfo>();
+
+        // Спрашиваем, нужно ли обновить файлы, которые уже существовали
+        string message = string.Join("\n", filesOnUpdate
+                .Select(f => string.Format(
+                        "Для файла {0}:\n- в источнике {1}\n- в кэше {2}",
+                        f.FileName,
+                        f.ModificationSourceFile,
+                        f.ModificationDestinationFile
+                        ))
+                );
+        
+        // Елси есть файлы, которые нужно обновлять
+        if (message != string.Empty) {
+            message = string.Format(
+                    "Список файлов, кэшированные файлы которых устарели:\n{0}\n\nПроизвести обновление файлов?",
+                    message
+                    );
+
+            // Если пользователь подтвердил, что требуется обновлять файлы, обновляем их
+            if (Question(message)) {
+                foreach (DataFileInfo file in filesOnUpdate)
+                    File.Copy(file.PathToSourceFile, file.PathToDestinationFile, true);
             }
         }
+
+        return true;
     }
 
-    private bool NeedACopy (string sourceFile, string targetFile) {
-        string fileName = Path.GetFileNameWithoutExtension(sourceFile);
+    private bool CheckSourceFiles(List<DataFileInfo> listOfFiles) {
         string message = string.Empty;
-
-        // Если файла в директории назначения не сущестует, возвращаем истину
-        if (!File.Exists(targetFile)) {
-            message = "В директории с копиями файлов не был обнаружен файл {0} базы данных FoxPro\n";
-            message += "Будет произведено копирование данного файла";
-            if (debug)
-                Message("Информация", string.Format(message,  fileName));
-            return true;
+        foreach (DataFileInfo file in listOfFiles) {
+            // Проверяем файлы на существование
+            if (!file.IsSourceExist)
+                message += string.Format("- {0};\n", file.FileName);
         }
 
-        // Если файлы различаются, возвращаем истину
-        DateTime sourceFileModification = File.GetLastWriteTime(sourceFile);
-        DateTime targetFileModification = File.GetLastWriteTime(targetFile);
-        if (sourceFileModification != targetFileModification) {
-            message = "У источника и копии файла '{0}' разные даты модификации:\nФайл источник - {1}\nКопия файла - {2}\n";
-            message += "Будет произведено копирование данного файла";
-            if (debug)
-                Message("Информация", string.Format(message, fileName, sourceFileModification, targetFileModification));
-            return true;
+        if (message != string.Empty) {
+            message = string.Format("Ны были обнаружены следующие файлы, необходимые для работы макроса:\n{0}", message);
+            Message("Ошибка", message);
+            return false;
         }
 
-        return false;
+        return true;
     }
 
     private void DeleteTemporaryFiles() {
@@ -163,7 +180,6 @@ public class Macro : MacroProvider {
 
     #region Method GetDirectory 
     private string GetDirectory() {
-        // TODO Реализовать запрос папки для сохранения отчетов от пользователей
         string result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Выгрузки статистики МК (TFlex)");
         if (!Directory.Exists(result))
             Directory.CreateDirectory(result);
@@ -343,7 +359,8 @@ public class Macro : MacroProvider {
                     Shifr = (string)getStringMethod.Invoke(reader, new object[] {0}),
                     //Nper = (int)getIntMethod.Invoke(reader, new object[] {1}),
                     Nper = tempNper,
-                    Izg = (string)getStringMethod.Invoke(reader, new object[] {2})
+                    Izg = (string)getStringMethod.Invoke(reader, new object[] {2}),
+                    Norm = (string)getStringMethod.Invoke(reader, new object[] {8})
                 };
                 result.Add(row);
 
@@ -508,7 +525,13 @@ public class Macro : MacroProvider {
 
     #region Method FetchDataFromMarchpTable
     private void FetchDataFromMarchpTable(SpecRow sRow, List<MarchpRow> marchpTable) {
-        sRow.FoxRoute = string.Join("-", marchpTable.Where(r => r.Shifr == sRow.Shifr).OrderBy(r => r.Nper).Select(r => r.Izg));
+        sRow.FoxRoute = string
+            .Join("-", marchpTable
+                .Where(r => r.Shifr == sRow.Shifr)
+                .OrderBy(r => r.Nper)
+                .Where(r => r.Norm == "1")
+                .Select(r => r.Izg)
+                );
     }
     #endregion Method FetchDataFromMarchpTable
     #endregion Method FetchDataFromFox
@@ -743,6 +766,7 @@ public class Macro : MacroProvider {
         public string Shifr { get; set; }
         public string Izg { get; set; }
         public int Nper { get; set; }
+        public string Norm { get; set; }
 
         public override string ToString() {
             return string.Format("{0};{1};{2}",
@@ -753,6 +777,40 @@ public class Macro : MacroProvider {
         }
     }
     #endregion Class MarchpRow
+
+    #region Class DataFileInfo
+    private class DataFileInfo {
+        public string FileName { get; set; }
+        public string PathToSourceFile { get; set; }
+        public string PathToDestinationFile { get; set; }
+        public DateTime ModificationSourceFile { get; set; }
+        public DateTime ModificationDestinationFile { get; set; }
+        public bool IsSourceExist { get; set; }
+        public bool IsDestinationExist { get; set; }
+        public bool NeedCopy { get; set; }
+        public bool NeedUpdate { get; set; } = true;
+
+        public DataFileInfo(string fileName, string sourceDirectory, string destinationDirectory) {
+            this.FileName = fileName;
+            this.PathToSourceFile = Path.Combine(sourceDirectory, fileName);
+            this.PathToDestinationFile = Path.Combine(destinationDirectory, fileName);
+
+            // Проверка на существование файлов и проверка даты последней модификации
+            this.IsSourceExist = File.Exists(PathToSourceFile);
+            this.ModificationSourceFile =
+                this.IsSourceExist ? File.GetLastWriteTime(this.PathToSourceFile) : new DateTime(1, 1, 1);
+            this.IsDestinationExist = File.Exists(PathToDestinationFile);
+            this.ModificationDestinationFile =
+                this.IsDestinationExist ? File.GetLastWriteTime(this.PathToDestinationFile) : new DateTime(1, 1, 1);
+
+            this.NeedCopy = IsDestinationExist ? false : true;
+
+            // Вычисляем, необходимо ли обновление для файла 
+            if (this.IsDestinationExist && (this.ModificationSourceFile == this.ModificationDestinationFile))
+                this.NeedUpdate = false;
+        }
+    }
+    #endregion Class DataFileInfo
 
     #region Select product for reporting form
     // Диалоговое окно для выбора изделий, на которые будет формироваться отчет
