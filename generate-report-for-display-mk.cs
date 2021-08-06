@@ -32,13 +32,14 @@ public class Macro : MacroProvider {
     private string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
-    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "trud.dbf", "trud.dbt", "trud.fpt", "trud.tbk", "trud.cdx"};
+    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.dbt", "trud.fpt", "trud.tbk", "trud.cdx"};
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
     private Type dataReaderType;
     private MethodInfo readMethod;
     private MethodInfo getStringMethod;
+    private MethodInfo getIntMethod;
     private MethodInfo closeMethod;
     
     // Дебаг
@@ -163,7 +164,7 @@ public class Macro : MacroProvider {
     #region Method GetDirectory 
     private string GetDirectory() {
         // TODO Реализовать запрос папки для сохранения отчетов от пользователей
-        string result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "TestReports");
+        string result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Выгрузки статистики МК (TFlex)");
         if (!Directory.Exists(result))
             Directory.CreateDirectory(result);
 
@@ -215,10 +216,11 @@ public class Macro : MacroProvider {
 
         readMethod = dataReaderType.GetMethod("Read");
         getStringMethod = dataReaderType.GetMethod("GetString");
+        getIntMethod = dataReaderType.GetMethod("GetInt32");
         closeMethod = dataReaderType.GetMethod("Close");
 
         // Если хотя бы один из методов не был загружен, возвращаем false
-        if ((readMethod == null) || (getStringMethod == null) || (closeMethod == null))
+        if ((readMethod == null) || (getStringMethod == null) || (closeMethod == null) || (getIntMethod == null))
             return false;
 
         return true;
@@ -300,9 +302,9 @@ public class Macro : MacroProvider {
                     Izg = (string)getStringMethod.Invoke(reader, new object[] {1}),
                     Num_op = (string)getStringMethod.Invoke(reader, new object[] {2}),
                     Shifr_op = (string)getStringMethod.Invoke(reader, new object[] {3}),
-                    Op_op = (string)getStringMethod.Invoke(reader, new object[] {12}),
-                    Naim_st = (string)getStringMethod.Invoke(reader, new object[] {13}),
-                    Prof = (string)getStringMethod.Invoke(reader, new object[] {14})
+                    Op_op = (string)getStringMethod.Invoke(reader, new object[] {11}),
+                    Naim_st = (string)getStringMethod.Invoke(reader, new object[] {12}),
+                    Prof = (string)getStringMethod.Invoke(reader, new object[] {13})
                 };
                 result.Add(row);
 
@@ -318,6 +320,44 @@ public class Macro : MacroProvider {
 
     #endregion Method GetTrudTable
     
+    #region Method GetMarchpTable
+    private List<MarchpRow> GetMarchpTable() {
+        List<MarchpRow> result = new List<MarchpRow>();
+
+        // Получаем путь к таблице dbf
+        string pathToDbFile = GetPathToDBFile("marchp");
+
+        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToDbFile, dataReaderOptions});
+        
+        // Производим чтение до тех пор, пока в базе есть данные 
+        try {
+            int tempNper;
+            while ((bool)readMethod.Invoke(reader, new object[] {})) {
+                try {
+                    tempNper = (int)getIntMethod.Invoke(reader, new object[] {1});
+                }
+                catch {
+                    tempNper = 9999;
+                }
+                MarchpRow row = new MarchpRow() {
+                    Shifr = (string)getStringMethod.Invoke(reader, new object[] {0}),
+                    //Nper = (int)getIntMethod.Invoke(reader, new object[] {1}),
+                    Nper = tempNper,
+                    Izg = (string)getStringMethod.Invoke(reader, new object[] {2})
+                };
+                result.Add(row);
+
+            }
+        }
+        finally {
+            // Закрываем reader
+            closeMethod.Invoke(reader, new object[] {});
+        }
+
+        return result;
+    }
+    #endregion Method GetMarchpTable
+
     #region Method GetCompositionOfProductRecursively
     // Метод для получения данных о составе изделия рекурсивно
     private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, List<SpecRow> table) {
@@ -395,67 +435,82 @@ public class Macro : MacroProvider {
     // Метод для получения сведений о том, какие сведения нормы на данную ДСЕ
     // в FoxPro
     private void FetchDataFromFox(List<SpecRow> specTable) {
-        // TODO Реализовать получение данных из таблицы TRUD
-        // Получаем таблицу TRUD
+        // Получаем таблицы trud и marchp
         List<TrudRow> trudTable = GetTrudTable();
+        List<MarchpRow> marchpTable = GetMarchpTable();
 
         foreach (SpecRow sRow in specTable) {
+            FetchDataFromTrudTable(sRow, trudTable);
+            FetchDataFromMarchpTable(sRow, marchpTable);
+        }
+    }
 
-            string errMessage = string.Empty; // аккумулятор ошибок в ходе просмотра технологии
-            List<string>listOfEmptyCells = new List<string>(); // аккумулятор ошибок в ходе просмотра одной операции технологии
-            List<string>listOfCeh = new List<string>(); // аккумулятор маршрута
-            List<string>listOfErrors = new List<string>(); // список всех ошибок
+    #region Method FetchDataFromTrudTable
+    private void FetchDataFromTrudTable(SpecRow sRow, List<TrudRow> trudTable) {
+        string errMessage = string.Empty; // аккумулятор ошибок в ходе просмотра технологии
+        List<string>listOfMarks = new List<string>(); // аккумулятор отметок о наличии или отсутствии элементов в технологической операции
+        List<string>listOfCeh = new List<string>(); // аккумулятор маршрута
+        List<string>listOfErrors = new List<string>(); // список всех ошибок
+        bool techonogyIsEmpty = true;
 
-            foreach (TrudRow tRow in trudTable.Where(r => r.Shifr == sRow.Shifr)) {
-                // Составляем маршрут
-                if (listOfCeh.Count == 0)
+        foreach (TrudRow tRow in trudTable.Where(r => r.Shifr == sRow.Shifr)) {
+            // Составляем маршрут
+            if (listOfCeh.Count == 0)
+                listOfCeh.Add(tRow.Izg);
+            else {
+                if (listOfCeh[listOfCeh.Count - 1] != tRow.Izg)
                     listOfCeh.Add(tRow.Izg);
-                else {
-                    if (listOfCeh[listOfCeh.Count - 1] != tRow.Izg)
-                        listOfCeh.Add(tRow.Izg);
-                }
-
-                // Составляем список замечаний, которые возникли в процессе
-                if (string.IsNullOrWhiteSpace(tRow.Op_op))
-                    listOfEmptyCells.Add("описание");
-
-                if (string.IsNullOrWhiteSpace(tRow.Naim_st))
-                    listOfEmptyCells.Add("оборудование");
-
-
-                if (string.IsNullOrWhiteSpace(tRow.Prof))
-                    listOfEmptyCells.Add("профессия");
-
-                if (listOfEmptyCells.Count > 0) {
-                    if (listOfEmptyCells.Count == 3)
-                        listOfErrors.Add(string.Format("оп {0}.{1}.{2} пустая", tRow.Izg, tRow.Num_op, tRow.Shifr_op));
-                    else
-                        listOfErrors.Add(string.Format("в оп {0}.{1}.{2} отсутствуют данные о: {3}, ", tRow.Izg, tRow.Num_op, tRow.Shifr_op, string.Join(", ", listOfEmptyCells)));
-                }
-
-
-                // Обнуление временный переменных
-                listOfEmptyCells.Clear();
-
             }
 
-            sRow.ErrorMessage = string.Join(", ", listOfErrors);
-            sRow.TechRoute = string.Join("-", listOfCeh);
-            listOfCeh.Clear();
-            listOfErrors.Clear();
+            // Составляем список замечаний, которые возникли в процессе
+            if (string.IsNullOrWhiteSpace(tRow.Op_op))
+                listOfMarks.Add("-");
+            else
+                listOfMarks.Add("+");
 
-            // Присвоение статусов
-            if (string.IsNullOrWhiteSpace(sRow.TechRoute)) {
-                sRow.FoxProMK = StatusMKFoxPro.NotFound;
-                continue;
-            }
+            if (string.IsNullOrWhiteSpace(tRow.Naim_st))
+                listOfMarks.Add("-");
+            else
+                listOfMarks.Add("+");
 
-            // Присваиваем статус по наличию ошибок
-            sRow.FoxProMK = string.IsNullOrWhiteSpace(sRow.ErrorMessage) ? StatusMKFoxPro.ExistWithoutError : StatusMKFoxPro.ExistWithError;
+            if (string.IsNullOrWhiteSpace(tRow.Prof))
+                listOfMarks.Add("-");
+            else
+                listOfMarks.Add("+");
+
+            string mark = string.Join("/", listOfMarks);
+            listOfMarks.Clear(); // Обнуление переменной для будущих циклов
+
+            if (mark != "+/+/+")
+                listOfErrors.Add(string.Format("{0}({1}) {2}", tRow.Num_op, tRow.Izg, mark));
+            else
+                techonogyIsEmpty = false;
+        }
+        sRow.ErrorMessage = string.Join(";", listOfErrors);
+        if (techonogyIsEmpty && !string.IsNullOrWhiteSpace(sRow.ErrorMessage))
+            sRow.ErrorMessage = "Технология пустая";
+        techonogyIsEmpty = true; // Обнуление флага для следующего цикла
+
+        sRow.TechRoute = string.Join("-", listOfCeh);
+        listOfCeh.Clear();
+        listOfErrors.Clear();
+
+        // Присвоение статусов
+        if (string.IsNullOrWhiteSpace(sRow.TechRoute)) {
+            sRow.FoxProMK = StatusMKFoxPro.NotFound;
+            return;
         }
 
-
+        // Присваиваем статус по наличию ошибок
+        sRow.FoxProMK = string.IsNullOrWhiteSpace(sRow.ErrorMessage) ? StatusMKFoxPro.ExistWithoutError : StatusMKFoxPro.ExistWithError;
     }
+    #endregion Method FetchDataFromTrudTable
+
+    #region Method FetchDataFromMarchpTable
+    private void FetchDataFromMarchpTable(SpecRow sRow, List<MarchpRow> marchpTable) {
+        sRow.FoxRoute = string.Join("-", marchpTable.Where(r => r.Shifr == sRow.Shifr).OrderBy(r => r.Nper).Select(r => r.Izg));
+    }
+    #endregion Method FetchDataFromMarchpTable
     #endregion Method FetchDataFromFox
 
     #region Method SetStatus
@@ -517,6 +572,7 @@ public class Macro : MacroProvider {
     #region Methods for generate output report file
 
     private void PrintReports(Dictionary<string,List<SpecRow>> dataOnPrint) {
+        // TODO Реализовать печать документа при помощи OpenXML
         string pathToDirectoryToSave = GetDirectory();
 
         foreach (KeyValuePair<string, List<SpecRow>> kvp in dataOnPrint) {
@@ -565,6 +621,7 @@ public class Macro : MacroProvider {
         public string Name { get; set; }
         public string Parent { get; set; }
         public string TechRoute { get; set; }
+        public string FoxRoute { get; set; }
         public string ErrorMessage { get; set; }
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
@@ -572,6 +629,7 @@ public class Macro : MacroProvider {
         public string FoxStatus => GetFoxStatus();
         public string ArchiveStatus => GetArchiveStatus();
         public string DSEStatus => GetDSEStatus();
+        public string EqualityOfRouts => TechRoute == FoxRoute ? string.Empty : "Не совпадают";
 
         public SpecRow (string shifr, string name, string parent) {
             this.Shifr = shifr;
@@ -585,20 +643,22 @@ public class Macro : MacroProvider {
 
         public override string ToString() {
             return string.Format(
-                    "{0};{1};{2};{3};{4};{5};{6};{7}",
+                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9}",
                     Shifr,
                     Name,
                     Parent,
                     FoxStatus,
                     ArchiveStatus,
                     DSEStatus,
+                    FoxRoute,
                     TechRoute,
+                    EqualityOfRouts,
                     ErrorMessage
                     );
         }
 
         public static string GetHeader() {
-            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Маршрут;Возникшие замечания\n";
+            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
         }
 
         #region Methods for localization of statuses
@@ -606,13 +666,13 @@ public class Macro : MacroProvider {
             string result = string.Empty;
             switch (this.FoxProMK) {
                 case StatusMKFoxPro.NotFound:
-                    result = "Технология не найдена";
+                    result = "Не найдена";
                     break;
                 case StatusMKFoxPro.ExistWithError:
-                    result = "Технология пустая";
+                    result = "Найдена, есть замечания";
                     break;
                 case StatusMKFoxPro.ExistWithoutError:
-                    result = "Технология найдена";
+                    result = "Найдена, все данные";
                     break;
                 default:
                     result = "Не обработано";
@@ -672,11 +732,27 @@ public class Macro : MacroProvider {
         public string Izg { get; set; } //1
         public string Num_op { get; set; } //2
         public string Shifr_op { get; set; } //3
-        public string Op_op { get; set; } //12
-        public string Naim_st { get; set; } //13
-        public string Prof { get; set; } //14
+        public string Op_op { get; set; } //11
+        public string Naim_st { get; set; } //12
+        public string Prof { get; set; } //13
     }
     #endregion Class TrudRow
+    
+    #region Class MarchpRow
+    private class MarchpRow {
+        public string Shifr { get; set; }
+        public string Izg { get; set; }
+        public int Nper { get; set; }
+
+        public override string ToString() {
+            return string.Format("{0};{1};{2}",
+                    Shifr,
+                    Nper.ToString(),
+                    Izg
+                    );
+        }
+    }
+    #endregion Class MarchpRow
 
     #region Select product for reporting form
     // Диалоговое окно для выбора изделий, на которые будет формироваться отчет
