@@ -12,12 +12,15 @@ using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.References.Files;
 
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
+
 using System.Reflection; // Для подключения сторонней библиотеки (иначе подключить ее не получилось)
-using Newtonsoft.Json; // Для сериализации информации
 
 // Для работы данного макроса так же потребуется использование дополнительных библиотек
 // Ссылки:
-// - Newtonsoft.Json.dll
+// - DocumentFormat - Библиотека для работы с файлами OpenXml фармата
 // Библиотеки:
 // - DbfDataReader.dll - Данная библиотека подключается через Reflection в коде макроса
 
@@ -32,7 +35,8 @@ public class Macro : MacroProvider {
     private string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
-    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.fpt", "trud.tbk", "trud.cdx"};
+    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.fpt", "trud.tbk", "trud.cdx"}; // Список файлов, которые нужно грузить в кэш директорию
+    private int[] arrayOfUnits = new int[] {1, 2, 4, 5, 6, 16, 17, 22, 23, 24, 32, 100, 101, 102, 103, 104, 105, 106, 335, 338}; // Список подразделений, которые относятся к предприятию (следовательно, ДСЕ с изготовителем из данного списка не могут быть покупными)
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
@@ -525,6 +529,7 @@ public class Macro : MacroProvider {
 
     #region Method FetchDataFromMarchpTable
     private void FetchDataFromMarchpTable(SpecRow sRow, List<MarchpRow> marchpTable) {
+        // Получение информации о маршруте
         sRow.FoxRoute = string
             .Join("-", marchpTable
                 .Where(r => r.Shifr == sRow.Shifr)
@@ -532,6 +537,10 @@ public class Macro : MacroProvider {
                 .Where(r => r.Norm == "1")
                 .Select(r => r.Izg)
                 );
+        // Получение информации о подразделении
+        sRow.Izg = sRow.FoxRoute.Split('-')[0];
+        // Получение информации о том, покупное ли это изделие
+        sRow.IsPurchase = !arrayOfUnits.Contains(int.Parse(sRow.Izg));
     }
     #endregion Method FetchDataFromMarchpTable
     #endregion Method FetchDataFromFox
@@ -599,15 +608,28 @@ public class Macro : MacroProvider {
         string pathToDirectoryToSave = GetDirectory();
 
         foreach (KeyValuePair<string, List<SpecRow>> kvp in dataOnPrint) {
-            PrintReport(pathToDirectoryToSave, kvp.Key, kvp.Value);
+            PrintReportToCSV(pathToDirectoryToSave, kvp.Key, kvp.Value);
         }
     }
 
-    private void PrintReport(string directory, string nameOfProduct, List<SpecRow> data) {
+    private void PrintReportToCSV(string directory, string nameOfProduct, List<SpecRow> data) {
         string text = SpecRow.GetHeader();
         text += string.Join("\n", data);
         string pathToFile = string.Format("{0}.csv", Path.Combine(directory, nameOfProduct));
         File.WriteAllText(pathToFile, text, Encoding.GetEncoding(1251));
+    }
+
+    private void PrintReportToXLSX(string directory, string nameOfProduct, List<SpecRow> data) {
+        // Метод для печати данных прямиком в excel файл
+        string pathToFile = string.Format("{0}.xlsx", Path.Combine(directory, nameOfProduct));
+        // Для начала создаем файл
+        using (SpreadsheetDocument document = StreadsheetDocument.Create(pathToFile, SpreadsheetDocumentType.Workbook)) {
+            // Добавляем в документ рабочую часть
+            WorkbookPart workbookPart = document.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook();
+            // После этого добавляем 
+            WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+        }
     }
 
     #endregion Methods for generate output report file
@@ -640,19 +662,23 @@ public class Macro : MacroProvider {
 
     #region Class SpecRow
     private class SpecRow {
-        public string Shifr { get; set; }
-        public string Name { get; set; }
-        public string Parent { get; set; }
-        public string TechRoute { get; set; }
-        public string FoxRoute { get; set; }
-        public string ErrorMessage { get; set; }
+        public string Shifr { get; set; } // Обозначение изделия
+        public string Name { get; set; } // Наименование изделия
+        public string Parent { get; set; } // Издение родитель
+        public string TechRoute { get; set; } // Маршрут, выгруженный из Trud
+        public string FoxRoute { get; set; } // Маршрут, выгруженный из marchp
+        public string ErrorMessage { get; set; } // Сообщение с замечаниями, которые возникли во время анализа технологии в FoxPro
+        public string Izg { get; set; } // Подразделение изготовитель
+        public bool IsPurchase { get; set; } // Флаг, отображающий, является ли изделие покупным
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
         public StatusOfDSE Status { get; set; }
         public string FoxStatus => GetFoxStatus();
         public string ArchiveStatus => GetArchiveStatus();
         public string DSEStatus => GetDSEStatus();
+        public string Purchase => IsPurchase ? "Покупное" : string.Empty;
         public string EqualityOfRouts => TechRoute == FoxRoute ? string.Empty : "Не совпадают";
+
 
         public SpecRow (string shifr, string name, string parent) {
             this.Shifr = shifr;
@@ -666,13 +692,15 @@ public class Macro : MacroProvider {
 
         public override string ToString() {
             return string.Format(
-                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9}",
+                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11}",
                     Shifr,
                     Name,
                     Parent,
                     FoxStatus,
                     ArchiveStatus,
                     DSEStatus,
+                    Izg,
+                    Purchase,
                     FoxRoute,
                     TechRoute,
                     EqualityOfRouts,
@@ -681,7 +709,7 @@ public class Macro : MacroProvider {
         }
 
         public static string GetHeader() {
-            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
+            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Изготовитель;ПКИ;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
         }
 
         #region Methods for localization of statuses
