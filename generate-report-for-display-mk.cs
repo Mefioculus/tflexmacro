@@ -23,6 +23,7 @@ using System.Reflection; // Для подключения сторонней б�
 // - DocumentFormat - Библиотека для работы с файлами OpenXml фармата
 // Библиотеки:
 // - DbfDataReader.dll - Данная библиотека подключается через Reflection в коде макроса
+// - WindowsBase.dll - Добавлена через файлы, требуется для работы пакета OpenXml
 
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
@@ -36,7 +37,8 @@ public class Macro : MacroProvider {
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
     private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.fpt", "trud.tbk", "trud.cdx"}; // Список файлов, которые нужно грузить в кэш директорию
-    private int[] arrayOfUnits = new int[] {1, 2, 4, 5, 6, 16, 17, 22, 23, 24, 32, 100, 101, 102, 103, 104, 105, 106, 335, 338}; // Список подразделений, которые относятся к предприятию (следовательно, ДСЕ с изготовителем из данного списка не могут быть покупными)
+    private string[] arrayOfUnits =
+        new string[] {"001", "002", "004", "005", "006", "016", "017", "022", "023", "024", "032", "100", "101", "102", "103", "104", "105", "106", "335", "338"}; // Список подразделений, которые относятся к предприятию (следовательно, ДСЕ с изготовителем из данного списка не могут быть покупными)
 
     // Поля для хранения классов и методов, необходимых для использования библиотеки
     // через Reflection
@@ -540,7 +542,7 @@ public class Macro : MacroProvider {
         // Получение информации о подразделении
         sRow.Izg = sRow.FoxRoute.Split('-')[0];
         // Получение информации о том, покупное ли это изделие
-        sRow.IsPurchase = !arrayOfUnits.Contains(int.Parse(sRow.Izg));
+        sRow.IsPurchase = !arrayOfUnits.Contains(sRow.Izg);
     }
     #endregion Method FetchDataFromMarchpTable
     #endregion Method FetchDataFromFox
@@ -604,15 +606,15 @@ public class Macro : MacroProvider {
     #region Methods for generate output report file
 
     private void PrintReports(Dictionary<string,List<SpecRow>> dataOnPrint) {
-        // TODO Реализовать печать документа при помощи OpenXML
         string pathToDirectoryToSave = GetDirectory();
 
         foreach (KeyValuePair<string, List<SpecRow>> kvp in dataOnPrint) {
-            PrintReportToCSV(pathToDirectoryToSave, kvp.Key, kvp.Value);
+            PrintReportToXLSX(pathToDirectoryToSave, kvp.Key, kvp.Value);
         }
     }
 
     private void PrintReportToCSV(string directory, string nameOfProduct, List<SpecRow> data) {
+        // Метод для печати документа в формат CSV
         string text = SpecRow.GetHeader();
         text += string.Join("\n", data);
         string pathToFile = string.Format("{0}.csv", Path.Combine(directory, nameOfProduct));
@@ -621,15 +623,104 @@ public class Macro : MacroProvider {
 
     private void PrintReportToXLSX(string directory, string nameOfProduct, List<SpecRow> data) {
         // Метод для печати данных прямиком в excel файл
+        // TODO Реализовать печать документа сразу в формат xlsx
         string pathToFile = string.Format("{0}.xlsx", Path.Combine(directory, nameOfProduct));
+        
         // Для начала создаем файл
-        using (SpreadsheetDocument document = StreadsheetDocument.Create(pathToFile, SpreadsheetDocumentType.Workbook)) {
+        using (SpreadsheetDocument document = SpreadsheetDocument.Create(pathToFile, SpreadsheetDocumentType.Workbook)) {
             // Добавляем в документ рабочую часть
-            WorkbookPart workbookPart = document.AddWorkbookPart();
-            workbookPart.Workbook = new Workbook();
-            // После этого добавляем 
-            WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+            WorkbookPart wp = document.AddWorkbookPart();
+            wp.Workbook = new Workbook();
+            WorksheetPart wsp = wp.AddNewPart<WorksheetPart>();
+
+            // Добавляем в документ новый рабочий лист
+            wsp.Worksheet = new Worksheet(new SheetData());
+
+            // Задаем параметры колонок
+            Columns lstColumns = new Columns();
+            lstColumns.Append(new Column() {Min = 1, Max = 12, Width = 15, CustomWidth = true}); // Шифр
+            lstColumns.Append(new Column() {Min = 2, Max = 12, Width = 30, CustomWidth = true}); // Наименование
+            lstColumns.Append(new Column() {Min = 3, Max = 12, Width = 15, CustomWidth = true}); // Родитель
+            lstColumns.Append(new Column() {Min = 4, Max = 12, Width = 25, CustomWidth = true}); // Наличие в FoxPro
+            lstColumns.Append(new Column() {Min = 5, Max = 12, Width = 22, CustomWidth = true}); // Наличие в архиве
+            lstColumns.Append(new Column() {Min = 6, Max = 12, Width = 29, CustomWidth = true}); // Статус
+            lstColumns.Append(new Column() {Min = 7, Max = 12, Width = 13, CustomWidth = true}); // Изготовитель
+            lstColumns.Append(new Column() {Min = 8, Max = 12, Width = 10, CustomWidth = true}); // ПКИ
+            lstColumns.Append(new Column() {Min = 9, Max = 12, Width = 15, CustomWidth = true}); // Маршрут
+            lstColumns.Append(new Column() {Min = 10, Max = 12, Width = 15, CustomWidth = true}); // Маршрут по МК
+            lstColumns.Append(new Column() {Min = 11, Max = 12, Width = 13, CustomWidth = true}); // Сверка маршрута
+            lstColumns.Append(new Column() {Min = 12, Max = 12, Width = 40, CustomWidth = true}); // Замечания
+
+            // Добавляем колонки в документ
+            wsp.Worksheet.InsertAt(lstColumns, 0);
+
+            // Создаем лист в книге
+            Sheets sheets = wp.Workbook.AppendChild(new Sheets());
+            Sheet sheet = new Sheet() {Id = wp.GetIdOfPart(wsp), SheetId = 1, Name = "Данные о наличии МК"};
+            sheets.Append(sheet);
+            SheetData sd = wsp.Worksheet.GetFirstChild<SheetData>();
+
+            // Добавляем данные в таблицу
+
+            // Создаем первую строку для того, чтобы разместить в ней шапку
+            uint counter = 1; // Переменная, которая будет хранить текущий номер строки
+            Row row = new Row() {RowIndex = counter++};
+            sd.Append(row);
+
+            // Добавляем автофильтр в первую строку
+            AutoFilter af = new AutoFilter() { Reference = "1:12" }; // Добавление фильтра с первой по 12 колонку
+            wsp.Worksheet.Append(af);
+
+            // Размещаем шапку в первой строке
+            InsertHeader(row, SpecRow.GetHeader());
+
+            // Размещаем остальные данные
+            foreach (SpecRow sRow in data) {
+                // Создаем строку
+                row = new Row() {RowIndex = counter++};
+                sd.Append(row);
+                InsertRow(row, sRow);
+            }
+            
+
+            // Сохраняем документ
+            wp.Workbook.Save();
+
         }
+    }
+
+    private void InsertHeader(Row row, string header) {
+        // Получаем названия колонок
+        string[] columnsOfHeader = header.Split(';');
+
+        for (int i = 1; i <= columnsOfHeader.Length; i++) {
+            InsertCell(row, i, columnsOfHeader[i - 1], CellValues.String);
+        }
+    }
+
+    private void InsertRow(Row row, SpecRow data) {
+        InsertCell(row, 1, data.Shifr, CellValues.String);
+        InsertCell(row, 2, data.Name, CellValues.String);
+        InsertCell(row, 3, data.Parent, CellValues.String);
+        InsertCell(row, 4, data.FoxStatus, CellValues.String);
+        InsertCell(row, 5, data.ArchiveStatus, CellValues.String);
+        InsertCell(row, 6, data.DSEStatus, CellValues.String);
+        InsertCell(row, 7, data.Izg, CellValues.String);
+        InsertCell(row, 8, data.Purchase, CellValues.String);
+        InsertCell(row, 9, data.FoxRoute, CellValues.String);
+        InsertCell(row, 10, data.TechRoute, CellValues.String);
+        InsertCell(row, 11, data.EqualityOfRouts, CellValues.String);
+        InsertCell(row, 12, data.ErrorMessage, CellValues.String);
+    }
+
+    private void InsertCell(Row row, int index, string value, CellValues type) {
+        Cell refCell = null;
+        Cell newCell = new Cell() {CellReference = string.Format("{0}:{1}", row.RowIndex.ToString() , index.ToString())};
+        row.InsertBefore(newCell, refCell);
+
+        // Присваиваем значение ячейке
+        newCell.CellValue = new CellValue(value);
+        newCell.DataType = new EnumValue<CellValues>(type);
     }
 
     #endregion Methods for generate output report file
