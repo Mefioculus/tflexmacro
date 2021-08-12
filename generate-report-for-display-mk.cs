@@ -606,7 +606,42 @@ public class Macro : MacroProvider {
                 row.Status = StatusOfDSE.NeedQualification;
             }
         }
+
+        CheckOnDuplicate(table);
+        CheckDataForEnryInPurchase(table);
     }
+
+    private void CheckOnDuplicate(List<SpecRow> table) {
+        // Метод, который производит проверку делева на входящие в него дубликаты.
+        // Все дубликаты будут отмечаться
+        List<string> listOfUniqShifrs = new List<string>();
+        foreach (SpecRow row in table) {
+            if (!listOfUniqShifrs.Contains(row.Shifr)) {
+                listOfUniqShifrs.Add(row.Shifr);
+                row.IsDuplicate = false;
+            }
+            else
+                row.IsDuplicate = true;
+        }
+    }
+
+    private void CheckDataForEnryInPurchase(List<SpecRow>table) {
+        // Метод, который будет отмечать все непокупные изделия, которые входят в покупные
+        foreach (SpecRow row in table) {
+            row.IsEnterInPurchase = CheckRecordForEntryInPurchase(row, table);
+        }
+    }
+
+    private bool CheckRecordForEntryInPurchase(SpecRow row, List<SpecRow> table) {
+        // Находим родидетя данной записи
+        SpecRow parent = table.FirstOrDefault(r => r.Shifr == row.Parent);
+        if (parent == null)
+            return false;
+        if (parent.IsPurchase == true)
+            return true;
+        return CheckRecordForEntryInPurchase(parent, table);
+    }
+
     #endregion Method SetStatus
     #endregion Fetchng data about mk from Tflex and FoxPro
 
@@ -645,18 +680,20 @@ public class Macro : MacroProvider {
 
             // Задаем параметры колонок
             Columns lstColumns = new Columns();
-            lstColumns.Append(new Column() {Min = 1, Max = 12, Width = 15, CustomWidth = true}); // Шифр
-            lstColumns.Append(new Column() {Min = 2, Max = 12, Width = 30, CustomWidth = true}); // Наименование
-            lstColumns.Append(new Column() {Min = 3, Max = 12, Width = 15, CustomWidth = true}); // Родитель
-            lstColumns.Append(new Column() {Min = 4, Max = 12, Width = 25, CustomWidth = true}); // Наличие в FoxPro
-            lstColumns.Append(new Column() {Min = 5, Max = 12, Width = 22, CustomWidth = true}); // Наличие в архиве
-            lstColumns.Append(new Column() {Min = 6, Max = 12, Width = 29, CustomWidth = true}); // Статус
-            lstColumns.Append(new Column() {Min = 7, Max = 12, Width = 13, CustomWidth = true}); // Изготовитель
-            lstColumns.Append(new Column() {Min = 8, Max = 12, Width = 10, CustomWidth = true}); // ПКИ
-            lstColumns.Append(new Column() {Min = 9, Max = 12, Width = 15, CustomWidth = true}); // Маршрут
-            lstColumns.Append(new Column() {Min = 10, Max = 12, Width = 15, CustomWidth = true}); // Маршрут по МК
-            lstColumns.Append(new Column() {Min = 11, Max = 12, Width = 13, CustomWidth = true}); // Сверка маршрута
-            lstColumns.Append(new Column() {Min = 12, Max = 12, Width = 40, CustomWidth = true}); // Замечания
+            lstColumns.Append(new Column() {Min = 1, Max = 14, Width = 15, CustomWidth = true}); // Шифр
+            lstColumns.Append(new Column() {Min = 2, Max = 14, Width = 30, CustomWidth = true}); // Наименование
+            lstColumns.Append(new Column() {Min = 3, Max = 14, Width = 15, CustomWidth = true}); // Родитель
+            lstColumns.Append(new Column() {Min = 4, Max = 14, Width = 25, CustomWidth = true}); // Наличие в FoxPro
+            lstColumns.Append(new Column() {Min = 5, Max = 14, Width = 22, CustomWidth = true}); // Наличие в архиве
+            lstColumns.Append(new Column() {Min = 6, Max = 14, Width = 29, CustomWidth = true}); // Статус
+            lstColumns.Append(new Column() {Min = 7, Max = 14, Width = 13, CustomWidth = true}); // Изготовитель
+            lstColumns.Append(new Column() {Min = 8, Max = 14, Width = 10, CustomWidth = true}); // ПКИ
+            lstColumns.Append(new Column() {Min = 9, Max = 14, Width = 18, CustomWidth = true}); // Входит в покупное
+            lstColumns.Append(new Column() {Min = 10, Max = 14, Width = 13, CustomWidth = true}); // Дубликат
+            lstColumns.Append(new Column() {Min = 11, Max = 14, Width = 15, CustomWidth = true}); // Маршрут
+            lstColumns.Append(new Column() {Min = 12, Max = 14, Width = 15, CustomWidth = true}); // Маршрут по МК
+            lstColumns.Append(new Column() {Min = 13, Max = 14, Width = 13, CustomWidth = true}); // Сверка маршрута
+            lstColumns.Append(new Column() {Min = 14, Max = 14, Width = 40, CustomWidth = true}); // Замечания
 
             // Добавляем колонки в документ
             wsp.Worksheet.InsertAt(lstColumns, 0);
@@ -714,10 +751,12 @@ public class Macro : MacroProvider {
         InsertCell(row, 6, data.DSEStatus, CellValues.String);
         InsertCell(row, 7, data.Izg, CellValues.String);
         InsertCell(row, 8, data.Purchase, CellValues.String);
-        InsertCell(row, 9, data.FoxRoute, CellValues.String);
-        InsertCell(row, 10, data.TechRoute, CellValues.String);
-        InsertCell(row, 11, data.EqualityOfRouts, CellValues.String);
-        InsertCell(row, 12, data.ErrorMessage, CellValues.String);
+        InsertCell(row, 9, data.EnterInPurchase, CellValues.String);
+        InsertCell(row, 10, data.Duplicate, CellValues.String);
+        InsertCell(row, 11, data.FoxRoute, CellValues.String);
+        InsertCell(row, 12, data.TechRoute, CellValues.String);
+        InsertCell(row, 13, data.EqualityOfRouts, CellValues.String);
+        InsertCell(row, 14, data.ErrorMessage, CellValues.String);
     }
 
     private void InsertCell(Row row, int index, string value, CellValues type) {
@@ -768,6 +807,8 @@ public class Macro : MacroProvider {
         public string ErrorMessage { get; set; } // Сообщение с замечаниями, которые возникли во время анализа технологии в FoxPro
         public string Izg { get; set; } // Подразделение изготовитель
         public bool IsPurchase { get; set; } // Флаг, отображающий, является ли изделие покупным
+        public bool IsDuplicate { get; set; } // Флаг, отображающий, было ли данное изделие в составе
+        public bool IsEnterInPurchase { get; set; } // Флаг, отображающий, входит ли это изделие в покупное изделие
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
         public StatusOfDSE Status { get; set; }
@@ -776,6 +817,8 @@ public class Macro : MacroProvider {
         public string DSEStatus => GetDSEStatus();
         public string Purchase => IsPurchase ? "Покупное" : string.Empty;
         public string EqualityOfRouts => TechRoute == FoxRoute ? string.Empty : "Не совпадают";
+        public string Duplicate => IsDuplicate ? "Повторялось" : string.Empty;
+        public string EnterInPurchase => IsEnterInPurchase ? "Входит в покупное" : string.Empty;
 
 
         public SpecRow (string shifr, string name, string parent) {
@@ -790,7 +833,7 @@ public class Macro : MacroProvider {
 
         public override string ToString() {
             return string.Format(
-                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11}",
+                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13}",
                     Shifr,
                     Name,
                     Parent,
@@ -799,6 +842,8 @@ public class Macro : MacroProvider {
                     DSEStatus,
                     Izg,
                     Purchase,
+                    EnterInPurchase,
+                    Duplicate,
                     FoxRoute,
                     TechRoute,
                     EqualityOfRouts,
@@ -807,7 +852,7 @@ public class Macro : MacroProvider {
         }
 
         public static string GetHeader() {
-            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Изготовитель;ПКИ;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
+            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Изготовитель;ПКИ;Входит в ПКИ;Дубликат;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
         }
 
         #region Methods for localization of statuses
