@@ -264,7 +264,7 @@ public class Macro : MacroProvider {
 
         Dictionary<string, List<SpecRow>> result = new Dictionary<string, List<SpecRow>>();
         foreach (string name in namesOfProduct) {
-            List<SpecRow> reportData = GetCompositionOfProductRecursively(name, specTable);
+            List<SpecRow> reportData = GetCompositionOfProductRecursively(name, string.Empty, specTable);
             if (reportData != null) {
                 // Удаляем дубликаты из таблицы и подключаем ее к результату
                 result[name] = reportData.Distinct().ToList<SpecRow>();
@@ -383,10 +383,17 @@ public class Macro : MacroProvider {
 
     #region Method GetCompositionOfProductRecursively
     // Метод для получения данных о составе изделия рекурсивно
-    private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, List<SpecRow> table) {
+    private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, string parent, List<SpecRow> table) {
         List<SpecRow> result = new List<SpecRow>();
 
-        SpecRow currentProduct = table.FirstOrDefault(row => row.Shifr == nameOfProduct);
+        // Производим выбор текущего объекта.
+        // ДОПОЛНЕНО Для того, чтобы производить выбор строки именно с правильным ролителем, был добавлен параметр parent
+        SpecRow currentProduct = null;
+        if (parent != string.Empty)
+            currentProduct = table.Where(row => row.Shifr == nameOfProduct).FirstOrDefault(row => row.Parent == parent);
+        else
+            currentProduct = table.FirstOrDefault(row => row.Shifr == nameOfProduct);
+
         if (currentProduct == null) {
             Message("Ошибка", string.Format("Изделие '{0}' не было найдено", nameOfProduct));
             return result;
@@ -397,7 +404,7 @@ public class Macro : MacroProvider {
         var children = table.Where(row => row.Parent == nameOfProduct);
         if (children.Count() != 0)
             foreach (SpecRow row in children)
-                result.AddRange(GetCompositionOfProductRecursively(row.Shifr, table));
+                result.AddRange(GetCompositionOfProductRecursively(row.Shifr, nameOfProduct, table));
 
         return result;
     }   
