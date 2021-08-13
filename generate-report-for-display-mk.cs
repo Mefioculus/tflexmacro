@@ -657,7 +657,7 @@ public class Macro : MacroProvider {
 
     private void PrintReportToCSV(string directory, string nameOfProduct, List<SpecRow> data) {
         // Метод для печати документа в формат CSV
-        string text = SpecRow.GetHeader();
+        string text = string.Join(";", SpecRow.GetHeader().Select(column => column.Text));
         text += string.Join("\n", data);
         string pathToFile = string.Format("{0}.csv", Path.Combine(directory, nameOfProduct));
         File.WriteAllText(pathToFile, text, Encoding.GetEncoding(1251));
@@ -678,22 +678,20 @@ public class Macro : MacroProvider {
             // Добавляем в документ новый рабочий лист
             wsp.Worksheet = new Worksheet(new SheetData());
 
+            // Получаем данные по колонкам
+            List<ColumnParams> colsFromSpec = SpecRow.GetHeader();
+            int colCount = colsFromSpec.Count;
+
             // Задаем параметры колонок
             Columns lstColumns = new Columns();
-            lstColumns.Append(new Column() {Min = 1, Max = 14, Width = 15, CustomWidth = true}); // Шифр
-            lstColumns.Append(new Column() {Min = 2, Max = 14, Width = 30, CustomWidth = true}); // Наименование
-            lstColumns.Append(new Column() {Min = 3, Max = 14, Width = 15, CustomWidth = true}); // Родитель
-            lstColumns.Append(new Column() {Min = 4, Max = 14, Width = 25, CustomWidth = true}); // Наличие в FoxPro
-            lstColumns.Append(new Column() {Min = 5, Max = 14, Width = 22, CustomWidth = true}); // Наличие в архиве
-            lstColumns.Append(new Column() {Min = 6, Max = 14, Width = 29, CustomWidth = true}); // Статус
-            lstColumns.Append(new Column() {Min = 7, Max = 14, Width = 13, CustomWidth = true}); // Изготовитель
-            lstColumns.Append(new Column() {Min = 8, Max = 14, Width = 10, CustomWidth = true}); // ПКИ
-            lstColumns.Append(new Column() {Min = 9, Max = 14, Width = 18, CustomWidth = true}); // Входит в покупное
-            lstColumns.Append(new Column() {Min = 10, Max = 14, Width = 13, CustomWidth = true}); // Дубликат
-            lstColumns.Append(new Column() {Min = 11, Max = 14, Width = 15, CustomWidth = true}); // Маршрут
-            lstColumns.Append(new Column() {Min = 12, Max = 14, Width = 15, CustomWidth = true}); // Маршрут по МК
-            lstColumns.Append(new Column() {Min = 13, Max = 14, Width = 13, CustomWidth = true}); // Сверка маршрута
-            lstColumns.Append(new Column() {Min = 14, Max = 14, Width = 40, CustomWidth = true}); // Замечания
+            for (int i = 1; i < colCount; i++) {
+                lstColumns.Append(new Column() {
+                        Min = (uint)i,
+                        Max = (uint)colCount,
+                        Width = colsFromSpec[i - 1].Width,
+                        CustomWidth = true
+                        });
+            }
 
             // Добавляем колонки в документ
             wsp.Worksheet.InsertAt(lstColumns, 0);
@@ -716,7 +714,7 @@ public class Macro : MacroProvider {
             wsp.Worksheet.Append(af);
 
             // Размещаем шапку в первой строке
-            InsertHeader(row, SpecRow.GetHeader());
+            InsertHeader(row, colsFromSpec);
 
             // Размещаем остальные данные
             foreach (SpecRow sRow in data) {
@@ -733,30 +731,21 @@ public class Macro : MacroProvider {
         }
     }
 
-    private void InsertHeader(Row row, string header) {
+    private void InsertHeader(Row row, List<ColumnParams> header) {
         // Получаем названия колонок
-        string[] columnsOfHeader = header.Split(';');
 
-        for (int i = 1; i <= columnsOfHeader.Length; i++) {
-            InsertCell(row, i, columnsOfHeader[i - 1], CellValues.String);
+        for (int i = 1; i <= header.Count; i++) {
+            InsertCell(row, i, header[i - 1].Text, CellValues.String);
         }
     }
 
     private void InsertRow(Row row, SpecRow data) {
-        InsertCell(row, 1, data.Shifr, CellValues.String);
-        InsertCell(row, 2, data.Name, CellValues.String);
-        InsertCell(row, 3, data.Parent, CellValues.String);
-        InsertCell(row, 4, data.FoxStatus, CellValues.String);
-        InsertCell(row, 5, data.ArchiveStatus, CellValues.String);
-        InsertCell(row, 6, data.DSEStatus, CellValues.String);
-        InsertCell(row, 7, data.Izg, CellValues.String);
-        InsertCell(row, 8, data.Purchase, CellValues.String);
-        InsertCell(row, 9, data.EnterInPurchase, CellValues.String);
-        InsertCell(row, 10, data.Duplicate, CellValues.String);
-        InsertCell(row, 11, data.FoxRoute, CellValues.String);
-        InsertCell(row, 12, data.TechRoute, CellValues.String);
-        InsertCell(row, 13, data.EqualityOfRouts, CellValues.String);
-        InsertCell(row, 14, data.ErrorMessage, CellValues.String);
+
+        int counter = 1;
+
+        foreach (string param in data.ToList()) {
+            InsertCell(row, counter++, param, CellValues.String);
+        }
     }
 
     private void InsertCell(Row row, int index, string value, CellValues type) {
@@ -851,8 +840,42 @@ public class Macro : MacroProvider {
                     );
         }
 
-        public static string GetHeader() {
-            return "Шифр;Наименование;Родитель;Наличие в FoxPro;Наличие в Архиве ОГТ;Статус;Изготовитель;ПКИ;Входит в ПКИ;Дубликат;Маршрут;Маршрут по МК;Сверка маршрутов;Замечания (Опер(подр) Опис/Обор/Проф)\n";
+        public List<string> ToList() {
+            List<string> result = new List<string>();
+            result.Add(Shifr);
+            result.Add(Name);
+            result.Add(Parent);
+            result.Add(FoxStatus);
+            result.Add(ArchiveStatus);
+            result.Add(DSEStatus);
+            result.Add(Izg);
+            result.Add(Purchase);
+            result.Add(EnterInPurchase);
+            result.Add(Duplicate);
+            result.Add(FoxRoute);
+            result.Add(TechRoute);
+            result.Add(EqualityOfRouts);
+            result.Add(ErrorMessage);
+            return result;
+        }
+
+        public static List<ColumnParams> GetHeader() {
+            List<ColumnParams> result = new List<ColumnParams>();
+            result.Add(new ColumnParams("Шифр", 15));
+            result.Add(new ColumnParams("Наименование", 30));
+            result.Add(new ColumnParams("Родитель", 15));
+            result.Add(new ColumnParams("Наличие в FoxPro", 25));
+            result.Add(new ColumnParams("Наличие в Архиве ОГТ", 22));
+            result.Add(new ColumnParams("Статус", 29));
+            result.Add(new ColumnParams("Изготовитель", 13));
+            result.Add(new ColumnParams("ПКИ", 10));
+            result.Add(new ColumnParams("Входит в ПКИ", 18));
+            result.Add(new ColumnParams("Дубликат", 13));
+            result.Add(new ColumnParams("Маршрут", 15));
+            result.Add(new ColumnParams("Маршрут по МК", 15));
+            result.Add(new ColumnParams("Сверка маршрутов", 13));
+            result.Add(new ColumnParams("Замечания (Опер(Подр) Опис/Обор/Проф", 40));
+            return result;
         }
 
         #region Methods for localization of statuses
@@ -982,6 +1005,18 @@ public class Macro : MacroProvider {
         }
     }
     #endregion Class DataFileInfo
+
+    #region Class ColumnParams
+    private class ColumnParams {
+        public string Text { get; set; }
+        public double Width { get; set; }
+
+        public ColumnParams(string name, int width) {
+            Text = name;
+            Width = width;
+        }
+    }
+    #endregion Class ColumnParams
 
     #region Select product for reporting form
     // Диалоговое окно для выбора изделий, на которые будет формироваться отчет
