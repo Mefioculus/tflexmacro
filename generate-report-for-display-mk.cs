@@ -36,7 +36,7 @@ public class Macro : MacroProvider {
     private string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
-    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "trud.fpt", "trud.tbk", "trud.cdx"}; // Список файлов, которые нужно грузить в кэш директорию
+    private string[] arrayOfDbFiles = new string[] {"spec.dbf", "marchp.dbf", "trud.dbf", "kat_izv.dbf", "trud.fpt", "trud.tbk", "trud.cdx"}; // Список файлов, которые нужно грузить в кэш директорию
     private string[] arrayOfUnits =
         new string[] {"001", "002", "004", "005", "006", "016", "017", "022", "023", "024", "032", "100", "101", "102", "103", "104", "105", "106", "335", "338"}; // Список подразделений, которые относятся к предприятию (следовательно, ДСЕ с изготовителем из данного списка не могут быть покупными)
 
@@ -46,6 +46,7 @@ public class Macro : MacroProvider {
     private MethodInfo readMethod;
     private MethodInfo getStringMethod;
     private MethodInfo getIntMethod;
+    private MethodInfo getDateTimeMethod;
     private MethodInfo closeMethod;
     
     // Дебаг
@@ -239,6 +240,7 @@ public class Macro : MacroProvider {
         readMethod = dataReaderType.GetMethod("Read");
         getStringMethod = dataReaderType.GetMethod("GetString");
         getIntMethod = dataReaderType.GetMethod("GetInt32");
+        getDateTimeMethod = dataReaderType.GetMethod("GetDateTime");
         closeMethod = dataReaderType.GetMethod("Close");
 
         // Если хотя бы один из методов не был загружен, возвращаем false
@@ -381,6 +383,59 @@ public class Macro : MacroProvider {
     }
     #endregion Method GetMarchpTable
 
+    #region Method GetKatIzv
+    private List<KatIzvRow> GetKatIzv() {
+        List<KatIzvRow> result = new List<KatIzvRow>();
+
+        // Получаем путь к таблице dbf
+        string pathToDbFile = GetPathToDBFile("kat_izv");
+
+        object reader = Activator.CreateInstance(dataReaderType, new object[] {pathToDbFile, dataReaderOptions});
+        
+        // Производим чтение до тех пор, пока в базе есть данные 
+        try {
+            while ((bool)readMethod.Invoke(reader, new object[] {})) {
+                KatIzvRow row = new KatIzvRow() {
+                    Shifr = (string)getStringMethod.Invoke(reader, new object[] {0}),
+                    Parent = (string)getStringMethod.Invoke(reader, new object[] {2}),
+                    ShIzm = (string)getStringMethod.Invoke(reader, new object[] {4}),
+                    Vnedr = (string)getStringMethod.Invoke(reader, new object[] {8}),
+                    DataW = TryGetDateTimeFromFox(reader, 9),
+                    DataIz = TryGetDateTimeFromFox(reader, 5) 
+                };
+                result.Add(row);
+
+            }
+        }
+        finally {
+            // Закрываем reader
+            closeMethod.Invoke(reader, new object[] {});
+        }
+
+        return result;
+    }
+    #endregion Method GetMarchpTable
+
+    // Методы для попытки получения записей, обращение к которым может вызвать ошибку
+    private DateTime? TryGetDateTimeFromFox(object reader, int numOfColumn) {
+        try {
+            return (DateTime)getDateTimeMethod.Invoke(reader, new object[] {numOfColumn});
+        }
+        catch {
+            return null;
+        }
+    }
+
+    private int? TryGetIntFromFox(object reader, int numOfColumn) {
+        try {
+            return (int)getIntMethod.Invoke(reader, new object[] {numOfColumn});
+        }
+        catch {
+            return null;
+        }
+    }
+
+
     #region Method GetCompositionOfProductRecursively
     // Метод для получения данных о составе изделия рекурсивно
     private List<SpecRow> GetCompositionOfProductRecursively(string nameOfProduct, string parent, List<SpecRow> table) {
@@ -468,10 +523,12 @@ public class Macro : MacroProvider {
         // Получаем таблицы trud и marchp
         List<TrudRow> trudTable = GetTrudTable();
         List<MarchpRow> marchpTable = GetMarchpTable();
+        List<KatIzvRow> katIzvTable = GetKatIzv();
 
         foreach (SpecRow sRow in specTable) {
             FetchDataFromTrudTable(sRow, trudTable);
             FetchDataFromMarchpTable(sRow, marchpTable);
+            FetchDataFromKatIzvTable(sRow, katIzvTable);
         }
     }
 
@@ -552,6 +609,27 @@ public class Macro : MacroProvider {
         sRow.IsPurchase = !arrayOfUnits.Contains(sRow.Izg);
     }
     #endregion Method FetchDataFromMarchpTable
+
+    #region Method FetchDataFromKatIzvTable
+    private void FetchDataFromKatIzvTable(SpecRow sRow, List<KatIzvRow> katIzvTable) {
+        // Получаем список всех извещений на данное изделие
+        List<KatIzvRow> izvs = katIzvTable.Where(row => row.Shifr == sRow.Shifr).ToList<KatIzvRow>();
+        //List<KatIzvRow> izvs = katIzvTable.Where(row => row.Shifr == sRow.Shifr).Where(row => row.Parent == sRow.Parent).ToList<KatIzvRow>();
+        // Данный вариант не работал, видимо потому что названия родителей у изделий не совпадали. Нужно узнать, насколько критично то, что они не совпадают.
+        
+        // Дополняем данные записи таблицы Spec
+        if (izvs.Count != 0) {
+            KatIzvRow lastIzv = izvs[izvs.Count - 1];
+            sRow.ShIzm = lastIzv.ShIzm;
+            sRow.Vnedr = lastIzv.Vnedr;
+            sRow.DataW = lastIzv.DataW != null ? ((DateTime)lastIzv.DataW).ToString("dd.MM.yyyy") : string.Empty;
+        }
+        else
+            return;
+
+    }
+    #endregion Method FetchDataFromKatIzvTable
+
     #endregion Method FetchDataFromFox
 
     #region Method SetStatus
@@ -788,26 +866,41 @@ public class Macro : MacroProvider {
 
     #region Class SpecRow
     private class SpecRow {
+        // Основные параметры дерева состава
         public string Shifr { get; set; } // Обозначение изделия
         public string Name { get; set; } // Наименование изделия
         public string Parent { get; set; } // Издение родитель
+
+
+        // Параметры для вывода изформации по маршрутам
         public string TechRoute { get; set; } // Маршрут, выгруженный из Trud
         public string FoxRoute { get; set; } // Маршрут, выгруженный из marchp
-        public string ErrorMessage { get; set; } // Сообщение с замечаниями, которые возникли во время анализа технологии в FoxPro
         public string Izg { get; set; } // Подразделение изготовитель
+        public string EqualityOfRouts => TechRoute == FoxRoute ? string.Empty : "Не совпадают";
+
+
+        // Параметры для извещения
+        public string DataW { get; set; } // Дата выпуска извещения об изменении
+        public string Vnedr { get; set; } 
+        public string ShIzm { get; set; }
+
+        // Параметры, которые отображают дубликаты, а так же покупные изделия
         public bool IsPurchase { get; set; } // Флаг, отображающий, является ли изделие покупным
-        public bool IsDuplicate { get; set; } // Флаг, отображающий, было ли данное изделие в составе
         public bool IsEnterInPurchase { get; set; } // Флаг, отображающий, входит ли это изделие в покупное изделие
+        public bool IsDuplicate { get; set; } // Флаг, отображающий, было ли данное изделие в составе
+        public string Purchase => IsPurchase ? "Покупное" : string.Empty;
+        public string Duplicate => IsDuplicate ? "Повторялось" : string.Empty;
+        public string EnterInPurchase => IsEnterInPurchase ? "Входит в покупное" : string.Empty;
+
+        // Статусные параметры
         public StatusMKFoxPro FoxProMK { get; set; }
         public StatusMKArchive TFlexMK { get; set; }
         public StatusOfDSE Status { get; set; }
+        public string ErrorMessage { get; set; } // Сообщение с замечаниями, которые возникли во время анализа технологии в FoxPro
         public string FoxStatus => GetFoxStatus();
         public string ArchiveStatus => GetArchiveStatus();
         public string DSEStatus => GetDSEStatus();
-        public string Purchase => IsPurchase ? "Покупное" : string.Empty;
-        public string EqualityOfRouts => TechRoute == FoxRoute ? string.Empty : "Не совпадают";
-        public string Duplicate => IsDuplicate ? "Повторялось" : string.Empty;
-        public string EnterInPurchase => IsEnterInPurchase ? "Входит в покупное" : string.Empty;
+
 
 
         public SpecRow (string shifr, string name, string parent) {
@@ -821,23 +914,7 @@ public class Macro : MacroProvider {
         }
 
         public override string ToString() {
-            return string.Format(
-                    "{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13}",
-                    Shifr,
-                    Name,
-                    Parent,
-                    FoxStatus,
-                    ArchiveStatus,
-                    DSEStatus,
-                    Izg,
-                    Purchase,
-                    EnterInPurchase,
-                    Duplicate,
-                    FoxRoute,
-                    TechRoute,
-                    EqualityOfRouts,
-                    ErrorMessage
-                    );
+            return string.Join(";", ToList());
         }
 
         public List<string> ToList() {
@@ -855,6 +932,9 @@ public class Macro : MacroProvider {
             result.Add(FoxRoute);
             result.Add(TechRoute);
             result.Add(EqualityOfRouts);
+            result.Add(ShIzm);
+            result.Add(Vnedr);
+            result.Add(DataW);
             result.Add(ErrorMessage);
             return result;
         }
@@ -874,6 +954,9 @@ public class Macro : MacroProvider {
             result.Add(new ColumnParams("Маршрут", 15));
             result.Add(new ColumnParams("Маршрут по МК", 15));
             result.Add(new ColumnParams("Сверка маршрутов", 13));
+            result.Add(new ColumnParams("Номер извещения", 15));
+            result.Add(new ColumnParams("Внедрено", 15));
+            result.Add(new ColumnParams("Дата внедрения", 15));
             result.Add(new ColumnParams("Замечания (Опер(Подр) Опис/Обор/Проф", 40));
             return result;
         }
@@ -971,6 +1054,17 @@ public class Macro : MacroProvider {
         }
     }
     #endregion Class MarchpRow
+
+    #region Class KatIzvRow
+    private class KatIzvRow {
+        public string Shifr { get; set; } // 0
+        public string Parent { get; set; } // 2
+        public string ShIzm { get; set; } // 4
+        public string Vnedr { get; set; } // 8
+        public DateTime? DataIz { get; set; } // 5
+        public DateTime? DataW { get; set; } // 9
+    }
+    #endregion Class KatIzvRow
 
     #region Class DataFileInfo
     private class DataFileInfo {
