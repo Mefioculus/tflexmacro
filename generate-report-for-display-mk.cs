@@ -1112,7 +1112,7 @@ public class Macro : MacroProvider {
     }
     #endregion Class ColumnParams
 
-    #region Select product for reporting form
+    #region SelectProductDialog form
     // Диалоговое окно для выбора изделий, на которые будет формироваться отчет
     private class SelectProductDialog : Form {
         
@@ -1145,6 +1145,7 @@ public class Macro : MacroProvider {
 
             this.ResumeLayout(false);
             this.PerformLayout();
+            this.Focus();
         }
         #endregion Constructors
 
@@ -1283,7 +1284,7 @@ public class Macro : MacroProvider {
         private void ButtonSearch_Click(object sender, EventArgs e) {
             // Данное действие будет производиться по нажатию на кнопку "Поиск"
             // и будет производить поиск среди всех изделий только те, которые необходимы
-            string searchText = inputField.Text;
+            string searchText = inputField.Text.ToUpper();
             string[] resultOfSearch = null;
             if (!string.IsNullOrWhiteSpace(searchText)) {
                 resultOfSearch = this.allProducts.Where(product => product.Contains(searchText)).ToArray();
@@ -1330,6 +1331,6 @@ public class Macro : MacroProvider {
         #endregion ButtonDelete_Click
         #endregion Methods from button clics
     }
-    #endregion Select product for reporting form
+    #endregion SelectProductDialog form
     #endregion serviceClasses
 }
