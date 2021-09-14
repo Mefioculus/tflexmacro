@@ -67,6 +67,7 @@ public class Macro : MacroProvider
             public static Guid Показатели = new Guid("7d2616a0-73c2-4f4a-933b-10c0bcc1f37a");
             public static Guid КонтролируемыеПараметры = new Guid("93b19910-3553-4f36-9dd7-f81e42e2739d");
             public static Guid ФактическиеПоказания = new Guid("a6f224ab-6044-472b-8e32-5780d2148e39");
+            public static Guid ОбразцыМагнитнойЛаборатории = new Guid("784e5bb5-8247-4a47-bf78-7fc5033a2a6c");
         }
 
         public static class Props {
@@ -104,6 +105,17 @@ public class Macro : MacroProvider
             // Параметры типа Фактическое значение
             public static Guid НаименованиеИзмеряемогоОбъекта = new Guid("8e1c6e2e-d885-4b43-8dd7-6d5eba283783");
             public static Guid ФактическоеЗначение = new Guid("878df0b8-f018-41e6-a5a4-5f673dedf4ad");
+
+            // Параметры образца магнитной лаборатории
+            public static Guid ТолщинаМатериалаМагнитнаяЛаборатория = new Guid("fe9d24b0-e1b0-489c-b029-b7b0b76878cf");
+            public static Guid СводноеНаименованиеОбразцаМагнитнойЛаборатории = new Guid("43b442a0-5901-4fe7-8ad1-6e072bd350d6");
+
+            // Параметры материала магнитной лаборатории
+            public static Guid МаркаМатериалаМагнитнаяЛаборатория = new Guid("89eacccd-ad18-4e14-b383-a2846cbacaff");
+        }
+
+        public static class Links {
+            public static Guid СправочныеМатериалыМагнитнаяЛаборатория = new Guid("c543586f-17ce-4731-9690-bfddd0f10a4b");
         }
 
         public static class Stages {
@@ -339,6 +351,33 @@ public class Macro : MacroProvider
     }
 
     #endregion Формирование сводного размера образца
+
+    #region Формирование сводного размера образца ЦЗЛ
+
+    public string ФормированиеСводногоНаименованияОбразцаМагнитнойЛаборатории() {
+
+        ReferenceObject sample = Context.ReferenceObject;
+        if (sample == null)
+            return "Не удалось получить образец";
+
+        // Получаем протокол, к которому подключен данный образец
+        ReferenceObject protocol = sample.MasterObject;
+        if (protocol == null)
+            return "Не удалось получить протокол";
+
+        // Получаем материал, который привязан к протоколу
+        ReferenceObject material = protocol.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
+        if (material == null)
+            return "В протоколе не указан материал";
+
+        string labelOfMaterial = material[Guids.Props.МаркаМатериалаМагнитнаяЛаборатория].Value.ToString();
+        string thicknessOfMaterial = sample[Guids.Props.ТолщинаМатериалаМагнитнаяЛаборатория].Value.ToString();
+        sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value = string.Format("{0}, {1} мм", labelOfMaterial, thicknessOfMaterial);
+        return string.Format("Сводное наименование: {0}, {1} мм", labelOfMaterial, thicknessOfMaterial);
+    }
+
+    #endregion Формирование сводного размера образца ЦЗЛ
+
 
     #region Получение данных для отчета
 
