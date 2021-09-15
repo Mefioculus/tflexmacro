@@ -42,6 +42,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
     if (tableWithData.Rows.Count == 0)
         return;
     string tableString = Convert.ToString(tableWithData.Rows[0]["DataTable"]);
+    string protocolType = Convert.ToString(tableWithData.Rows[0]["ProtocolType"]);
 
     // В целях сокращения незанятого пространства
 
@@ -49,19 +50,75 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
 
     #region Редактирование табличных данных
 
+    switch (protocolType) {
+        case "Протокол металлографической лаборатории":
+            GenerateDefaultTable(tableString);
+            break;
+        case "Протокол физикомеханической лаборатории":
+            GenerateDefaultTable(tableString);
+            break;
+        case "Протокол спектральной лаборатории":
+            break;
+        case "Протокол химической лаборатории":
+            break;
+        case "Протокол гальванической лаборатории":
+            break;
+        case "Протокол магнитной лаборатории":
+            GenerateDefaultTable(tableString);
+            break;
+        case "Протокол электрической лаборатории":
+            break;
+        default:
+            break;
+    }
+
+
+
+#endregion Редактирование табличных данных
+
+#region Проверка подписей
+
+// Получение содержимого подписи Ведущего инженера и утверждающего
+    // Получаем данные, которые содержатся в списке полей
+
+    // Находим нужный параметр
+    index = ds.Tables.IndexOf("Подписи (Подписи)");
+    if (index == null) {
+        MessageBox.Show("index is null");
+        return;
+    }
+    var tableWithSigns = ds.Tables[index];
+    if (tableWithSigns == null) {
+        MessageBox.Show("tableWithSigns is null");
+        return;
+    }
+
+    if (tableWithSigns.Rows.Count == 0)
+        return;
+
+    string engineer = Convert.ToString(tableWithSigns.Rows[0]["Ведущий инженер ФИО"]);
+    string approver = Convert.ToString(tableWithSigns.Rows[0]["Утвердил ФИО"]);
+
+
+    if (engineer == approver) {
+        // Заменяем значение метки, которая содержит название должности
+        cellWithPositionEngineer.Text = string.Format("'{0}", cellWithPositionEngineer.Text);
+    }
+}
+
+#endregion Проверка подписей
+
+#region Service methods
+#region Метод для генерации таблицы по умолчанию
+
+private void GenerateDefaultTable(string tableString) {
+
     // Приступаем к корректированию табличных данных
     RegularDataTable.BeginInit();
 
     if (tableString != string.Empty) {
 
         List<List<string>> rowsOfTable = ParseDataTable(tableString);
-
-        /*
-        // Проверка полученных табличных даннах
-        foreach (List<string> rowOfData in rowsOfTable) {
-            MessageBox.Show(string.Join('^', rowOfData));
-        }
-        */
 
         const int widthOfOrderColumn = 30;
 
@@ -99,7 +156,6 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
                 // Создаем новую строку в таблице
                 XRTableRow tableRow = new XRTableRow();
                 XRTableCell orderCell = new XRTableCell();
-
                 // Добавляем созданную ячейку в таблицу для хранения параметра Span
                 tableOfCells.AddCell(orderCell);
 
@@ -161,42 +217,25 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
     }
 
     RegularDataTable.EndInit();
-
-#endregion Редактирование табличных данных
-
-#region Проверка подписей
-
-// Получение содержимого подписи Ведущего инженера и утверждающего
-    // Получаем данные, которые содержатся в списке полей
-
-    // Находим нужный параметр
-    index = ds.Tables.IndexOf("Подписи (Подписи)");
-    if (index == null) {
-        MessageBox.Show("index is null");
-        return;
-    }
-    var tableWithSigns = ds.Tables[index];
-    if (tableWithSigns == null) {
-        MessageBox.Show("tableWithSigns is null");
-        return;
-    }
-
-    if (tableWithSigns.Rows.Count == 0)
-        return;
-
-    string engineer = Convert.ToString(tableWithSigns.Rows[0]["Ведущий инженер ФИО"]);
-    string approver = Convert.ToString(tableWithSigns.Rows[0]["Утвердил ФИО"]);
-
-
-    if (engineer == approver) {
-        // Заменяем значение метки, которая содержит название должности
-        cellWithPositionEngineer.Text = string.Format("'{0}", cellWithPositionEngineer.Text);
-    }
 }
 
-#endregion Проверка подписей
+#endregion Метод для генерации таблицы по умолчанию
 
-#region Service methods
+#region Метод для генерации таблицы для протокола магнитной лаборатории
+
+private void GenerateMagneteTable(tableString) {
+    RegularDataTable.BeginInit();
+
+    // Приступаем к формированию шапки таблицы
+
+    
+    if (tableString != string.Empty) {
+        List<List<string>> rowsOfTable = ParseDataTable(tableString);
+    }
+
+}
+
+#endregion Метод для генерации таблицы для протокола магнитной лаборатории
 
 #region ParseDateTable
 private List<List<string>> ParseDataTable (string stringFromInput) {
