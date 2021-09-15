@@ -112,6 +112,13 @@ public class Macro : MacroProvider
 
             // Параметры материала магнитной лаборатории
             public static Guid МаркаМатериалаМагнитнаяЛаборатория = new Guid("89eacccd-ad18-4e14-b383-a2846cbacaff");
+            public static Guid МагнитнаяИндукцияДля5 = new Guid("aec0e020-3635-41f7-9427-e3b464aba584");
+            public static Guid МагнитнаяИндукцияДля12 = new Guid("584c3172-b63b-4e0d-8a7d-905a5e0f6042");
+            public static Guid МагнитнаяИндукцияДля31 = new Guid("f3512373-a969-4bd9-aabd-b135d8bea21f");
+            public static Guid МагнитнаяИндукцияДля62 = new Guid("6a016149-5070-4596-bdfc-12569eb4af87");
+            public static Guid МагнитнаяИндукцияДля125 = new Guid("5ff27b66-3e9b-41c2-bd66-732d3d067585");
+            public static Guid МаксимальнаяПроницаемость = new Guid("f3b2bbc4-c3af-4f73-b259-c46c05982282");
+            public static Guid КоэрциальнаяСила = new Guid("a98bc898-f69a-40cb-9797-c412cde58078");
         }
 
         public static class Links {
@@ -352,7 +359,7 @@ public class Macro : MacroProvider
 
     #endregion Формирование сводного размера образца
 
-    #region Формирование сводного размера образца ЦЗЛ
+    #region Формирование сводного наименования образца магнитной лаборатории
 
     public string ФормированиеСводногоНаименованияОбразцаМагнитнойЛаборатории() {
 
@@ -376,8 +383,56 @@ public class Macro : MacroProvider
         return string.Format("Сводное наименование: {0}, {1} мм", labelOfMaterial, thicknessOfMaterial);
     }
 
-    #endregion Формирование сводного размера образца ЦЗЛ
+    #endregion Формирование сводного наименования образца магнитной лаборатории
 
+    #region Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
+    
+    public string ОтображениеДопустимогоЗначенияОбразцаМагнитнойЛаборатории(string parameter) {
+        ReferenceObject sample = Context.ReferenceObject;
+        if (sample == null)
+            return "Не удалось вернуть образец";
+
+        ReferenceObject protocol  = sample.MasterObject;
+        if (protocol == null)
+            return "Не удалось получить протокол";
+
+        ReferenceObject material = protocol.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
+        if (material == null)
+            return "-";
+
+        string result = string.Empty;
+
+        switch (parameter) {
+            case "5.0":
+                result = material[Guids.Props.МагнитнаяИндукцияДля5].Value.ToString();
+                break;
+            case "12.5":
+                result = material[Guids.Props.МагнитнаяИндукцияДля12].Value.ToString();
+                break;
+            case "31.3":
+                result = material[Guids.Props.МагнитнаяИндукцияДля31].Value.ToString();
+                break;
+            case "62.5":
+                result = material[Guids.Props.МагнитнаяИндукцияДля62].Value.ToString();
+                break;
+            case "125":
+                result = material[Guids.Props.МагнитнаяИндукцияДля125].Value.ToString();
+                break;
+            case "Проницаемость":
+                result = material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString();
+                break;
+            case "Коэрциальная сила":
+                result = material[Guids.Props.КоэрциальнаяСила].Value.ToString();
+                break;
+            default:
+                result = "Ошибка";
+                break;
+        }
+
+        return result;
+    }
+
+    #endregion Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
 
     #region Получение данных для отчета
 
