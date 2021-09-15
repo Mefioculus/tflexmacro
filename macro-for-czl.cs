@@ -112,13 +112,15 @@ public class Macro : MacroProvider
 
             // Параметры материала магнитной лаборатории
             public static Guid МаркаМатериалаМагнитнаяЛаборатория = new Guid("89eacccd-ad18-4e14-b383-a2846cbacaff");
-            public static Guid МагнитнаяИндукцияДля5 = new Guid("aec0e020-3635-41f7-9427-e3b464aba584");
-            public static Guid МагнитнаяИндукцияДля12 = new Guid("584c3172-b63b-4e0d-8a7d-905a5e0f6042");
-            public static Guid МагнитнаяИндукцияДля31 = new Guid("f3512373-a969-4bd9-aabd-b135d8bea21f");
-            public static Guid МагнитнаяИндукцияДля62 = new Guid("6a016149-5070-4596-bdfc-12569eb4af87");
-            public static Guid МагнитнаяИндукцияДля125 = new Guid("5ff27b66-3e9b-41c2-bd66-732d3d067585");
-            public static Guid МаксимальнаяПроницаемость = new Guid("f3b2bbc4-c3af-4f73-b259-c46c05982282");
-            public static Guid КоэрциальнаяСила = new Guid("a98bc898-f69a-40cb-9797-c412cde58078");
+            public static Guid МагнитнаяИндукция1 = new Guid("8e272ff4-207a-43ed-adf1-24320948a7d2");
+            public static Guid МагнитнаяИндукция2 = new Guid("220f3c7a-ef3f-44c0-81aa-9290b27c78dd");
+            public static Guid МагнитнаяИндукция3 = new Guid("7bd70dc0-37b8-44ea-ba06-6fdbe0c5db14");
+            public static Guid МагнитнаяИндукция4 = new Guid("119d00a0-96ae-471d-b90a-e19e6f3d20df");
+            public static Guid МагнитнаяИндукция5 = new Guid("040eb1c3-9610-4685-bddc-944b9a1b81eb");
+            public static Guid МаксимальнаяПроницаемость = new Guid("d66b6261-22e4-4226-b8e8-cdd6294fecd2");
+            public static Guid КоэрциальнаяСила = new Guid("db5f2f57-bb99-48cb-9668-14a7e033c584");
+            public static Guid ТипСтандартаМагнитнаяЛаборатория = new Guid("2c1890c0-e0d4-40dc-b680-94e49130efe9");
+            public static Guid СтандартМагнитнаяЛаборатория = new Guid("7892a0b0-9d5a-4e4d-a0c4-ccbbda5d185b");
         }
 
         public static class Links {
@@ -404,19 +406,19 @@ public class Macro : MacroProvider
 
         switch (parameter) {
             case "5.0":
-                result = material[Guids.Props.МагнитнаяИндукцияДля5].Value.ToString();
+                result = material[Guids.Props.МагнитнаяИндукция1].Value.ToString();
                 break;
             case "12.5":
-                result = material[Guids.Props.МагнитнаяИндукцияДля12].Value.ToString();
+                result = material[Guids.Props.МагнитнаяИндукция2].Value.ToString();
                 break;
             case "31.3":
-                result = material[Guids.Props.МагнитнаяИндукцияДля31].Value.ToString();
+                result = material[Guids.Props.МагнитнаяИндукция3].Value.ToString();
                 break;
             case "62.5":
-                result = material[Guids.Props.МагнитнаяИндукцияДля62].Value.ToString();
+                result = material[Guids.Props.МагнитнаяИндукция4].Value.ToString();
                 break;
             case "125":
-                result = material[Guids.Props.МагнитнаяИндукцияДля125].Value.ToString();
+                result = material[Guids.Props.МагнитнаяИндукция5].Value.ToString();
                 break;
             case "Проницаемость":
                 result = material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString();
