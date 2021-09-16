@@ -634,6 +634,13 @@ public class Macro : MacroProvider
             resultDataClass.Add(material[Guids.Props.КоэрциальнаяСила].Value.ToString());
             resultDataClass.EndRow();
         }
+        else {
+            resultDataClass.Add("Нет данных");
+            for (int i = 0; i < 8; i++) {
+                resultDataClass("-");
+            }
+            resultDataClass.EndRow();
+        }
 
         return resultDataClass.GenerateString();
     }
