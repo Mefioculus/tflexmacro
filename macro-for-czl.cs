@@ -107,9 +107,17 @@ public class Macro : MacroProvider
             public static Guid ФактическоеЗначение = new Guid("878df0b8-f018-41e6-a5a4-5f673dedf4ad");
 
             // Параметры образца магнитной лаборатории
-            public static Guid ТолщинаМатериалаМагнитнаяЛаборатория = new Guid("fe9d24b0-e1b0-489c-b029-b7b0b76878cf");
+            public static Guid РазмерМатериалаМагнитнаяЛаборатория = new Guid("fe9d24b0-e1b0-489c-b029-b7b0b76878cf");
             public static Guid СводноеНаименованиеОбразцаМагнитнойЛаборатории = new Guid("43b442a0-5901-4fe7-8ad1-6e072bd350d6");
-
+            public static Guid ТипРазмераОбразцаМагнитнойЛаборатории = new Guid("59f6ea61-d864-4439-8f70-53e8937a2643");
+            public static Guid КоэрциальнаяСилаОбразца = new Guid("b0d15b96-45f4-43b8-95e8-633c7f8e4821");
+            public static Guid МаксимальнаяПроницаемостьОбразца = new Guid("403b8795-5d09-4ac6-91c9-682313c8e3e5");
+            public static Guid МагнитнаяИндукцияОбразца1 = new Guid("4793f354-8820-4027-a599-bd70fc7c8693");
+            public static Guid МагнитнаяИндукцияОбразца2 = new Guid("568b10a1-9bf8-438c-902b-1077fa213f7b");
+            public static Guid МагнитнаяИндукцияОбразца3 = new Guid("ca6b8770-4810-403b-b05e-b6571e1f3133");
+            public static Guid МагнитнаяИндукцияОбразца4 = new Guid("214ffd17-4f90-4ce6-917a-7e88840b0527");
+            public static Guid МагнитнаяИндукцияОбразца5 = new Guid("41b86f16-5dec-4272-85ee-0258239febb5");
+            
             // Параметры материала магнитной лаборатории
             public static Guid МаркаМатериалаМагнитнаяЛаборатория = new Guid("89eacccd-ad18-4e14-b383-a2846cbacaff");
             public static Guid МагнитнаяИндукция1 = new Guid("8e272ff4-207a-43ed-adf1-24320948a7d2");
@@ -365,6 +373,8 @@ public class Macro : MacroProvider
 
     public string ФормированиеСводногоНаименованияОбразцаМагнитнойЛаборатории() {
 
+        // Строка, которая будет содержать сводное наименование
+        string summaryName = string.Empty;
         ReferenceObject sample = Context.ReferenceObject;
         if (sample == null)
             return "Не удалось получить образец";
@@ -380,9 +390,33 @@ public class Macro : MacroProvider
             return "В протоколе не указан материал";
 
         string labelOfMaterial = material[Guids.Props.МаркаМатериалаМагнитнаяЛаборатория].Value.ToString();
-        string thicknessOfMaterial = sample[Guids.Props.ТолщинаМатериалаМагнитнаяЛаборатория].Value.ToString();
-        sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value = string.Format("{0}, {1} мм", labelOfMaterial, thicknessOfMaterial);
-        return string.Format("Сводное наименование: {0}, {1} мм", labelOfMaterial, thicknessOfMaterial);
+        string sizeOfMaterial = sample[Guids.Props.РазмерМатериалаМагнитнаяЛаборатория].Value.ToString();
+
+        // Определение типа размера для подстановки корректной переменной в сводное наименование
+        int typeOfSize = (int)sample[Guids.Props.ТипРазмераОбразцаМагнитнойЛаборатории].Value;
+        string typeOfSizeVariable = string.Empty;
+
+        switch (typeOfSize) {
+            // Случай, когда размер - толщина
+            case 0:
+                typeOfSizeVariable = "s";
+                break;
+            // Случай, когда размер - диаметр
+            case 1:
+                typeOfSizeVariable = "d";
+                break;
+            // Дефолтным значением будет значение толщины
+            default:
+                typeOfSizeVariable = "s";
+                break;
+        }
+
+            summaryName = string.Format("{0}, {1} = {2} мм", labelOfMaterial, typeOfSizeVariable, sizeOfMaterial);
+            
+            // Присваиваем значение для параметра сводное наименование
+            sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value = summaryName;
+            // Возвращаем значение сводного наименования
+            return string.Format("Сводное наименование: {0}", summaryName);
     }
 
     #endregion Формирование сводного наименования образца магнитной лаборатории
@@ -405,19 +439,19 @@ public class Macro : MacroProvider
         string result = string.Empty;
 
         switch (parameter) {
-            case "5.0":
+            case "1":
                 result = material[Guids.Props.МагнитнаяИндукция1].Value.ToString();
                 break;
-            case "12.5":
+            case "2":
                 result = material[Guids.Props.МагнитнаяИндукция2].Value.ToString();
                 break;
-            case "31.3":
+            case "3":
                 result = material[Guids.Props.МагнитнаяИндукция3].Value.ToString();
                 break;
-            case "62.5":
+            case "4":
                 result = material[Guids.Props.МагнитнаяИндукция4].Value.ToString();
                 break;
-            case "125":
+            case "5":
                 result = material[Guids.Props.МагнитнаяИндукция5].Value.ToString();
                 break;
             case "Проницаемость":
