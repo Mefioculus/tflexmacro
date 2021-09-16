@@ -64,7 +64,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
         case "Протокол гальванической лаборатории":
             break;
         case "Протокол магнитной лаборатории":
-            GenerateDefaultTable(tableString);
+            GenerateMagneteTable(tableString);
             break;
         case "Протокол электрической лаборатории":
             break;
@@ -126,7 +126,7 @@ private void GenerateDefaultTable(string tableString) {
         int counter = 1; // Счетчик параметров
         int rowIndex = 0; // Счетчик строк
 
-        // Создаем список для хранения всех созданных ячеек
+        // Создаем список для хранения всех созданных ячеек (Необходимо для объединения ячеек)
         TableOfCells tableOfCells = new TableOfCells();
 
         // (для того, чтобы к каждой из них можно было вернуться
@@ -223,15 +223,92 @@ private void GenerateDefaultTable(string tableString) {
 
 #region Метод для генерации таблицы для протокола магнитной лаборатории
 
-private void GenerateMagneteTable(tableString) {
+private void GenerateMagneteTable(string tableString) {
     RegularDataTable.BeginInit();
 
+
+    // Создаем словарь с значением ширин колонок
+    Dictionary<int, int> widthOfColumns = new Dictionary<int, int>();
+    widthOfColumns.Add(1, 50);
+    widthOfColumns.Add(2, 25);
+    widthOfColumns.Add(3, 25);
+    widthOfColumns.Add(4, 25);
+    widthOfColumns.Add(5, 25);
+    widthOfColumns.Add(6, 25);
+    widthOfColumns.Add(7, 25);
+    widthOfColumns.Add(8, 35);
+    widthOfColumns.Add(9, 35);
+
     // Приступаем к формированию шапки таблицы
+    TableCellInit.Text = "Марка материала, размер, мм";
+    TableCellInit.WidthF = widthOfColumns[1];
+    
+    List<CellData> firstColumnNames = new List<CellData>() {
+        new CellData("№ Контр. образца", widthOfColumns[2]),
+        new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл",
+                widthOfColumns[3] + widthOfColumns[4] + widthOfColumns[5] + widthOfColumns[6] + widthOfColumns[7]),
+        new CellData("Max магнитная проницаемость, Гн", widthOfColumns[8]),
+        new CellData("Коэрциальная сила, А/м", widthOfColumns[9])
+    };
+
+    List<CellData> secondColumnNames = new List<CellData>() {
+        new CellData("", widthOfColumns[1]),
+        new CellData("", widthOfColumns[2]),
+        new CellData("200", widthOfColumns[3]),
+        new CellData("300", widthOfColumns[4]),
+        new CellData("500", widthOfColumns[5]),
+        new CellData("1000", widthOfColumns[6]),
+        new CellData("2500", widthOfColumns[7]),
+        new CellData("", widthOfColumns[8]),
+        new CellData("", widthOfColumns[9])
+    };
+
+    foreach (CellData cellData in firstColumnNames) {
+        XRTableCell cell = new XRTableCell();
+        cell.Text = cellData.NameColumn;
+        cell.WidthF = cellData.Width;
+        RegularDataTable.Rows[0].Cells.Add(cell);
+    }
+
+    XRTableRow secondRow = new XRTableRow();
+    RegularDataTable.Rows.Add(secondRow);
+
+    foreach (CellData cellData in secondColumnNames) {
+        XRTableCell cell = new XRTableCell();
+        cell.Text = cellData.NameColumn;
+        cell.WidthF = cellData.Width;
+        secondRow.Cells.Add(cell);
+    }
+
+    // Объединяем общие ячейки
+    RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
+    RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
+    RegularDataTable.Rows[0].Cells[3].RowSpan = 2;
+    RegularDataTable.Rows[0].Cells[4].RowSpan = 2;
 
     
+    // Приступаем к формированию регуляной части таблицы
     if (tableString != string.Empty) {
         List<List<string>> rowsOfTable = ParseDataTable(tableString);
+
+        foreach (List<string> row in rowsOfTable) {
+            XRTableRow tableRow = new XRTableRow();
+            RegularDataTable.Rows.Add(tableRow);
+
+            int orderOfColumn = 1;
+            foreach (string value in row) {
+                XRTableCell cell = new XRTableCell();
+                cell.Text = value;
+                cell.Width = widthOfColumns[orderOfColumn++];
+                tableRow.Cells.Add(cell);
+            }
+        }
     }
+
+
+    // Завершаем работу с таблицей
+    RegularDataTable.EndInit();
+
 
 }
 
@@ -344,5 +421,19 @@ private class TableOfCells {
 }
 
 #endregion TableOfCells class
+
+#region CellData class
+
+private class CellData {
+    public string NameColumn { get; set; }
+    public int Width { get; set; }
+
+    public CellData (string name, int width) {
+        this.NameColumn = name;
+        this.Width = width;
+    }
+}
+
+#endregion CellData class
 
 #endregion service classes
