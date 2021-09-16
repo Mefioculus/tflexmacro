@@ -476,8 +476,37 @@ public class Macro : MacroProvider
     // (вернее, при попытке получить параметр DataTable)
     // (для получения всех данных в вложенных в объект списках в виде единой строки)
     public string ПолучитьДанныеДляОтчета() {
-        // Получаем текущий объект
-        ReferenceObject record = Context.ReferenceObject;
+        // Способ получения данных для отчета будет определяться в зависимости от типа отчета
+        
+        ReferenceObject protocol = Context.ReferenceObject;
+        Guid guidOfType = protocol.Class.Guid;
+
+        string result = string.Empty;
+
+        if (protocol.Class.IsInherit(Guids.Types.ПротоколМеталлографическойЛаборатории)) {
+            result = GetDataStringDefault(protocol);
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколФизикомеханическойЛаборатории)) {
+            result = GetDataStringDefault(protocol);
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколСпектральнойЛаборатории)) {
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколХимическойЛаборатории)) {
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколГальваническойЛаборатории)) {
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколМагнитнойЛаборатории)) {
+            result = GetDataStringForMagnetProtocol(protocol);
+        }
+        else if (protocol.Class.IsInherit(Guids.Types.ПротоколЭлектрическойЛаборатории)) {
+        }
+        else {
+        }
+
+        return result;
+    }
+
+    private string GetDataStringDefault(ReferenceObject protocol) {
 
         const int безТаблицы = 0;
         const int таблицаПоОбразцам = 1;
@@ -488,7 +517,7 @@ public class Macro : MacroProvider
         // Класс для генерации строки, которая будет содержать табличные данные
         DataClass resultDataClass = new DataClass();
 
-        switch ((int)record[Guids.Props.ПараметрВидТаблицы].Value) {
+        switch ((int)protocol[Guids.Props.ПараметрВидТаблицы].Value) {
             case безТаблицы:
                 break;
             case таблицаПоОбразцам:
@@ -501,7 +530,7 @@ public class Macro : MacroProvider
                 resultDataClass.Add("KCU, Дж/см\u00B2");
                 resultDataClass.EndRow();
 
-                foreach (ReferenceObject sample in record.GetObjects(Guids.ListsOfObjects.Образцы)) {
+                foreach (ReferenceObject sample in protocol.GetObjects(Guids.ListsOfObjects.Образцы)) {
                     resultDataClass.Add(sample[Guids.Props.Испытание].Value.ToString());
                     resultDataClass.Add(sample[Guids.Props.СводныйРазмер].Value.ToString());
                     resultDataClass.Add(sample[Guids.Props.ПределПрочности].Value.ToString());
@@ -520,7 +549,7 @@ public class Macro : MacroProvider
                 resultDataClass.Add("Фактические данные");
                 resultDataClass.EndRow();
 
-                foreach (ReferenceObject param in record.GetObjects(Guids.ListsOfObjects.Показатели)) {
+                foreach (ReferenceObject param in protocol.GetObjects(Guids.ListsOfObjects.Показатели)) {
                     resultDataClass.Add(param[Guids.Props.Наименование].Value.ToString());
                     resultDataClass.Add(param[Guids.Props.ДанныеПоТУ].Value.ToString());
                     resultDataClass.Add(param[Guids.Props.ФактическиеДанные].Value.ToString());
@@ -537,7 +566,7 @@ public class Macro : MacroProvider
                 resultDataClass.EndRow();
                 
                 bool isFirstValue;
-                foreach (ReferenceObject controlParam in record.GetObjects(Guids.ListsOfObjects.КонтролируемыеПараметры)) {
+                foreach (ReferenceObject controlParam in protocol.GetObjects(Guids.ListsOfObjects.КонтролируемыеПараметры)) {
                     isFirstValue = true;
                     foreach (ReferenceObject factVal in controlParam.GetObjects(Guids.ListsOfObjects.ФактическиеПоказания)) {
                         if (isFirstValue) {
@@ -570,6 +599,45 @@ public class Macro : MacroProvider
         return result;
     }
 
+    private string GetDataStringForMagnetProtocol(ReferenceObject protocol) {
+        DataClass resultDataClass = new DataClass();
+
+        // Добавление регулярной части таблицы
+        int counter = 1;
+        foreach (ReferenceObject sample in protocol.GetObjects(Guids.ListsOfObjects.ОбразцыМагнитнойЛаборатории)) {
+            resultDataClass.Add(sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value.ToString());
+            resultDataClass.Add(counter.ToString()); counter++;
+            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца1].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца2].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца3].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца4].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца5].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.КоэрциальнаяСилаОбразца].Value.ToString());
+            resultDataClass.EndRow();
+        }
+
+        // Добавление итоговой части таблицы, которая содержит допустимые значения по ГОСТ
+        ReferenceObject material = protocol.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
+
+        if (material != null) {
+            resultDataClass.Add(string.Format("По {0} {1}",
+                        material[Guids.Props.ТипСтандартаМагнитнаяЛаборатория].Value.ToString(),
+                        material[Guids.Props.СтандартМагнитнаяЛаборатория].Value.ToString()));
+            resultDataClass.Add(string.Empty);
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция1].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция2].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция3].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция4].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция5].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.КоэрциальнаяСила].Value.ToString());
+            resultDataClass.EndRow();
+        }
+
+        return resultDataClass.GenerateString();
+    }
+
     private class DataClass {
         private string valueSplitter = "^";
         private string rowSplitter = ";";
@@ -594,6 +662,9 @@ public class Macro : MacroProvider
         }
 
         public string GenerateString() {
+            if (intermediateResult.Count != 0) {
+                this.EndRow();
+            }
             string result = string.Join(this.rowSplitter, this.result);
             this.result.Clear();
             return result;
