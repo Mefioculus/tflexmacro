@@ -637,7 +637,7 @@ public class Macro : MacroProvider
         else {
             resultDataClass.Add("Нет данных");
             for (int i = 0; i < 8; i++) {
-                resultDataClass("-");
+                resultDataClass.Add("-");
             }
             resultDataClass.EndRow();
         }
