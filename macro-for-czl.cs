@@ -454,9 +454,10 @@ public class Macro : MacroProvider
             case "5":
                 result = material[Guids.Props.МагнитнаяИндукция5].Value.ToString();
                 break;
-            case "Проницаемость":
-                result = material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString();
-                break;
+            // Убрал данный параметр, так как им не будут пользоваться
+            //case "Проницаемость":
+                //result = material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString();
+                //break;
             case "Коэрциальная сила":
                 result = material[Guids.Props.КоэрциальнаяСила].Value.ToString();
                 break;
@@ -612,7 +613,7 @@ public class Macro : MacroProvider
             resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца3].Value.ToString());
             resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца4].Value.ToString());
             resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца5].Value.ToString());
-            resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
+            //resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
             resultDataClass.Add(sample[Guids.Props.КоэрциальнаяСилаОбразца].Value.ToString());
             resultDataClass.EndRow();
         }
@@ -630,7 +631,7 @@ public class Macro : MacroProvider
             resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция3].Value.ToString());
             resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция4].Value.ToString());
             resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция5].Value.ToString());
-            resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
+            //resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
             resultDataClass.Add(material[Guids.Props.КоэрциальнаяСила].Value.ToString());
             resultDataClass.EndRow();
         }

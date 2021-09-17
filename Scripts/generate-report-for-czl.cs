@@ -237,7 +237,6 @@ private void GenerateMagneteTable(string tableString) {
     widthOfColumns.Add(6, 25);
     widthOfColumns.Add(7, 25);
     widthOfColumns.Add(8, 35);
-    widthOfColumns.Add(9, 35);
 
     // Приступаем к формированию шапки таблицы
     TableCellInit.Text = "Марка материала, размер, мм";
@@ -247,8 +246,7 @@ private void GenerateMagneteTable(string tableString) {
         new CellData("№ Контр. образца", widthOfColumns[2]),
         new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл",
                 widthOfColumns[3] + widthOfColumns[4] + widthOfColumns[5] + widthOfColumns[6] + widthOfColumns[7]),
-        new CellData("Max магнитная проницаемость, Гн", widthOfColumns[8]),
-        new CellData("Коэрциальная сила, А/м", widthOfColumns[9])
+        new CellData("Коэрциальная сила, А/м", widthOfColumns[8])
     };
 
     List<CellData> secondColumnNames = new List<CellData>() {
@@ -259,8 +257,7 @@ private void GenerateMagneteTable(string tableString) {
         new CellData("500", widthOfColumns[5]),
         new CellData("1000", widthOfColumns[6]),
         new CellData("2500", widthOfColumns[7]),
-        new CellData("", widthOfColumns[8]),
-        new CellData("", widthOfColumns[9])
+        new CellData("", widthOfColumns[8])
     };
 
     foreach (CellData cellData in firstColumnNames) {
@@ -284,7 +281,6 @@ private void GenerateMagneteTable(string tableString) {
     RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
     RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
     RegularDataTable.Rows[0].Cells[3].RowSpan = 2;
-    RegularDataTable.Rows[0].Cells[4].RowSpan = 2;
 
     
     // Приступаем к формированию регуляной части таблицы
