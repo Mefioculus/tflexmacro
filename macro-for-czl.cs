@@ -661,6 +661,9 @@ public class Macro : MacroProvider
         }
 
         public void Add(string value) {
+            // Если значение содержит 0, мы не заполняем данную колонку
+            if (value == "0")
+                value = "-";
             this.intermediateResult.Add(value);
         }
 
