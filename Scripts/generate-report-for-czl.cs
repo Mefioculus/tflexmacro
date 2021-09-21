@@ -285,7 +285,8 @@ private void GenerateMagneteTable(string tableString) {
     
     // Приступаем к формированию регуляной части таблицы
     if (tableString != string.Empty) {
-        List<List<string>> rowsOfTable = ParseDataTable(tableString);
+        bool tableWithHeader = false;
+        List<List<string>> rowsOfTable = ParseDataTable(tableString, tableWithHeader);
 
         foreach (List<string> row in rowsOfTable) {
             XRTableRow tableRow = new XRTableRow();
@@ -311,7 +312,7 @@ private void GenerateMagneteTable(string tableString) {
 #endregion Метод для генерации таблицы для протокола магнитной лаборатории
 
 #region ParseDateTable
-private List<List<string>> ParseDataTable (string stringFromInput) {
+private List<List<string>> ParseDataTable (string stringFromInput, bool tableWithHeader = true) {
     // Данный метод преобразовывает входную струку с табличными данными в отдельные строки.
     // Так же данный метод будет удалять назадействованные колонки
     List<List<string>> result = new List<List<string>>();
@@ -320,7 +321,7 @@ private List<List<string>> ParseDataTable (string stringFromInput) {
     string[] rows = stringFromInput.Split(';');
 
     // Определяем, какие колонки требуется выводить на печать
-    SortedSet<int> indexes = GetIndexesOfColumnsForPrinting(rows);
+    SortedSet<int> indexes = GetIndexesOfColumnsForPrinting(rows, tableWithHeader);
 
     // Возвращаем данные
     foreach (string row in rows) {
@@ -332,13 +333,16 @@ private List<List<string>> ParseDataTable (string stringFromInput) {
 #endregion ParseDataTable
 
 #region GetIndexesOfColumnsForPrinting
-private SortedSet<int> GetIndexesOfColumnsForPrinting(string[] table) {
+private SortedSet<int> GetIndexesOfColumnsForPrinting(string[] table, bool ignoreHeader) {
 
     SortedSet<int> indexes = new SortedSet<int>();
+    int startIndex = 1;
+    if (!ignoreHeader)
+        startIndex = 0;
 
-    for (int i = 1; i <= table.Length - 1; i++) {
+    for (int i = startIndex; i <= table.Length - 1; i++) {
         string[] values = table[i].Split('^');
-        for (int j =0; j <= values.Length - 1; j++) {
+        for (int j = 0; j <= values.Length - 1; j++) {
             if (NonDefault(values[j])) {
                 indexes.Add(j);
             }
