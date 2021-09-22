@@ -508,49 +508,55 @@ public class Macro : MacroProvider
     // Метод, который будет формировать сводную строку с допустимым значением основываясь на значениях, указанных в поле
     // для минимального и максимального значения параметра
     public string ПолучитьДиапазонДопустимыхЗначенийПараметра(string nameOfParameter) {
+        ReferenceObject material = Context.ReferenceObject;
         string result = string.Empty;
         switch (nameOfParameter) {
             case "Индукция 1":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция1, Guids.Props.МаксМагнитнаяИндукция1);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция1, Guids.Props.МаксМагнитнаяИндукция1);
+                material[Guids.Props.МагнитнаяИндукция1].Value = result;
                 break;
             case "Индукция 2":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция2, Guids.Props.МаксМагнитнаяИндукция2);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция2, Guids.Props.МаксМагнитнаяИндукция2);
+                material[Guids.Props.МагнитнаяИндукция2].Value = result;
                 break;
             case "Индукция 3":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция3, Guids.Props.МаксМагнитнаяИндукция3);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция3, Guids.Props.МаксМагнитнаяИндукция3);
+                material[Guids.Props.МагнитнаяИндукция3].Value = result;
                 break;
             case "Индукция 4":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция4, Guids.Props.МаксМагнитнаяИндукция4);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция4, Guids.Props.МаксМагнитнаяИндукция4);
+                material[Guids.Props.МагнитнаяИндукция4].Value = result;
                 break;
             case "Индукция 5":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция5, Guids.Props.МаксМагнитнаяИндукция5);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция5, Guids.Props.МаксМагнитнаяИндукция5);
+                material[Guids.Props.МагнитнаяИндукция5].Value = result;
                 break;
             case "Индукция 6":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция6, Guids.Props.МаксМагнитнаяИндукция6);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция6, Guids.Props.МаксМагнитнаяИндукция6);
+                material[Guids.Props.МагнитнаяИндукция6].Value = result;
                 break;
             case "Коэрциальная сила":
-                result = ПолучитьСтрокуДиапазона(Guids.Props.МинКоэрциальнаяСила, Guids.Props.МаксКоэрциальнаяСила);
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинКоэрциальнаяСила, Guids.Props.МаксКоэрциальнаяСила);
+                material[Guids.Props.КоэрциальнаяСила].Value = result;
                 break;
             default:
                 result = "Ошибка";
-
                 break;
         }
-        return string.Empty;
+        return result;
     }
 
-    private string ПолучитьСтрокуДиапазона(Guid minValueOfParameter, Guid maxValueOfParameter) {
+    private string ПолучитьСтрокуДиапазона(ReferenceObject material, Guid minValueOfParameter, Guid maxValueOfParameter) {
         // Получаем текущий объект для получения значения параметров
-        ReferenceObject material = Context.ReferenceObject;
         string result = string.Empty;
 
         double minValue = (double)material[minValueOfParameter].Value;
         double maxValue = (double)material[maxValueOfParameter].Value;
 
-        if (minValue == 0.0) && (maxValue == 0.0) {
+        if ((minValue == 0.0) && (maxValue == 0.0)) {
             return result;
         }
-        if (minValue != 0.0) && (maxValue != 0.0) {
+        if ((minValue != 0.0) && (maxValue != 0.0)) {
             return string.Format("от {0} до {1}", minValue, maxValue); 
         }
 
