@@ -568,6 +568,43 @@ public class Macro : MacroProvider
 
     #endregion ФормированиеСводногоДопустимогоРазмера
 
+    public string ОтображениеНапряженностиВОбразце(int number) {
+        ReferenceObject sampleObject = Context.ReferenceObject;
+        ReferenceObject material = sampleObject.MasterObject.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
+
+        string result = string.Empty;
+
+        if (material == null)
+            return result;
+
+        // Получаем значение напряженности в зависимости от номера замера, для которого требуется ее получить
+        switch (number) {
+            case 1:
+                result = material[Guids.Props.Напряженность1].Value.ToString();
+                break;
+            case 2:
+                result = material[Guids.Props.Напряженность2].Value.ToString();
+                break;
+            case 3:
+                result = material[Guids.Props.Напряженность3].Value.ToString();
+                break;
+            case 4:
+                result = material[Guids.Props.Напряженность4].Value.ToString();
+                break;
+            case 5:
+                result = material[Guids.Props.Напряженность5].Value.ToString();
+                break;
+            case 6:
+                result = material[Guids.Props.Напряженность6].Value.ToString();
+                break;
+            default:
+                result = "Ошибка";
+                break;
+        }
+
+        return result;
+    }
+
     #endregion Методы для формирования магнитного протокола
 
     #region Получение данных для отчета
