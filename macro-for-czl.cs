@@ -125,10 +125,32 @@ public class Macro : MacroProvider
             public static Guid МагнитнаяИндукция3 = new Guid("7bd70dc0-37b8-44ea-ba06-6fdbe0c5db14");
             public static Guid МагнитнаяИндукция4 = new Guid("119d00a0-96ae-471d-b90a-e19e6f3d20df");
             public static Guid МагнитнаяИндукция5 = new Guid("040eb1c3-9610-4685-bddc-944b9a1b81eb");
+            public static Guid МагнитнаяИндукция6 = new Guid("7dc4b5d1-b9c9-42e3-b255-2834a4ac1a7a");
+            public static Guid МинМагнитнаяИндукция1 = new Guid("3dfc300e-dd47-4c15-9a30-7cd97d78ce48");
+            public static Guid МаксМагнитнаяИндукция1 = new Guid("5752b855-61cd-482e-a114-0b2925da8f1d");
+            public static Guid МинМагнитнаяИндукция2 = new Guid("e8b759cc-4aff-4b98-9638-87eeaf8166c1");
+            public static Guid МаксМагнитнаяИндукция2 = new Guid("a070a605-48df-416c-80c5-8219fdad524a");
+            public static Guid МинМагнитнаяИндукция3 = new Guid("d49c7a51-72a1-43f8-81c0-b6b953962234");
+            public static Guid МаксМагнитнаяИндукция3 = new Guid("19f43123-7281-475a-a47a-f326b4e0e30b");
+            public static Guid МинМагнитнаяИндукция4 = new Guid("b3d8cd52-e512-4371-924a-d825056fd358");
+            public static Guid МаксМагнитнаяИндукция4 = new Guid("67a5dc74-5e1f-4b4b-adbe-3bf54710223c");
+            public static Guid МинМагнитнаяИндукция5 = new Guid("ce3be873-fd6b-4243-9be2-dd2ccb9c5ab3");
+            public static Guid МаксМагнитнаяИндукция5 = new Guid("6ad6c59b-1de9-4c6d-a477-4c1f58373d62");
+            public static Guid МинМагнитнаяИндукция6 = new Guid("308ff472-62e6-4009-bbf6-ab1f83c1567b");
+            public static Guid МаксМагнитнаяИндукция6 = new Guid("59cf59e3-435b-4581-8f2d-0dc66d0fbeda");
+            public static Guid МинКоэрциальнаяСила = new Guid("789fbfea-85e6-4930-8824-7c8a6c81a77e");
+            public static Guid Напряженность1 = new Guid("094af1de-177e-4623-94f8-4140c46ef4a0");
+            public static Guid Напряженность2 = new Guid("5fb1907e-bd8b-4b97-8a73-011aa06276dd");
+            public static Guid Напряженность3 = new Guid("dcd9aeca-a88b-4772-a21e-e6c2dafd5bdf");
+            public static Guid Напряженность4 = new Guid("5ff64532-65c5-4b6b-8bed-8a5f3bb94aeb");
+            public static Guid Напряженность5 = new Guid("25a0764c-ea45-472e-a0b0-1b77ebb622ab");
+            public static Guid Напряженность6 = new Guid("34b4f05e-bde3-4342-89d3-846b4e298cc3");
+            public static Guid МаксКоэрциальнаяСила = new Guid("f85b7135-21b6-4231-bad5-f83e1ee0e6b6");
             public static Guid МаксимальнаяПроницаемость = new Guid("d66b6261-22e4-4226-b8e8-cdd6294fecd2");
             public static Guid КоэрциальнаяСила = new Guid("db5f2f57-bb99-48cb-9668-14a7e033c584");
             public static Guid ТипСтандартаМагнитнаяЛаборатория = new Guid("2c1890c0-e0d4-40dc-b680-94e49130efe9");
             public static Guid СтандартМагнитнаяЛаборатория = new Guid("7892a0b0-9d5a-4e4d-a0c4-ccbbda5d185b");
+            public static Guid КоличествоЗамеров = new Guid("6afc0add-c244-43bd-9e48-847695a180ae");
         }
 
         public static class Links {
@@ -480,6 +502,65 @@ public class Macro : MacroProvider
     }
 
     #endregion Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
+
+    #region ФормированиеСводногоДопустимогоРазмера
+    
+    // Метод, который будет формировать сводную строку с допустимым значением основываясь на значениях, указанных в поле
+    // для минимального и максимального значения параметра
+    public string ПолучитьДиапазонДопустимыхЗначенийПараметра(string nameOfParameter) {
+        string result = string.Empty;
+        switch (nameOfParameter) {
+            case "Индукция 1":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция1, Guids.Props.МаксМагнитнаяИндукция1);
+                break;
+            case "Индукция 2":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция2, Guids.Props.МаксМагнитнаяИндукция2);
+                break;
+            case "Индукция 3":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция3, Guids.Props.МаксМагнитнаяИндукция3);
+                break;
+            case "Индукция 4":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция4, Guids.Props.МаксМагнитнаяИндукция4);
+                break;
+            case "Индукция 5":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция5, Guids.Props.МаксМагнитнаяИндукция5);
+                break;
+            case "Индукция 6":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинМагнитнаяИндукция6, Guids.Props.МаксМагнитнаяИндукция6);
+                break;
+            case "Коэрциальная сила":
+                result = ПолучитьСтрокуДиапазона(Guids.Props.МинКоэрциальнаяСила, Guids.Props.МаксКоэрциальнаяСила);
+                break;
+            default:
+                result = "Ошибка";
+
+                break;
+        }
+        return string.Empty;
+    }
+
+    private string ПолучитьСтрокуДиапазона(Guid minValueOfParameter, Guid maxValueOfParameter) {
+        // Получаем текущий объект для получения значения параметров
+        ReferenceObject material = Context.ReferenceObject;
+        string result = string.Empty;
+
+        double minValue = (double)material[minValueOfParameter].Value;
+        double maxValue = (double)material[maxValueOfParameter].Value;
+
+        if (minValue == 0.0) && (maxValue == 0.0) {
+            return result;
+        }
+        if (minValue != 0.0) && (maxValue != 0.0) {
+            return string.Format("от {0} до {1}", minValue, maxValue); 
+        }
+
+        result = minValue == 0.0 ?
+            string.Format("Не более {0}", maxValue.ToString()) : string.Format("Не менее {0}", minValue.ToString());
+
+        return result;
+    }
+
+    #endregion ФормированиеСводногоДопустимогоРазмера
 
     #endregion Методы для формирования магнитного протокола
 
