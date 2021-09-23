@@ -226,17 +226,38 @@ private void GenerateDefaultTable(string tableString) {
 private void GenerateMagneteTable(string tableString) {
     RegularDataTable.BeginInit();
 
+    // Основная особенность данной таблицы в том, что не смотря на то, что изначально она заявлялась как полностью
+    // фиксированная по количеству колонок, в процессе работы выяснилось, что количество замеров магнитной индукции
+    // у разных материалов может варьироваться от 2-х до 6-ти.
+    
+    // Следовательно возникает потребность в том, чтобы таблица менялась динамически
+
+    // Завершаем работу метода, если строка не содержит информации с данными таблицы
+    // (скорее всего это означает, что пользователь пытается сформировать отчет на протокол
+    // без подключенного материала)
+    if (tableString == string.Empty)
+        return;
+
+    // Получаем таблицу с данными сразу, для того, чтобы понять, какого размера нам нужно формировать таблицу
+    List<List<string>> rowsOfTable = ParseDataTable(tableString);
+    int numberOfDinamicColumns = rowsOfTable[0].Count - 3; // Вычитаем из общего количества колонок количество неизменных колонок
+
 
     // Создаем словарь с значением ширин колонок
     Dictionary<int, int> widthOfColumns = new Dictionary<int, int>();
-    widthOfColumns.Add(1, 50);
-    widthOfColumns.Add(2, 25);
-    widthOfColumns.Add(3, 25);
-    widthOfColumns.Add(4, 25);
-    widthOfColumns.Add(5, 25);
-    widthOfColumns.Add(6, 25);
-    widthOfColumns.Add(7, 25);
-    widthOfColumns.Add(8, 35);
+    int counter = 1; // Счетчик для нумерации колонки
+    int lengthOfInductionColumn = 25;
+    int lengthOfInductionColumnSummary = (int)(lengthOfInductionColumn * numberOfDinamicColumns);
+    
+    // Заполняем первые две неизменные колонки
+    widthOfColumns.Add(counter++, 50);
+    widthOfColumns.Add(counter++, 25);
+    // Заполняем динамически изменяемые колонки
+    for (int i = 0; i < numberOfDinamicColumns; i++)
+        widthOfColumns.Add(counter++, lengthOfInductionColumn);
+    // Заполняем последнюю незименяемую колонку
+    widthOfColumns.Add(counter++, 35);
+
 
     // Приступаем к формированию шапки таблицы
     TableCellInit.Text = "Марка материала, размер, мм";
@@ -244,69 +265,41 @@ private void GenerateMagneteTable(string tableString) {
     
     List<CellData> firstColumnNames = new List<CellData>() {
         new CellData("№ Контр. образца", widthOfColumns[2]),
-        new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл",
-                widthOfColumns[3] + widthOfColumns[4] + widthOfColumns[5] + widthOfColumns[6] + widthOfColumns[7]),
-        new CellData("Коэрциальная сила, А/м", widthOfColumns[8])
+        new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл", lengthOfInductionColumnSummary),
+        new CellData("Коэрциальная сила, А/м", widthOfColumns[widthOfColumns.Count])
     };
 
-    List<CellData> secondColumnNames = new List<CellData>() {
-        new CellData("", widthOfColumns[1]),
-        new CellData("", widthOfColumns[2]),
-        new CellData("200", widthOfColumns[3]),
-        new CellData("300", widthOfColumns[4]),
-        new CellData("500", widthOfColumns[5]),
-        new CellData("1000", widthOfColumns[6]),
-        new CellData("2500", widthOfColumns[7]),
-        new CellData("", widthOfColumns[8])
-    };
-
+    // Добавляем колонки заголовка в таблицу
     foreach (CellData cellData in firstColumnNames) {
         XRTableCell cell = new XRTableCell();
         cell.Text = cellData.NameColumn;
         cell.WidthF = cellData.Width;
         RegularDataTable.Rows[0].Cells.Add(cell);
     }
+    
+    // Приступаем к формированию регуляной части таблицы
+    foreach (List<string> row in rowsOfTable) {
+        XRTableRow tableRow = new XRTableRow();
+        RegularDataTable.Rows.Add(tableRow);
 
-    XRTableRow secondRow = new XRTableRow();
-    RegularDataTable.Rows.Add(secondRow);
-
-    foreach (CellData cellData in secondColumnNames) {
-        XRTableCell cell = new XRTableCell();
-        cell.Text = cellData.NameColumn;
-        cell.WidthF = cellData.Width;
-        secondRow.Cells.Add(cell);
+        int orderOfColumn = 1;
+        foreach (string value in row) {
+            XRTableCell cell = new XRTableCell();
+            cell.Text = value;
+            cell.Width = widthOfColumns[orderOfColumn++];
+            tableRow.Cells.Add(cell);
+        }
     }
 
-    // Объединяем общие ячейки
+    // Объединяем общие ячейки в заголовке
+    // (Часть заголовка находилась в регулярной части, поэтому объединить эти колонки ранее не предствлялось возможным)
     RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
     RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
     RegularDataTable.Rows[0].Cells[3].RowSpan = 2;
 
-    
-    // Приступаем к формированию регуляной части таблицы
-    if (tableString != string.Empty) {
-        bool tableWithHeader = false;
-        List<List<string>> rowsOfTable = ParseDataTable(tableString, tableWithHeader);
-
-        foreach (List<string> row in rowsOfTable) {
-            XRTableRow tableRow = new XRTableRow();
-            RegularDataTable.Rows.Add(tableRow);
-
-            int orderOfColumn = 1;
-            foreach (string value in row) {
-                XRTableCell cell = new XRTableCell();
-                cell.Text = value;
-                cell.Width = widthOfColumns[orderOfColumn++];
-                tableRow.Cells.Add(cell);
-            }
-        }
-    }
-
 
     // Завершаем работу с таблицей
     RegularDataTable.EndInit();
-
-
 }
 
 #endregion Метод для генерации таблицы для протокола магнитной лаборатории
