@@ -110,7 +110,7 @@ public class Macro : MacroProvider
             public static Guid РазмерМатериалаМагнитнаяЛаборатория = new Guid("fe9d24b0-e1b0-489c-b029-b7b0b76878cf");
             public static Guid СводноеНаименованиеОбразцаМагнитнойЛаборатории = new Guid("43b442a0-5901-4fe7-8ad1-6e072bd350d6");
             public static Guid ТипРазмераОбразцаМагнитнойЛаборатории = new Guid("59f6ea61-d864-4439-8f70-53e8937a2643");
-            public static Guid КоэрциальнаяСилаОбразца = new Guid("b0d15b96-45f4-43b8-95e8-633c7f8e4821");
+            public static Guid КоэрцитивнаяСилаОбразца = new Guid("b0d15b96-45f4-43b8-95e8-633c7f8e4821");
             public static Guid МаксимальнаяПроницаемостьОбразца = new Guid("403b8795-5d09-4ac6-91c9-682313c8e3e5");
             public static Guid МагнитнаяИндукцияОбразца1 = new Guid("4793f354-8820-4027-a599-bd70fc7c8693");
             public static Guid МагнитнаяИндукцияОбразца2 = new Guid("568b10a1-9bf8-438c-902b-1077fa213f7b");
@@ -139,16 +139,16 @@ public class Macro : MacroProvider
             public static Guid МаксМагнитнаяИндукция5 = new Guid("6ad6c59b-1de9-4c6d-a477-4c1f58373d62");
             public static Guid МинМагнитнаяИндукция6 = new Guid("308ff472-62e6-4009-bbf6-ab1f83c1567b");
             public static Guid МаксМагнитнаяИндукция6 = new Guid("59cf59e3-435b-4581-8f2d-0dc66d0fbeda");
-            public static Guid МинКоэрциальнаяСила = new Guid("789fbfea-85e6-4930-8824-7c8a6c81a77e");
+            public static Guid МинКоэрцитивнаяСила = new Guid("789fbfea-85e6-4930-8824-7c8a6c81a77e");
             public static Guid Напряженность1 = new Guid("094af1de-177e-4623-94f8-4140c46ef4a0");
             public static Guid Напряженность2 = new Guid("5fb1907e-bd8b-4b97-8a73-011aa06276dd");
             public static Guid Напряженность3 = new Guid("dcd9aeca-a88b-4772-a21e-e6c2dafd5bdf");
             public static Guid Напряженность4 = new Guid("5ff64532-65c5-4b6b-8bed-8a5f3bb94aeb");
             public static Guid Напряженность5 = new Guid("25a0764c-ea45-472e-a0b0-1b77ebb622ab");
             public static Guid Напряженность6 = new Guid("34b4f05e-bde3-4342-89d3-846b4e298cc3");
-            public static Guid МаксКоэрциальнаяСила = new Guid("f85b7135-21b6-4231-bad5-f83e1ee0e6b6");
+            public static Guid МаксКоэрцитивнаяСила = new Guid("f85b7135-21b6-4231-bad5-f83e1ee0e6b6");
             public static Guid МаксимальнаяПроницаемость = new Guid("d66b6261-22e4-4226-b8e8-cdd6294fecd2");
-            public static Guid КоэрциальнаяСила = new Guid("db5f2f57-bb99-48cb-9668-14a7e033c584");
+            public static Guid КоэрцитивнаяСила = new Guid("db5f2f57-bb99-48cb-9668-14a7e033c584");
             public static Guid ТипСтандартаМагнитнаяЛаборатория = new Guid("2c1890c0-e0d4-40dc-b680-94e49130efe9");
             public static Guid СтандартМагнитнаяЛаборатория = new Guid("7892a0b0-9d5a-4e4d-a0c4-ccbbda5d185b");
             public static Guid КоличествоЗамеров = new Guid("6afc0add-c244-43bd-9e48-847695a180ae");
@@ -494,8 +494,8 @@ public class Macro : MacroProvider
             //case "Проницаемость":
                 //result = material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString();
                 //break;
-            case "Коэрциальная сила":
-                result = material[Guids.Props.КоэрциальнаяСила].Value.ToString();
+            case "Коэрцитивная сила":
+                result = material[Guids.Props.КоэрцитивнаяСила].Value.ToString();
                 break;
             default:
                 result = "Ошибка";
@@ -539,9 +539,9 @@ public class Macro : MacroProvider
                 result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинМагнитнаяИндукция6, Guids.Props.МаксМагнитнаяИндукция6);
                 material[Guids.Props.МагнитнаяИндукция6].Value = result;
                 break;
-            case "Коэрциальная сила":
-                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинКоэрциальнаяСила, Guids.Props.МаксКоэрциальнаяСила);
-                material[Guids.Props.КоэрциальнаяСила].Value = result;
+            case "Коэрцитивная сила":
+                result = ПолучитьСтрокуДиапазона(material, Guids.Props.МинКоэрцитивнаяСила, Guids.Props.МаксКоэрцитивнаяСила);
+                material[Guids.Props.КоэрцитивнаяСила].Value = result;
                 break;
             default:
                 result = "Ошибка";
@@ -801,7 +801,7 @@ public class Macro : MacroProvider
 
             // Добавление последних колонок, которые не не изменяются динамически
             //resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
-            resultDataClass.Add(sample[Guids.Props.КоэрциальнаяСилаОбразца].Value.ToString());
+            resultDataClass.Add(sample[Guids.Props.КоэрцитивнаяСилаОбразца].Value.ToString());
             resultDataClass.EndRow();
         }
 
@@ -827,7 +827,7 @@ public class Macro : MacroProvider
             resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция6].Value.ToString());
 
         //resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
-        resultDataClass.Add(material[Guids.Props.КоэрциальнаяСила].Value.ToString());
+        resultDataClass.Add(material[Guids.Props.КоэрцитивнаяСила].Value.ToString());
         resultDataClass.EndRow();
 
         return resultDataClass.GenerateString();
