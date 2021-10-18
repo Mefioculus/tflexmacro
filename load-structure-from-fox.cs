@@ -48,6 +48,11 @@ public class Macro : MacroProvider {
                 public static Guid Обозначение = new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb");
                 public static Guid Наименование = new Guid("45e0d244-55f3-4091-869c-fcf0bb643765");
             }
+
+            public static class Документы {
+                public static Guid Обозначение = new Guid("b8992281-a2c3-42dc-81ac-884f252bd062");
+                public static Guid Наименование = new Guid("7e115f38-f446-40ce-8301-9b211e6ce5fd");
+            }
         }
 
         public static class Links {
@@ -83,7 +88,7 @@ public class Macro : MacroProvider {
         
     }
 
-    #region GetInfo(ReferenceObject)
+    #region getInfo(ReferenceObject)
     private string GetInfo(ReferenceObject refObj) {
         string result = string.Empty;
         result += string.Format("Информация собирается для объекта '{0}'\n", refObj.ToString());
@@ -183,7 +188,6 @@ public class Macro : MacroProvider {
         return true;
     }
     #endregion ЗагрузитьИзмененияСтруктурыИзделияИзFox()
-
     
     #region Sevrice methods
     // Дополнительные методы, которые требуются для работы метода ЗагрузитьИзмененияСтруктурыИзделияИзFox()
@@ -259,18 +263,27 @@ public class Macro : MacroProvider {
 
     #region ObjectInTFlex
     private class ObjectInTflex {
-        public ReferenceObject DocumentObject;
-        public ReferenceObject NomenclatureObject;
+        public string Shifr { get; private set; }
+        public string Name { get; private set; }
+        public string LogMessage { get; set; } = string.Empty();
+        public ReferenceObject DocumentObject { get; set; }
+        public ReferenceObject NomenclatureObject { get; set; }
         // Свойство, которое показывает, успешно ли был произведен поиск объектов
         public bool IsDataComplete => ((this.DocumentObject != null) & (this.NomenclatureObject != null));
 
         public ObjectInTflex(string shifr, string name) {
+            this.Shifr = shifr;
+            this.Name = name;
             // Производим поиск по справочнику документов
             // TODO Добавить анализ найденных данных.
             // Узнать, что получилось добавить, а чего не получилось
             // TODO Реазизовать интерфейс для создания нового подключения через этот служебный класс
             this.NomenclatureObject = FindInNomenclatureReference(shifr, name);
             this.DocumentObject = FindInDocumentReference(shifr, name);
+        }
+
+        public void AddMessage(string message) {
+            this.LogMessage = string.Format("{0}{1}\n", this.LogMessage, message);
         }
         
         #region FindInNomenclatureReference()
@@ -279,21 +292,41 @@ public class Macro : MacroProvider {
         private ReferenceObject FindInNomenclatureReference(string shifr, string name) {
             // Производим поиск объекта в справочнике "ЭСИ" по обозначению
             ParameterInfo shifrParam = nomenclatureReference.ParameterGroup[Guids.Parameters.Номенклатура.Обозначение];
-            List<ReferenceObject> searchedObject = nomenclatureReference.Find(shifrParam, shifr);
+            List<ReferenceObject> searchedNomenclature = nomenclatureReference.Find(shifrParam, shifr);
 
-            if (searchedObject.Count == 1) {
-                return searchedObject[0];
+            if (searchedNomenclature.Count == 1) {
+                // Запись информационного сообщения
+                AddMessage(string.Format(
+                            "Для изделия {0} было найдено единственное совпадение в ЭСИ:\n{1} (Guid: {2})\n",
+                            this.ToString(),
+                            searchedNomenclature[0].ToString(),
+                            searchedNomenclature[0].Guid.ToString()
+                            ));
+
+                return searchedNomenclature[0];
             }
-            else if (searchedObject.Count == 0) {
-                // Случай, когда объект найти не получилось
-                
-                // Необходимо сообщить об этом пользователю
+            else if (searchedNomenclature.Count == 0) {
+                // Запись информационного сообщения
+                AddMessage(string.Format(
+                            "Для изделия {0} не было найдено ни одного совпадения в ЭСИ",
+                            this.ToString()
+                            ));
 
-                // Как варинат, необходимо создать объект с таким обозначением и наименованем
+                // Изначально я рассматривал вариант с автоматическим созданием данного объекта, но учитывая,
+                // что мы не будем грузить всю структуру, имеет смысл возвращать ненайденные позиции для того,
+                // чтобы не обрабатывать данные изменения в FoxPro
+                return null;
             }
             else {
                 // Случай, когда было найдено несколько объектов
-                // Об этом нужно сообщить пользователю
+                AddMessage(string.Format(
+                            "Для изделия {0} было обнаружено несколько совпадений в ЭСИ:\n{1}\n\n",
+                            this.ToString(),
+                            string.Join("\n", searchedNomenclature.Select(refObj => string.Format("- {0} (Guid: {1})", refObj.ToString(), refObj.Guid.ToString())))
+                            ));
+                // В данный момент возвращаем пользователю null, так как мы не знаем, какое
+                // конкретно значение выбрать
+                return null;
             }
 
             return null;
@@ -304,24 +337,99 @@ public class Macro : MacroProvider {
         #region FindInDocumentReference();
 
         // Метод для поиска объекта в справочнике документов
-        private ReferenceObject FindInDocumentReference(string designation, string name) {
+        private ReferenceObject FindInDocumentReference(string shifr, string name) {
             // Для начала пробуем получить данный объект по связи с номенклатурного объекта
             if (this.NomenclatureObject != null) {
                 NomenclatureObject nomObj = this.NomenclatureObject as NomenclatureObject;
 
                 if (nomObj.HasLinkedObject)
+                    // Случай, когда удалось получить связанный документ
+                    AddMessage(string.Format(
+                                "Для изделия {0} был обнаружен документ по связи с ЭСИ на Документы:\n{1} (Guid: {2})\n",
+                                this.ToString(),
+                                nomObj.LinkedObject.ToString(),
+                                nomObj.LinkedObject.Guid.ToString()
+                                ));
                     return nomObj.LinkedObject;
                 else {
-                    // Пытаемся найти нужный объект и подключить его
+                    // У нас не получилось получить документ по связи с ЭСИ на документы, так что пробуем
+                    // произвести поиск в справочнике документы по обозначению
+                    ParameterInfo shifrParam = documentReference.ParameterGroup[Guids.Parameters.Документы.Обозначение];
+                    List<ReferenceObject> searchedDocuments = documentReference.Find(shifrParam, shifr);
+                    AddMessage(string.Format(
+                                "Для изделия {0} не удалось получить документ по связи с найденного номенклатурного объекта",
+                                this.ToString()
+                                ));
 
-                    // Или же создаем объект и подключаем его
+                    if (searchedDocuments.Count == 1) {
+                        AddMessage(string.Format(
+                                    "Для изделия {0} был обнаружен документ при поиске по обозначению:\n{1} (Guid: {2})\n",
+                                    this.ToString(),
+                                    searchedDocuments[0].ToString(),
+                                    searchedDocuments[0].Guid.ToString()
+                                    ));
+                        return searchedDocuments[0];
+                    }
+                    else if (searchedDocuments.Count == 0) {
+                        AddMessage(string.Format(
+                                    "Для изделия {0} не удалось найти документы по обозначению:\n{1} (Guid: {2})\n",
+                                    this.ToString(),
+                                    searchedDocuments[0].ToString(),
+                                    searchedDocuments[0].Guid.ToString()
+                                    ));
+                        return null;
+                    }
+                    else {
+                        AddMessage(string.Format(
+                                    "Для изделия {0} было найдено несколько совпадений по обозначению:\n{1}\n\n",
+                                    this.ToString(),
+                                    string.Join("\n", searchedDocuments.Select(document => string.Format("{0} (Guid: {1})", document.ToString(), document.Guid)))
+                                    ));
+                        return null;
+                    }
                 }
 
             }
-            return null;
+            else {
+                // Пробуем произвести поиск в справочнике вручну, без связи на ЭСИ
+                ParameterInfo shifrParam = documentReference.ParameterGroup[Guids.Parameters.Документы.Обозначение];
+                List<ReferenceObject> searchedDocuments = documentReference.Find(shifrParam, shifr);
+                
+                if (searchedDocuments.Count == 1) {
+                    // Случай, когда получилось найти один документ в справочнике Документы (но не получилось найти Номенклатуру)
+                    AddMessage(string.Format(
+                                "Для изделия {0} было найдено одно совпадение по обозначению:\n{1} (Guid: {1})\n",
+                                this.ToString(),
+                                searchedDocuments[0].ToString(),
+                                searchedDocuments[0].Guid.ToString()
+                                ));
+
+                    return searchedDocuments[0];
+                }
+                else if (searchedDocuments.Count == 0) {
+                    AddMessage(string.Format(
+                                "Для изделия {0} не было найдено ни одного совпадения по обозначению\n",
+                                this.ToString(),
+                                ));
+                    return null;
+                }
+                else {
+                    // TODO написать сообщение
+                    AddMessage(string.Format(
+                                "Для изделия {0} было найдено несколько совпадений по обозначению:\n{1}\n\n",
+                                this.ToString(),
+                                string.Join("\n", searchedDocuments.Select(document => string.Format("{0} (Guid: {1})", document.ToString(), document.Guid)))
+                                ));
+                    return null;
+                }
+            }
         }
 
         #endregion FindInDocumentReference();
+
+        public string ToString() {
+            return string.Format("\"{0}\" - \"{1}\"", this.Shifr, this.Name);
+        }
     }
     #endregion ObjectInTFlex
 
@@ -346,6 +454,7 @@ public class Macro : MacroProvider {
 
     #endregion TypeProcess
     #endregion Enums
+
     #region class Logger
     private static class Logger {
         
