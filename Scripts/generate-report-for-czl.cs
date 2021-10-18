@@ -224,13 +224,6 @@ private void GenerateDefaultTable(string tableString) {
 #region Метод для генерации таблицы для протокола магнитной лаборатории
 
 private void GenerateMagneteTable(string tableString) {
-    RegularDataTable.BeginInit();
-
-    // Основная особенность данной таблицы в том, что не смотря на то, что изначально она заявлялась как полностью
-    // фиксированная по количеству колонок, в процессе работы выяснилось, что количество замеров магнитной индукции
-    // у разных материалов может варьироваться от 2-х до 6-ти.
-    
-    // Следовательно возникает потребность в том, чтобы таблица менялась динамически
 
     // Завершаем работу метода, если строка не содержит информации с данными таблицы
     // (скорее всего это означает, что пользователь пытается сформировать отчет на протокол
@@ -238,66 +231,135 @@ private void GenerateMagneteTable(string tableString) {
     if (tableString == string.Empty)
         return;
 
-    // Получаем таблицу с данными сразу, для того, чтобы понять, какого размера нам нужно формировать таблицу
+    RegularDataTable.BeginInit();
+
+    // Получаем выбранный пользлователем тип исследвоания магнитной лаборатории.
+    // Может быть магнитная индукция - 0
+    // Может быть удельные потери - 1
+    DataSet ds = (DataSet)DetailRegularPart.DataSource;
+    var index = ds.Tables.IndexOf("Табличные данные (Табличные данные)");
+    var tableWithData = ds.Tables[index];
+    int typeOfMeasure = Convert.ToInt32(tableWithData.Rows[0]["TypeMeasure"]);
+
+    // Получаем таблицу с данными
     List<List<string>> rowsOfTable = ParseDataTable(tableString);
-    int numberOfDinamicColumns = rowsOfTable[0].Count - 3; // Вычитаем из общего количества колонок количество неизменных колонок
+
+    // Выбор формирования таблицы в зависимости от выбранного пользователем типа исследования
+    if (typeOfMeasure == 0) {
+        // Основная особенность данной таблицы в том, что не смотря на то, что изначально она заявлялась как полностью
+        // фиксированная по количеству колонок, в процессе работы выяснилось, что количество замеров магнитной индукции
+        // у разных материалов может варьироваться от 2-х до 6-ти.
+        
+        // Следовательно возникает потребность в том, чтобы таблица менялась динамически
 
 
-    // Создаем словарь с значением ширин колонок
-    Dictionary<int, int> widthOfColumns = new Dictionary<int, int>();
-    int counter = 1; // Счетчик для нумерации колонки
-    int lengthOfInductionColumn = 25;
-    int lengthOfInductionColumnSummary = (int)(lengthOfInductionColumn * numberOfDinamicColumns);
-    
-    // Заполняем первые две неизменные колонки
-    widthOfColumns.Add(counter++, 50);
-    widthOfColumns.Add(counter++, 25);
-    // Заполняем динамически изменяемые колонки
-    for (int i = 0; i < numberOfDinamicColumns; i++)
-        widthOfColumns.Add(counter++, lengthOfInductionColumn);
-    // Заполняем последнюю незименяемую колонку
-    widthOfColumns.Add(counter++, 35);
+        // Из таблицы с данными вычисляем итоговое количество колонок
+        int numberOfDinamicColumns = rowsOfTable[0].Count - 3; // Вычитаем из общего количества колонок количество неизменных колонок
 
 
-    // Приступаем к формированию шапки таблицы
-    TableCellInit.Text = "Марка материала, размер, мм";
-    TableCellInit.WidthF = widthOfColumns[1];
-    
-    List<CellData> firstColumnNames = new List<CellData>() {
-        new CellData("№ Контр. образца", widthOfColumns[2]),
-        new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл", lengthOfInductionColumnSummary),
-        new CellData("Коэрцитивная сила, А/м", widthOfColumns[widthOfColumns.Count])
-    };
+        // Создаем словарь с значением ширин колонок
+        Dictionary<int, int> widthOfColumns = new Dictionary<int, int>();
+        int counter = 1; // Счетчик для нумерации колонки
+        int lengthOfInductionColumn = 25;
+        int lengthOfInductionColumnSummary = (int)(lengthOfInductionColumn * numberOfDinamicColumns);
+        
+        // Заполняем первые две неизменные колонки
+        widthOfColumns.Add(counter++, 50);
+        widthOfColumns.Add(counter++, 25);
+        // Заполняем динамически изменяемые колонки
+        for (int i = 0; i < numberOfDinamicColumns; i++)
+            widthOfColumns.Add(counter++, lengthOfInductionColumn);
+        // Заполняем последнюю незименяемую колонку
+        widthOfColumns.Add(counter++, 35);
 
-    // Добавляем колонки заголовка в таблицу
-    foreach (CellData cellData in firstColumnNames) {
-        XRTableCell cell = new XRTableCell();
-        cell.Text = cellData.NameColumn;
-        cell.WidthF = cellData.Width;
-        RegularDataTable.Rows[0].Cells.Add(cell);
-    }
-    
-    // Приступаем к формированию регуляной части таблицы
-    foreach (List<string> row in rowsOfTable) {
-        XRTableRow tableRow = new XRTableRow();
-        RegularDataTable.Rows.Add(tableRow);
 
-        int orderOfColumn = 1;
-        foreach (string value in row) {
+        // Приступаем к формированию шапки таблицы
+        TableCellInit.Text = "Марка материала, размер, мм";
+        TableCellInit.WidthF = widthOfColumns[1];
+        
+        List<CellData> firstColumnNames = new List<CellData>() {
+            new CellData("№ Контр. образца", widthOfColumns[2]),
+            new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл", lengthOfInductionColumnSummary),
+            new CellData("Коэрцитивная сила, А/м", widthOfColumns[widthOfColumns.Count])
+        };
+
+        // Добавляем колонки заголовка в таблицу
+        foreach (CellData cellData in firstColumnNames) {
             XRTableCell cell = new XRTableCell();
-            cell.Text = value;
-            cell.Width = widthOfColumns[orderOfColumn++];
-            tableRow.Cells.Add(cell);
+            cell.Text = cellData.NameColumn;
+            cell.WidthF = cellData.Width;
+            RegularDataTable.Rows[0].Cells.Add(cell);
         }
+        
+        // Приступаем к формированию регуляной части таблицы
+        foreach (List<string> row in rowsOfTable) {
+            XRTableRow tableRow = new XRTableRow();
+            RegularDataTable.Rows.Add(tableRow);
+
+            int orderOfColumn = 1;
+            foreach (string value in row) {
+                XRTableCell cell = new XRTableCell();
+                cell.Text = value;
+                cell.Width = widthOfColumns[orderOfColumn++];
+                tableRow.Cells.Add(cell);
+            }
+        }
+
+        // Объединяем общие ячейки в заголовке
+        // (Часть заголовка находилась в регулярной части, поэтому объединить эти колонки ранее не предствлялось возможным)
+        RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
+        RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
+        RegularDataTable.Rows[0].Cells[3].RowSpan = 2;
     }
+    // Случай, когда выбрано тип исследования "Удельные потери"
+    else if (typeOfMeasure == 1) {
 
-    // Объединяем общие ячейки в заголовке
-    // (Часть заголовка находилась в регулярной части, поэтому объединить эти колонки ранее не предствлялось возможным)
-    RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
-    RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
-    RegularDataTable.Rows[0].Cells[3].RowSpan = 2;
+        // Создаем словарь с значениями ширин колонок
+        Dictionary<int, int> widthOfColumns = new Dictionary<int, int>();
+        widthOfColumns.Add(1, 50); // Колонка с материалом
+        widthOfColumns.Add(2, 25); // Колонка с номером образца
+        widthOfColumns.Add(3, 50); // Колонка с замером удельных потерь для P = 1,8/400
+        widthOfColumns.Add(4, 50); // Колонка с замером удельных потерь для P = 2/400
 
+        // Приступаем к формированию шапки таблицы
+        TableCellInit.Text = "Марка материала, размер, мм";
+        TableCellInit.WidthF = widthOfColumns[1];
 
+        List<CellData> firstColumnNames = new List<CellData>() {
+            new CellData("№ Контр. образца", widthOfColumns[2]),
+            new CellData("Удельные потери", widthOfColumns[3] + widthOfColumns[4])
+        };
+
+        // Добавляем колонки заголовка в таблицу
+        foreach (CellData cellData in firstColumnNames) {
+            XRTableCell cell = new XRTableCell();
+            cell.Text = cellData.NameColumn;
+            cell.WidthF = cellData.Width;
+            RegularDataTable.Rows[0].Cells.Add(cell);
+        }
+
+        // Приступаем к формированию регулярной части
+        foreach (List<string> row in rowsOfTable) {
+            XRTableRow tableRow = new XRTableRow();
+            RegularDataTable.Rows.Add(tableRow);
+
+            int orderOfColumn = 1;
+            foreach (string value in row) {
+                XRTableCell cell = new XRTableCell();
+                cell.Text = value;
+                cell.Width = widthOfColumns[orderOfColumn++];
+                tableRow.Cells.Add(cell);
+            }
+        }
+
+        // Объединяем общие ячейки в заголовке
+        RegularDataTable.Rows[0].Cells[0].RowSpan = 2;
+        RegularDataTable.Rows[0].Cells[1].RowSpan = 2;
+    }
+    else {
+        throw new Exception("Возникла ошибка при чтении параметра \"Тип исследования\". Обратитесь к администраторам");
+    }
+    
     // Завершаем работу с таблицей
     RegularDataTable.EndInit();
 }

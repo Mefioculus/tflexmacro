@@ -106,6 +106,9 @@ public class Macro : MacroProvider
             public static Guid НаименованиеИзмеряемогоОбъекта = new Guid("8e1c6e2e-d885-4b43-8dd7-6d5eba283783");
             public static Guid ФактическоеЗначение = new Guid("878df0b8-f018-41e6-a5a4-5f673dedf4ad");
 
+            // Параметры протокола магнигной лаборатории
+            public static Guid ТипИсследования = new Guid("1f61dd57-ec89-403b-a9d8-01d22ed71736");
+
             // Параметры образца магнитной лаборатории
             public static Guid РазмерМатериалаМагнитнаяЛаборатория = new Guid("fe9d24b0-e1b0-489c-b029-b7b0b76878cf");
             public static Guid СводноеНаименованиеОбразцаМагнитнойЛаборатории = new Guid("43b442a0-5901-4fe7-8ad1-6e072bd350d6");
@@ -118,6 +121,8 @@ public class Macro : MacroProvider
             public static Guid МагнитнаяИндукцияОбразца4 = new Guid("214ffd17-4f90-4ce6-917a-7e88840b0527");
             public static Guid МагнитнаяИндукцияОбразца5 = new Guid("41b86f16-5dec-4272-85ee-0258239febb5");
             public static Guid МагнитнаяИндукцияОбразца6 = new Guid("9381da32-9691-403e-8fca-47c7b6bdc39b");
+            public static Guid УдельныеПотери1 = new Guid("a061fa6e-be09-4529-bb78-8e1e26f1d4d4");
+            public static Guid УдельныеПотери2 = new Guid("7b5b64d0-43a9-43c0-b4e8-55260a9e043c");
             
             // Параметры материала магнитной лаборатории
             public static Guid МаркаМатериалаМагнитнаяЛаборатория = new Guid("89eacccd-ad18-4e14-b383-a2846cbacaff");
@@ -572,6 +577,8 @@ public class Macro : MacroProvider
 
     #endregion ФормированиеСводногоДопустимогоРазмера
 
+    #region ОтображениеНапряженностиВОбразце()
+
     public string ОтображениеНапряженностиВОбразце(int number) {
         ReferenceObject sampleObject = Context.ReferenceObject;
         ReferenceObject material = sampleObject.MasterObject.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
@@ -608,6 +615,8 @@ public class Macro : MacroProvider
 
         return result;
     }
+
+    #endregion ОтображениеНапряженностиВОбразце()
 
     #endregion Методы для формирования магнитного протокола
 
@@ -741,96 +750,126 @@ public class Macro : MacroProvider
     }
 
     private string GetDataStringForMagnetProtocol(ReferenceObject protocol) {
+        
         // Создаем Helper метод, который предназначен для генерации итоговой строки
         DataClass resultDataClass = new DataClass();
-        // Получаем привязанный к протоколу материал для того, чтобы получить с него допустимые значение и количество требуемых замеров
-        ReferenceObject material = protocol.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
-        // Если материал к протоколу не подключен, передаем пустую строку в генерацию отчета.
-        // Сделано это потому, что в данный момент без материала отключается возможность заполнения
-        // параметров измерения контрольного образца, а, следовательно, без подключенного материала
-        // и отчет не должен формироваться
-        if (material == null) {
-            Message("Ошибка", "К протоколу не подключен материал");
-            return string.Empty;
-        }
-
-        // Заполняем шапку таблицы
-        // Получаем количество замеров с материала
-        int numberOfMeasurments = (int)material[Guids.Props.КоличествоЗамеров].Value;
-
-        // Добавляем первые две колонки, которые будут в коде генерации отчета схлопываться с верхним уровнем заголовка
-        resultDataClass.Add(""); // Марка материала 
-        resultDataClass.Add(""); // Номер контрольного образца
         
-        // Добавляем нужное количество колонок с замерами магнитной индукции
-        resultDataClass.Add(material[Guids.Props.Напряженность1].Value.ToString()); // Первый замер добавляем в любом случае
-        if (numberOfMeasurments > 1)
-            resultDataClass.Add(material[Guids.Props.Напряженность2].Value.ToString()); // Первый замер добавляем в любом случае
-        if (numberOfMeasurments > 2)
-            resultDataClass.Add(material[Guids.Props.Напряженность3].Value.ToString()); // Первый замер добавляем в любом случае
-        if (numberOfMeasurments > 3)
-            resultDataClass.Add(material[Guids.Props.Напряженность4].Value.ToString()); // Первый замер добавляем в любом случае
-        if (numberOfMeasurments > 4)
-            resultDataClass.Add(material[Guids.Props.Напряженность5].Value.ToString()); // Первый замер добавляем в любом случае
-        if (numberOfMeasurments > 5)
-            resultDataClass.Add(material[Guids.Props.Напряженность6].Value.ToString()); // Первый замер добавляем в любом случае
+        // В зависимости от типа исследования, которое выбрано в протоколе, формирует разные итоговые строки
+        if ((int)protocol[Guids.Props.ТипИсследования] == 0) {
+            // Получаем привязанный к протоколу материал для того, чтобы получить с него допустимые значение и количество требуемых замеров
+            ReferenceObject material = protocol.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
+            // Если материал к протоколу не подключен, передаем пустую строку в генерацию отчета.
+            // Сделано это потому, что в данный момент без материала отключается возможность заполнения
+            // параметров измерения контрольного образца, а, следовательно, без подключенного материала
+            // и отчет не должен формироваться
+            if (material == null) {
+                Message("Ошибка", "К протоколу не подключен материал");
+                return string.Empty;
+            }
 
-        // Добавялем заключительную пустую колонку под объединение с верхнем уровнем заголовка (Коэрциальная сила)
-        resultDataClass.Add("");
-        resultDataClass.EndRow();
+            // Заполняем шапку таблицы
+            // Получаем количество замеров с материала
+            int numberOfMeasurments = (int)material[Guids.Props.КоличествоЗамеров].Value;
 
-
-        // Добавление регулярной части таблицы
-        int counter = 1;
-        foreach (ReferenceObject sample in protocol.GetObjects(Guids.ListsOfObjects.ОбразцыМагнитнойЛаборатории)) {
-            resultDataClass.Add(sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value.ToString());
-            resultDataClass.Add(counter.ToString()); counter++;
-
-            // Добавление колонок с измерениями магнитной индукции будут зависеть от параметра numberOfMeasurments
-            resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца1].Value.ToString());
+            // Добавляем первые две колонки, которые будут в коде генерации отчета схлопываться с верхним уровнем заголовка
+            resultDataClass.Add(""); // Марка материала 
+            resultDataClass.Add(""); // Номер контрольного образца
+            
+            // Добавляем нужное количество колонок с замерами магнитной индукции
+            resultDataClass.Add(material[Guids.Props.Напряженность1].Value.ToString()); // Первый замер добавляем в любом случае
             if (numberOfMeasurments > 1)
-                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца2].Value.ToString());
+                resultDataClass.Add(material[Guids.Props.Напряженность2].Value.ToString()); // Первый замер добавляем в любом случае
             if (numberOfMeasurments > 2)
-                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца3].Value.ToString());
+                resultDataClass.Add(material[Guids.Props.Напряженность3].Value.ToString()); // Первый замер добавляем в любом случае
             if (numberOfMeasurments > 3)
-                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца4].Value.ToString());
+                resultDataClass.Add(material[Guids.Props.Напряженность4].Value.ToString()); // Первый замер добавляем в любом случае
             if (numberOfMeasurments > 4)
-                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца5].Value.ToString());
+                resultDataClass.Add(material[Guids.Props.Напряженность5].Value.ToString()); // Первый замер добавляем в любом случае
             if (numberOfMeasurments > 5)
-                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца6].Value.ToString());
+                resultDataClass.Add(material[Guids.Props.Напряженность6].Value.ToString()); // Первый замер добавляем в любом случае
 
-            // Добавление последних колонок, которые не не изменяются динамически
-            //resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
-            resultDataClass.Add(sample[Guids.Props.КоэрцитивнаяСилаОбразца].Value.ToString());
+            // Добавялем заключительную пустую колонку под объединение с верхнем уровнем заголовка (Коэрциальная сила)
+            resultDataClass.Add("");
             resultDataClass.EndRow();
+
+
+            // Добавление регулярной части таблицы
+            int counter = 1;
+            foreach (ReferenceObject sample in protocol.GetObjects(Guids.ListsOfObjects.ОбразцыМагнитнойЛаборатории)) {
+                resultDataClass.Add(sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value.ToString());
+                resultDataClass.Add(counter.ToString()); counter++;
+
+                // Добавление колонок с измерениями магнитной индукции будут зависеть от параметра numberOfMeasurments
+                resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца1].Value.ToString());
+                if (numberOfMeasurments > 1)
+                    resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца2].Value.ToString());
+                if (numberOfMeasurments > 2)
+                    resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца3].Value.ToString());
+                if (numberOfMeasurments > 3)
+                    resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца4].Value.ToString());
+                if (numberOfMeasurments > 4)
+                    resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца5].Value.ToString());
+                if (numberOfMeasurments > 5)
+                    resultDataClass.Add(sample[Guids.Props.МагнитнаяИндукцияОбразца6].Value.ToString());
+
+                // Добавление последних колонок, которые не не изменяются динамически
+                //resultDataClass.Add(sample[Guids.Props.МаксимальнаяПроницаемостьОбразца].Value.ToString());
+                resultDataClass.Add(sample[Guids.Props.КоэрцитивнаяСилаОбразца].Value.ToString());
+                resultDataClass.EndRow();
+            }
+
+
+            
+            // Добавление итоговой части таблицы, которая содержит допустимые значения по ГОСТ
+            resultDataClass.Add(string.Format("По {0} {1}",
+                        material[Guids.Props.ТипСтандартаМагнитнаяЛаборатория].Value.ToString(),
+                        material[Guids.Props.СтандартМагнитнаяЛаборатория].Value.ToString()));
+            resultDataClass.Add(string.Empty);
+
+            // Заполнение динамически меняющихся колонок (магнитная индукция)
+            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция1].Value.ToString());
+            if (numberOfMeasurments > 1)
+                resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция2].Value.ToString());
+            if (numberOfMeasurments > 2)
+                resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция3].Value.ToString());
+            if (numberOfMeasurments > 3)
+                resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция4].Value.ToString());
+            if (numberOfMeasurments > 4)
+                resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция5].Value.ToString());
+            if (numberOfMeasurments > 5)
+                resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция6].Value.ToString());
+
+            //resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
+            resultDataClass.Add(material[Guids.Props.КоэрцитивнаяСила].Value.ToString());
+            resultDataClass.EndRow();
+
+            return resultDataClass.GenerateString();
         }
+        else {
+            // Случай, когда выбрано исследование на удельные потери
+            
+            resultDataClass.Add(""); // Марка материала
+            resultDataClass.Add(""); // Номер контрольного образца
 
+            // Добавляем колонки (удельные потери)
+            resultDataClass.Add("P = 1,8/400");
+            resultDataClass.Add("P = 2/400");
+            resultDataClass.EndRow();
 
-        
-        // Добавление итоговой части таблицы, которая содержит допустимые значения по ГОСТ
-        resultDataClass.Add(string.Format("По {0} {1}",
-                    material[Guids.Props.ТипСтандартаМагнитнаяЛаборатория].Value.ToString(),
-                    material[Guids.Props.СтандартМагнитнаяЛаборатория].Value.ToString()));
-        resultDataClass.Add(string.Empty);
+            // Приступаем к заполнению регулярной части
+            int counter = 1;
+            foreach (ReferenceObject sample in protocol.GetObjects(Guids.ListsOfObjects.ОбразцыМагнитнойЛаборатории)) {
+                resultDataClass.Add(sample[Guids.Props.СводноеНаименованиеОбразцаМагнитнойЛаборатории].Value.ToString());
+                resultDataClass.Add(counter.ToString()); counter++;
 
-        // Заполнение динамически меняющихся колонок (магнитная индукция)
-        resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция1].Value.ToString());
-        if (numberOfMeasurments > 1)
-            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция2].Value.ToString());
-        if (numberOfMeasurments > 2)
-            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция3].Value.ToString());
-        if (numberOfMeasurments > 3)
-            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция4].Value.ToString());
-        if (numberOfMeasurments > 4)
-            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция5].Value.ToString());
-        if (numberOfMeasurments > 5)
-            resultDataClass.Add(material[Guids.Props.МагнитнаяИндукция6].Value.ToString());
+                // Добавление значений удельных потерь для разных значений P
+                resultDataClass.Add(sample[Guids.Props.УдельныеПотери1].Value.ToString());
+                resultDataClass.Add(sample[Guids.Props.УдельныеПотери2].Value.ToString());
+                resultDataClass.EndRow();
+            }
 
-        //resultDataClass.Add(material[Guids.Props.МаксимальнаяПроницаемость].Value.ToString());
-        resultDataClass.Add(material[Guids.Props.КоэрцитивнаяСила].Value.ToString());
-        resultDataClass.EndRow();
-
-        return resultDataClass.GenerateString();
+            return resultDataClass.GenerateString();
+        }
     }
 
     private class DataClass {
