@@ -19,13 +19,24 @@ using DocumentFormat.OpenXml.Spreadsheet;
 /* 
 Так же для работы данного макроса потребуется подключение дополнительных библиотек
 DbfDataReader.dll для работы с файлами базы FoxPro
+System.Data.dll (необходим для работы DbfDataReader, необходимо, чтобы он находился в директории "Служебные файлы"
+WindowsBase.dll (так же необходим для работы DbfDataReader)
 DocumentFormat.OpenXml для работы с Excel // Уже есть в директории DOCs, подключается через ссылку
 */
 
 
 public class Macro : MacroProvider {
+
+    #region Constructor
+
     public Macro(MacroContext context)
-        : base(context) {}
+        : base(context) {
+            // Производим копирование файлов базы данных для последующей работы с ними
+            if (!CopyDataBaseFiles())
+                throw new Exception("Во время получения файлов базы данных FoxPro возникла ошибка");
+        }
+
+    #endregion Constructor
 
     #region Fields and Properties
 
@@ -36,8 +47,7 @@ public class Macro : MacroProvider {
     private static string[] arrayOfDbFiles =
         new string[] {"spec.dbf", "klas.dbf", "klas.cdx", "klasm.dbf", "kat_ediz.dbf", "norm.dbf", "norm.cdx"};
     // Список подразделений, которые относятся к предприятию (Следовательно не являются покупными)
-    private static string[] arrayOfUnits =
-        new string[] {
+    private static string[] arrayOfUnits = new string[] {
             "001",
             "002",
             "004",
@@ -57,32 +67,45 @@ public class Macro : MacroProvider {
             "105",
             "106",
             "335",
-            "338"};
+            "338"
+    };
 
     #endregion Fields and Properties
 
     #region EntryPoints
 
+    #region Run()
+
     public override void Run () {
     }
 
+    #endregion Run()
+
+    #region ВыгрузитьСтандартныеИзделия()
 
     public void ВыгрузитьСтандартныеИзделия() {
-        #region Копирование файлов базы данных для последующей работы с ними
-
-        if (!CopyDataBaseFiles())
-            return;
-        Message("Информация", "Работа с копиросанием файлов базы данных завершена");
-
-        #endregion Копирование файлов базы данных для последующей работы с ними
 
         #region Производим чтение всех необходимых таблиц
 
+        string message = string.Empty;
+
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        //Console.WriteLine(string.Format("Прочитана таблица {0} ({1} строк, {2} ошибок)", specTable.Name.ToUpper(), specTable.Count, specTable.ErrorsId.Count));
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                specTable.Name.ToUpper(),
+                specTable.Count,
+                specTable.ErrorsId.Count
+                );
 
         Table klasTable = new Table("klas", pathToTempDirectoryFoxProDb);
-        //Console.WriteLine(string.Format("Прочитана таблица {0} ({1} строк, {2} ошибок)", klasTable.Name.ToUpper(), klasTable.Count, klasTable.ErrorsId.Count));
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                klasTable.Name.ToUpper(),
+                klasTable.Count,
+                klasTable.ErrorsId.Count
+                );
+
+        Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
 
@@ -152,12 +175,134 @@ public class Macro : MacroProvider {
                     });
         }
 
+        Message("Информация", "Формирование всех выгрузок стандартных изделий завершено");
+
         #endregion Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
     }
 
+    #endregion ВыгрузитьСтандартныеИзделия()
+
+    #region ВыгрузитьМатериалы()
 
     public void ВыгрузитьМатериалы() {
+
+        #region Производим чтение всех необходимых таблиц
+
+        string message = string.Empty;
+
+        Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                specTable.Name.ToUpper(),
+                specTable.Count,
+                specTable.ErrorsId.Count
+                );
+
+        Table klasmTable = new Table("klasm", pathToTempDirectoryFoxProDb);
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                klasmTable.Name.ToUpper(),
+                klasmTable.Count,
+                klasmTable.ErrorsId.Count
+                );
+
+        Table katEdizTable = new Table("kat_ediz", pathToTempDirectoryFoxProDb);
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                katEdizTable.Name.ToUpper(),
+                katEdizTable.Count,
+                katEdizTable.ErrorsId.Count
+                );
+
+        Table normTable = new Table("norm", pathToTempDirectoryFoxProDb);
+        message += string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                normTable.Name.ToUpper(),
+                normTable.Count,
+                normTable.ErrorsId.Count
+                );
+
+        Message("Чтение таблиц FoxPro", message);
+
+        #endregion Производим чтение всех необходимых таблиц
+
+        #region Формируем словари с необходимыми данными
+
+        // Создаем словарь с материалами
+        Dictionary<string, TableRow> allOkpCodesKlasmTable = new Dictionary<string, TableRow>();
+        foreach (TableRow row in klasmTable.Rows) {
+            allOkpCodesKlasmTable[row["okp"]] = row;
+        }
+
+        // Создаем словарь с нормами материалов
+        Dictionary<string, List<TableRow>> allShifrsNormTable = new Dictionary<string, List<TableRow>>();
+        foreach (TableRow row in normTable.Rows) {
+            if (allShifrsNormTable.ContainsKey(row["shifr"])) {
+                allShifrsNormTable[row["shifr"]].Add(row);
+            }
+            else {
+                allShifrsNormTable[row["shifr"]] = new List<TableRow>();
+                allShifrsNormTable[row["shifr"]].Add(row);
+            }
+        }
+
+        // Создаем словарь с единицами измерения
+        Dictionary<int, string> unitsOfMeasurement = new Dictionary<int, string>();
+        int kod = 0; // Переменная для хранения кода единицы измерения
+        foreach (TableRow row in katEdizTable.Rows) {
+            kod = int.Parse(row["kod"]);
+            if (!unitsOfMeasurement.ContainsKey(kod)) {
+                unitsOfMeasurement[kod] = row["name"];
+            }
+        }
+
+        #endregion Формируем словари с необходимыми данными
+
+        #region Для выбранных пользователей изделий формируем деревья и наполняем их необходимыми данными
+
+        TreeOfProduct.SpecTable = specTable;
+        string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
+
+        foreach (string product in listOfSelectedProducts) {
+            // Формируем деревья для выбранных изделий
+            TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+            
+            // Создаем таблицу и заполняем ее
+
+            ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Выгрузка материалов" };
+            ExcelTable table = new ExcelTable(
+                    GetDirectory(),
+                    string.Format("{0} (материалы)", product),
+                    options
+                    );
+
+            tree.FillDataForMaterial(table, allShifrsNormTable, allOkpCodesKlasmTable, unitsOfMeasurement);
+
+            // Заполняем данные о ширине колонок и генерируем таблицу
+            table.Columns.Add("Обозначение", 20);
+            table.Columns.Add("Наименование", 20);
+            table.Columns.Add("Применяемость", 20);
+            table.Columns.Add("Единицы измерения", 20);
+            table.Columns.Add("Вид", 20);
+            table.Columns.Add("Стандарт", 20);
+
+            table.Generate(new string[] {
+                    "Обозначение",
+                    "Наименование",
+                    "Стандарт",
+                    "Применяемость",
+                    "Единицы измерения",
+                    "Вид"
+                    });
+
+        }
+
+        #endregion Для выбранных пользователей изделий формируем деревья и наполняем их необходимыми данными
+
+        Message("Информация", "Формирование выгрузок материалов завершено");
     }
+
+    #endregion ВыгрузитьМатериалы()
     
     #endregion EntryPoints
 
