@@ -148,6 +148,7 @@ public class Macro : MacroProvider {
                     });
         }
         
+        Message("Информация", "Выгрузка произведена");
         #endregion Формируем дерево изделия
     }
 
@@ -1093,13 +1094,28 @@ public class Macro : MacroProvider {
         public void GetInfoAboutRoutes() {
             // TODO Переписать метод с учетом того, что маршрута с номером 1 может не быть (тогда основной маршрут будет нулевым)
             foreach (TreeNode node in this.AllNodes) {
-                node["route"] = string.Join(
-                        "-", MarchpTable
-                        .Rows
-                        .Where(row => (row["shifr"] == node["shifr"]) && (row["norm"] != "0"))
-                        .OrderBy(row => row["nper"])
+                // Получаем сначала все цехозаходы, которые относятся к данному изделию
+                var shopCalls = MarchpTable.Rows.Where(row => row["shifr"] == node["shifr"]);
+                if (shopCalls.Where(row => row["norm"] == "1").Count() > 0) {
+                    node["route"] = string.Join("-", shopCalls
+                        .Where(row => row["norm"] == "1")
+                        .OrderBy(row => int.Parse(row["nper"]))
                         .Select(row => row["izg"])
                         );
+                }
+                else {
+                    // Проверяем, есть ли маршрут с norm 0
+                    if (shopCalls.Where(row => row["norm"] == "0").Count() > 0) {
+                        node["route"] = string.Join("-", shopCalls
+                                .Where(row => row["norm"] == "0")
+                                .OrderBy(row => int.Parse(row["nper"]))
+                                .Select(row => row["izg"])
+                                );
+                    }
+                    else {
+                        node["route"] = "Ошибка";
+                    }
+                }
             }
             this.isRoutesLoad = true;
         }
