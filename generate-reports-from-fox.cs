@@ -45,7 +45,17 @@ public class Macro : MacroProvider {
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
     // Список файлов, которые нужно грузить в кэш директорию
     private static string[] arrayOfDbFiles =
-        new string[] {"spec.dbf", "klas.dbf", "klas.cdx", "klasm.dbf", "kat_ediz.dbf", "norm.dbf", "norm.cdx"};
+        new string[] {
+            "spec.dbf",
+            "klas.dbf",
+            "klas.cdx",
+            "klasm.dbf",
+            "kat_ediz.dbf",
+            "norm.dbf",
+            "norm.cdx",
+            "marchp.dbf",
+            "marchp.cdx"
+        };
     // Список подразделений, которые относятся к предприятию (Следовательно не являются покупными)
     private static string[] arrayOfUnits = new string[] {
             "001",
@@ -81,6 +91,68 @@ public class Macro : MacroProvider {
 
     #endregion Run()
 
+    #region ВыгрузитьДеревоИзделия()
+
+    public void ВыгрузитьДеревоИзделия() {
+        
+        #region Производим чтение всех необходимых таблиц
+
+        string message = string.Empty;
+
+        Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
+        message += specTable.Status;
+
+        Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+        message += marchpTable.Status;
+        
+        Message("Чтение таблиц FoxPro", message);
+
+        #endregion Производим чтение всех необходимых таблиц
+
+        #region Формируем дерево изделия
+
+        // Передаем таблицы, необходимые для формирования дерева
+        TreeOfProduct.SpecTable = specTable;
+        TreeOfProduct.MarchpTable = marchpTable;
+
+        string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
+
+        foreach (string product in listOfSelectedProducts) {
+            // Формируем деревья для выбранных изделий
+            TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+            tree.GetInfoAboutPurchaseProducts();
+            tree.GetInfoAboutRoutes();
+
+            // Создаем таблицу и заполняем ее
+            ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Выгрузка состава изделия" };
+            ExcelTable table = new ExcelTable(
+                    GetDirectory(),
+                    string.Format("{0} (состав изделия)", product),
+                    options
+                    );
+
+            tree.FillDataForTreeOfProduct(table);
+
+            table.Columns.Add("Обозначение", 20);
+            table.Columns.Add("Наименование", 20);
+            table.Columns.Add("Применяемость", 20);
+            table.Columns.Add("Маршрут", 20);
+            table.Columns.Add("Признак покупного", 20);
+
+            table.Generate(new string[] {
+                    "Обозначение",
+                    "Наименование",
+                    "Применяемость",
+                    "Маршрут",
+                    "Признак покупного"
+                    });
+        }
+        
+        #endregion Формируем дерево изделия
+    }
+
+    #endregion ВыгрузитьДеревоИзделия()
+
     #region ВыгрузитьСтандартныеИзделия()
 
     public void ВыгрузитьСтандартныеИзделия() {
@@ -90,20 +162,10 @@ public class Macro : MacroProvider {
         string message = string.Empty;
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                specTable.Name.ToUpper(),
-                specTable.Count,
-                specTable.ErrorsId.Count
-                );
+        message += specTable.Status;
 
         Table klasTable = new Table("klas", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                klasTable.Name.ToUpper(),
-                klasTable.Count,
-                klasTable.ErrorsId.Count
-                );
+        message += klasTable.Status;
 
         Message("Чтение таблиц FoxPro", message);
 
@@ -191,36 +253,19 @@ public class Macro : MacroProvider {
         string message = string.Empty;
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                specTable.Name.ToUpper(),
-                specTable.Count,
-                specTable.ErrorsId.Count
-                );
+        message += specTable.Status;
 
         Table klasmTable = new Table("klasm", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                klasmTable.Name.ToUpper(),
-                klasmTable.Count,
-                klasmTable.ErrorsId.Count
-                );
+        message += klasmTable.Status;
 
         Table katEdizTable = new Table("kat_ediz", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                katEdizTable.Name.ToUpper(),
-                katEdizTable.Count,
-                katEdizTable.ErrorsId.Count
-                );
+        message += katEdizTable.Status;
 
         Table normTable = new Table("norm", pathToTempDirectoryFoxProDb);
-        message += string.Format(
-                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
-                normTable.Name.ToUpper(),
-                normTable.Count,
-                normTable.ErrorsId.Count
-                );
+        message += normTable.Status;
+
+        Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+        message += marchpTable.Status;
 
         Message("Чтение таблиц FoxPro", message);
 
@@ -260,15 +305,20 @@ public class Macro : MacroProvider {
 
         #region Для выбранных пользователей изделий формируем деревья и наполняем их необходимыми данными
 
+        // Добавляем таблицы, необходимые для заполнения дерева
         TreeOfProduct.SpecTable = specTable;
+        TreeOfProduct.MarchpTable = marchpTable;
+
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
         foreach (string product in listOfSelectedProducts) {
             // Формируем деревья для выбранных изделий
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+
+            // Подключаем к дереву таблицу с маршрутами для определения маршрутов и того, является ли изделие покупным
+            tree.GetInfoAboutPurchaseProducts();
             
             // Создаем таблицу и заполняем ее
-
             ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Выгрузка материалов" };
             ExcelTable table = new ExcelTable(
                     GetDirectory(),
@@ -731,7 +781,11 @@ public class Macro : MacroProvider {
 
         public TreeNode HeadOfTree { get; set; }
         public static Table SpecTable { get; set; }
+        public static Table MarchpTable { get; set; }
         public List<TreeNode> AllNodes { get; set; } = new List<TreeNode>();
+
+        public bool isRoutesLoad { get; private set; } = false;
+        public bool isPurchasedProductLoad { get; private set; } = false;
 
         #endregion Fields and Properties
 
@@ -817,6 +871,32 @@ public class Macro : MacroProvider {
         #endregion Generated Tree methods
 
         #region Methods for generating excel tables
+
+        #region Формирование таблицы с составом изделия
+
+        public void FillDataForTreeOfProduct(ExcelTable exTable) {
+            foreach (TreeNode node in this.AllNodes) {
+                ExcelRow exRow = new ExcelRow();
+                exTable.Add(exRow);
+
+                exRow["Обозначение"] = node["shifr"];
+                exRow["Наименование"] = node["name"];
+                exRow["Применяемость"] = node.QuantityInTree.ToString();
+
+                // Заполнение параметров, которых может не быть
+                if (node.ContainsParameter("gost")) {
+                    exRow["Стандарт"] = node["gost"];
+                }
+                if (node.ContainsParameter("type")) {
+                    exRow["Признак покупного"] = node["type"];
+                }
+                if (node.ContainsParameter("route")) {
+                    exRow["Маршрут"] = node["route"];
+                }
+            }
+        }
+
+        #endregion Формирование таблицы с составом изделия
 
         #region Формирование таблицы по стандартным изделиям
 
@@ -904,7 +984,6 @@ public class Macro : MacroProvider {
         }
 
         #endregion Формирование таблицы по материалам
-
         
         #endregion Methods for generating excel tables
 
@@ -939,6 +1018,95 @@ public class Macro : MacroProvider {
                 RecursivePrint(childNode, indent);
             }
         }
+
+        #region Методы для сбора дополнительной информации о составе изделия
+
+        #region GetInfoAboutPurchaseProducts
+        // Метод для определения покупных изделий в составе
+        public void GetInfoAboutPurchaseProducts() {
+
+            foreach (TreeNode node in this.AllNodes) {
+                // Получаем номер первого цеха в изготовлении
+                string izg = string.Empty;
+                if (this.isRoutesLoad) {
+                    izg = node["route"].Split('-')[0];
+                }
+                else {
+                    // Для начала пытаемся получить список цехозаходов для данного изделия
+                    List<TableRow> shopCalls = MarchpTable.Rows.Where(row => (row["shifr"] == node["shifr"]) && (row["nper"] == "1")).ToList<TableRow>();
+                    if (shopCalls.Count == 0) {
+                        node["type"] = "Ошибка";
+                        continue;
+                    }
+                    else if (shopCalls.Count == 1) {
+                        izg = shopCalls[0]["izg"];
+                    }
+                    else {
+                        izg = shopCalls.FirstOrDefault(row => row["norm"] == "1")["izg"];
+                    }
+
+                    /*
+                    try {
+                        izg = MarchpTable
+                            .Rows
+                            .FirstOrDefault(row => 
+                                    (row["shifr"] == node["shifr"]) &&
+                                    (row["nper"] == "1") &&
+                                    (row["norm"] != "0")
+                                    )["izg"];
+                    }
+                    catch {
+                        throw new Exception(string.Format("Для изделия '{0}'при определении признака 'Покупное' возникла ошибка", node["shifr"]));
+                    }
+                    */
+                }
+
+                if (!arrayOfUnits.Contains(izg)) {
+                    node["type"] = "Покупное";
+                }
+                else {
+                    node["type"] = "Не покупное";
+                }
+            }
+
+            // Определяем позиции, которые входят в покупные
+            foreach (TreeNode node in this.AllNodes.Where(node => node["type"] == "Покупное")) {
+                SetPurchaseToChilderRecursively(node);
+            }
+
+            this.isPurchasedProductLoad = true;
+        }
+
+        private void SetPurchaseToChilderRecursively(TreeNode node) {
+            foreach (TreeNode child in node.ChildNodes) {
+                if (child["type"] == "Не покупное") {
+                    child["type"] = "Входит в покупное";
+                }
+                SetPurchaseToChilderRecursively(child);
+            }
+        }
+
+        #endregion GetInfoAboutPurchaseProducts
+
+        #region GetInfoAboutRoutes
+        // Метод для получения маршрутов изготовления для элементов состава
+        public void GetInfoAboutRoutes() {
+            // TODO Переписать метод с учетом того, что маршрута с номером 1 может не быть (тогда основной маршрут будет нулевым)
+            foreach (TreeNode node in this.AllNodes) {
+                node["route"] = string.Join(
+                        "-", MarchpTable
+                        .Rows
+                        .Where(row => (row["shifr"] == node["shifr"]) && (row["norm"] != "0"))
+                        .OrderBy(row => row["nper"])
+                        .Select(row => row["izg"])
+                        );
+            }
+            this.isRoutesLoad = true;
+        }
+
+        #endregion GetInfoAboutRoutes
+
+        #endregion Методы для сбора дополнительной информации о составе изделия
     }
 
     #endregion TreeOfProduct class
@@ -963,6 +1131,10 @@ public class Macro : MacroProvider {
         public TreeNode(TreeOfProduct tree, TreeNode parent = null) {
             this.ParentNode = parent;
             this.Tree = tree;
+        }
+
+        public bool ContainsParameter(string nameOfParameter) {
+            return this.Parameters.ContainsKey(nameOfParameter);
         }
 
         #endregion Constructors
@@ -1045,6 +1217,12 @@ public class Macro : MacroProvider {
         public List<TableRow> Rows { get; set; } = new List<TableRow>();
         public List<int> ErrorsId { get; private set; } = new List<int>();
         public int Count => Rows.Count; // Получение количества строк в таблице
+        public string Status => string.Format(
+                "Прочитана таблица {0} ({1} строк, {2} ошибок)\n",
+                this.Name,
+                this.Count,
+                this.ErrorsId.Count
+                );
 
         #endregion Fields and Properties
 
@@ -1068,7 +1246,7 @@ public class Macro : MacroProvider {
 
         #endregion Add()
 
-        #region ReadAddtable()
+        #region ReadAllTable()
         // Общий метод для чтения dbf таблиц
 
         public void ReadAllTable() {
@@ -1099,7 +1277,7 @@ public class Macro : MacroProvider {
                     ReadNormTable(dataReader);
                     break;
                 case "marchp":
-                    throw new Exception("Работа с таблицей marchp еще не реализована");
+                    ReadMarchpTable(dataReader);
                     break;
                 default:
                     throw new Exception(
@@ -1255,14 +1433,46 @@ public class Macro : MacroProvider {
         // Метод для чтения таблицы с маршрутами
 
         private void ReadMarchpTable(DbfDataReader.DbfDataReader dataReader) {
+            //System.Diagnostics.Debugger.Launch();
+
             int counter = 1;
+            while (dataReader.Read()) {
+                TableRow newRow = new TableRow(counter++);
+                try {
+                    newRow["shifr"] = dataReader.GetString(0); // Обозначение изделия
+                    try {
+                        newRow["nper"] = dataReader.GetInt32(1).ToString(); // Номер перехода
+                    }
+                    catch {
+                        newRow["nper"] = "99"; // Присваеваем такое значение временно
+                    }
+                    newRow["izg"] = dataReader.GetString(2); // Изготовитель данного перехода
+                    newRow["per1"] = dataReader.GetString(3); // Номер перехода для данного цеха изготовителя
+                    newRow["potr"] = dataReader.GetString(4); // Потребитель данного цехоперехода
+                    newRow["per2"] = dataReader.GetString(5); // Номер перехода для данного цеха потребителя
+                    newRow["sdat"] = dataReader.GetString(6); 
+                    try {
+                        newRow["vrem"] = dataReader.GetDecimal(7).ToString(); // Длительность
+                    }
+                    catch {
+                        newRow["vrem"] = "0";
+                    }
+                    newRow["norm"] = dataReader.GetString(8); // Параметр, который отвечает за то, действует ли данный цехопереход
+                }
+                catch {
+                    this.ErrorsId.Add(counter - 1);
+                    continue;
+                }
+                this.Rows.Add(newRow);
+            }
+            //System.Diagnostics.Debugger.Break();
         }
 
         #endregion ReadMarchpTable method
 
         #endregion Методы для обработки различных таблиц
 
-        #endregion ReadAddtable()
+        #endregion ReadAllTable()
 
         #region GetPathToDBFile()
         // Метод для формирования пути к файлу с исходными данными
@@ -1514,6 +1724,8 @@ public class Macro : MacroProvider {
 
         public string this[string key] {
             get {
+                if (!this.Data.ContainsKey(key))
+                    throw new Exception(string.Format("Строка ExcelRow не содержит ключа '{0}'", key));
                 return this.Data[key];
             }
             set {
