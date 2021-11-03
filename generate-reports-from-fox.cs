@@ -941,7 +941,17 @@ public class Macro : MacroProvider {
             // Создаем контейнер для строк для того, чтобы суммировать количество по позициям с одинаковым кодом
             Dictionary<string, ExcelRow> containerForRows = new Dictionary<string, ExcelRow>();
 
-            foreach (TreeNode node in this.AllNodes) {
+            // Запускаем получение материала только для непокупных позиций
+            // Отсеиваются так же входящие в покупные позиции, а так же позиция, для которой не было найдено маршрута
+
+            // Сообщаем пользователю, по скольким позициям не удалось определить, является ли ДСЕ покупной или нет
+            int countOfErrors = this.AllNodes.Where(node => node["type"] == "Ошибка").Count();
+            if (countOfErrors > 0) {
+                MessageBox.Show(string.Format("При определении признака покупных для изделие '{0}' возникло {1} ошибок", this.HeadOfTree["shifr"], countOfErrors), "Информация");
+            }
+
+
+            foreach (TreeNode node in this.AllNodes.Where(node => node["type"] == "Не покупное")) {
                 int quantity = node.QuantityInTree;
 
                 
@@ -1033,8 +1043,8 @@ public class Macro : MacroProvider {
                     izg = node["route"].Split('-')[0];
                 }
                 else {
-                    // Для начала пытаемся получить список цехозаходов для данного изделия
-                    List<TableRow> shopCalls = MarchpTable.Rows.Where(row => (row["shifr"] == node["shifr"]) && (row["nper"] == "1")).ToList<TableRow>();
+                    // Для начала пытаемся получить список цехозаходов для данного изделия (Получаем только позиции с правильными значениями norm)
+                    List<TableRow> shopCalls = MarchpTable.Rows.Where(row => (row["shifr"] == node["shifr"]) && (row["nper"] == "1") && ((row["norm"] == "1") || (row["norm"] == "0"))).ToList<TableRow>();
                     if (shopCalls.Count == 0) {
                         node["type"] = "Ошибка";
                         continue;
@@ -1043,9 +1053,14 @@ public class Macro : MacroProvider {
                         izg = shopCalls[0]["izg"];
                     }
                     else {
-                        izg = shopCalls.FirstOrDefault(row => row["norm"] == "1")["izg"];
+                        try {
+                            izg = shopCalls.FirstOrDefault(row => row["norm"] == "1")["izg"];
+                        }
+                        catch {
+                            izg = "Ошибка";
+                        }
                     }
-
+                    
                     /*
                     try {
                         izg = MarchpTable
