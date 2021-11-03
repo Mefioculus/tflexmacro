@@ -168,6 +168,9 @@ public class Macro : MacroProvider {
         Table klasTable = new Table("klas", pathToTempDirectoryFoxProDb);
         message += klasTable.Status;
 
+        Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+        message += marchpTable.Status;
+
         Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
@@ -186,6 +189,7 @@ public class Macro : MacroProvider {
 
         // Передаем в TreeOfTable таблица для последующего формирования деревьев
         TreeOfProduct.SpecTable = specTable;
+        TreeOfProduct.MarchpTable = marchpTable;
 
         // Запрашиваем у пользователя список изделий, для которых необходимо формировать дерево
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
@@ -193,6 +197,8 @@ public class Macro : MacroProvider {
         foreach (string product in listOfSelectedProducts) {
 
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+            tree.GetInfoAboutPurchaseProducts();
+            tree.GetInfoAboutRoutes();
 
             // Дополняем ноды дерева информацией о стандартных изделиях
             foreach (TreeNode node in tree.AllNodes) {
@@ -228,6 +234,8 @@ public class Macro : MacroProvider {
             table.Columns.Add("Наименование", 20);
             table.Columns.Add("ГОСТ", 20);
             table.Columns.Add("Применяемость", 20);
+            table.Columns.Add("Признак", 20);
+            table.Columns.Add("Маршрут", 20);
 
             table.Generate(new string[] {
                     "Изделие",
@@ -235,6 +243,8 @@ public class Macro : MacroProvider {
                     "Наименование",
                     "ГОСТ",
                     "Применяемость",
+                    "Признак",
+                    "Маршрут"
                     });
         }
 
@@ -779,6 +789,7 @@ public class Macro : MacroProvider {
     private class TreeOfProduct {
 
         #region Fields and Properties
+        private static Dictionary<string, List<TableRow>> _marchpDict = null;
 
         public TreeNode HeadOfTree { get; set; }
         public static Table SpecTable { get; set; }
@@ -788,6 +799,29 @@ public class Macro : MacroProvider {
         public bool isRoutesLoad { get; private set; } = false;
         public bool isPurchasedProductLoad { get; private set; } = false;
 
+        public Dictionary MarchpDict => {
+            if (_marchpDict != null)
+                return _marchpDict;
+            else {
+                if (MarchpTable != null) {
+                    _marchpDict = new Dictionary<string, List<TableRow>>();
+
+                    foreach (TableRow row in MarchpTable) {
+                        if (_marchpDict.Containts(row["shifr"]))
+                            _marchpDict[row["shifr"]].Add(row);
+                        else {
+                            _marchpDict[row["shifr"]] = new List<TableRow>();
+                            _marchpDict[row["shifr"]].Add(row);
+                        }
+                    }
+
+                    return _marchpDict;
+                }
+                else {
+                    throw new Exception("Таблица MarchpTable отсутствует");
+                }
+            }
+        }
         #endregion Fields and Properties
 
         #region Constructors
@@ -888,8 +922,8 @@ public class Macro : MacroProvider {
                 if (node.ContainsParameter("gost")) {
                     exRow["Стандарт"] = node["gost"];
                 }
-                if (node.ContainsParameter("type")) {
-                    exRow["Признак покупного"] = node["type"];
+                if (node.ContainsParameter("purchase")) {
+                    exRow["Признак покупного"] = node["purchase"];
                 }
                 if (node.ContainsParameter("route")) {
                     exRow["Маршрут"] = node["route"];
@@ -920,6 +954,8 @@ public class Macro : MacroProvider {
                         exRow["Наименование"] = node["name"];
                         exRow["ГОСТ"] = node["gost"];
                         exRow["Применяемость"] = node.QuantityInTree.ToString();
+                        exRow["Маршрут"] = node["route"];
+                        exRow["Признак"] = node["purchase"];
                     }
                     // Если для данного изделия уже была создана строка, получаем его и модифицируем данные о применяемости
                     else {
@@ -945,13 +981,17 @@ public class Macro : MacroProvider {
             // Отсеиваются так же входящие в покупные позиции, а так же позиция, для которой не было найдено маршрута
 
             // Сообщаем пользователю, по скольким позициям не удалось определить, является ли ДСЕ покупной или нет
-            int countOfErrors = this.AllNodes.Where(node => node["type"] == "Ошибка").Count();
+            int countOfErrors = this.AllNodes.Where(node => node["purchase"] == "Ошибка").Count();
             if (countOfErrors > 0) {
                 MessageBox.Show(string.Format("При определении признака покупных для изделие '{0}' возникло {1} ошибок", this.HeadOfTree["shifr"], countOfErrors), "Информация");
+                
+                string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), string.Format("{0}-log.txt", this.HeadOfTree["shifr"]));
+                string content = string.Join("\n", this.AllNodes.Where(node => node["purchase"] == "Ошибка").Select(node => node["shifr"]));
+                File.WriteAllText(pathToFile, content);
             }
 
 
-            foreach (TreeNode node in this.AllNodes.Where(node => node["type"] == "Не покупное")) {
+            foreach (TreeNode node in this.AllNodes.Where(node => node["purchase"] == "Не покупное")) {
                 int quantity = node.QuantityInTree;
 
                 
@@ -1046,7 +1086,7 @@ public class Macro : MacroProvider {
                     // Для начала пытаемся получить список цехозаходов для данного изделия (Получаем только позиции с правильными значениями norm)
                     List<TableRow> shopCalls = MarchpTable.Rows.Where(row => (row["shifr"] == node["shifr"]) && (row["nper"] == "1") && ((row["norm"] == "1") || (row["norm"] == "0"))).ToList<TableRow>();
                     if (shopCalls.Count == 0) {
-                        node["type"] = "Ошибка";
+                        node["purchase"] = "Ошибка";
                         continue;
                     }
                     else if (shopCalls.Count == 1) {
@@ -1078,15 +1118,15 @@ public class Macro : MacroProvider {
                 }
 
                 if (!arrayOfUnits.Contains(izg)) {
-                    node["type"] = "Покупное";
+                    node["purchase"] = "Покупное";
                 }
                 else {
-                    node["type"] = "Не покупное";
+                    node["purchase"] = "Не покупное";
                 }
             }
 
             // Определяем позиции, которые входят в покупные
-            foreach (TreeNode node in this.AllNodes.Where(node => node["type"] == "Покупное")) {
+            foreach (TreeNode node in this.AllNodes.Where(node => node["purchase"] == "Покупное")) {
                 SetPurchaseToChilderRecursively(node);
             }
 
@@ -1095,8 +1135,8 @@ public class Macro : MacroProvider {
 
         private void SetPurchaseToChilderRecursively(TreeNode node) {
             foreach (TreeNode child in node.ChildNodes) {
-                if (child["type"] == "Не покупное") {
-                    child["type"] = "Входит в покупное";
+                if (child["purchase"] == "Не покупное") {
+                    child["purchase"] = "Входит в покупное";
                 }
                 SetPurchaseToChilderRecursively(child);
             }
