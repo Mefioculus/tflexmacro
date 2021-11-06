@@ -97,14 +97,17 @@ public class Macro : MacroProvider {
         
         #region Производим чтение всех необходимых таблиц
 
-        string message = string.Empty;
+        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        message += specTable.Status;
-
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
-        message += marchpTable.Status;
+
+        DiagnosticTimer.End("tables");
         
+        // Вывод статистики по выгрузке
+        string message = string.Empty;
+        message += specTable.Status;
+        message += marchpTable.Status;
         Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
@@ -112,16 +115,25 @@ public class Macro : MacroProvider {
         #region Формируем дерево изделия
 
         // Передаем таблицы, необходимые для формирования дерева
-        TreeOfProduct.SpecTable = specTable;
-        TreeOfProduct.MarchpTable = marchpTable;
+        DiagnosticTimer.Start("dictionaries", "Формирование словарей");
+
+        TreeOfProduct.AddTable(specTable);
+        TreeOfProduct.AddTable(marchpTable);
+
+        DiagnosticTimer.End("dictionaries");
 
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
         foreach (string product in listOfSelectedProducts) {
             // Формируем деревья для выбранных изделий
+            DiagnosticTimer.Start(string.Format("tree ({0})", product), string.Format("Формирование дерева для '{0}'", product));
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+            DiagnosticTimer.End(string.Format("tree ({0})", product));
+
+            DiagnosticTimer.Start(string.Format("data ({0})", product), string.Format("Наполнение дерева дополнительными данными для изделия '{0}'", product));
             tree.GetInfoAboutPurchaseProducts();
             tree.GetInfoAboutRoutes();
+            DiagnosticTimer.End(string.Format("data ({0})", product));
 
             // Создаем таблицу и заполняем ее
             ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Выгрузка состава изделия" };
@@ -131,7 +143,9 @@ public class Macro : MacroProvider {
                     options
                     );
 
+            DiagnosticTimer.Start(string.Format("fill ({0})", product), string.Format("Генерация таблицы для выгрузки дерева изделия", product));
             tree.FillDataForTreeOfProduct(table);
+            DiagnosticTimer.End(string.Format("fill ({0})", product));
 
             table.Columns.Add("Обозначение", 20);
             table.Columns.Add("Наименование", 20);
@@ -149,6 +163,7 @@ public class Macro : MacroProvider {
         }
         
         Message("Информация", "Выгрузка произведена");
+        Message("Информация", DiagnosticTimer.ToString());
         #endregion Формируем дерево изделия
     }
 
@@ -188,8 +203,8 @@ public class Macro : MacroProvider {
         #region Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
 
         // Передаем в TreeOfTable таблица для последующего формирования деревьев
-        TreeOfProduct.SpecTable = specTable;
-        TreeOfProduct.MarchpTable = marchpTable;
+        TreeOfProduct.AddTable(specTable);
+        TreeOfProduct.AddTable(marchpTable);
 
         // Запрашиваем у пользователя список изделий, для которых необходимо формировать дерево
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
@@ -317,8 +332,8 @@ public class Macro : MacroProvider {
         #region Для выбранных пользователей изделий формируем деревья и наполняем их необходимыми данными
 
         // Добавляем таблицы, необходимые для заполнения дерева
-        TreeOfProduct.SpecTable = specTable;
-        TreeOfProduct.MarchpTable = marchpTable;
+        TreeOfProduct.AddTable(specTable);
+        TreeOfProduct.AddTable(marchpTable);
 
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
@@ -789,39 +804,22 @@ public class Macro : MacroProvider {
     private class TreeOfProduct {
 
         #region Fields and Properties
-        private static Dictionary<string, List<TableRow>> _marchpDict = null;
 
+        public List<TreeNode> AllNodes { get; private set; } = new List<TreeNode>();
         public TreeNode HeadOfTree { get; set; }
         public static Table SpecTable { get; set; }
-        public static Table MarchpTable { get; set; }
-        public List<TreeNode> AllNodes { get; set; } = new List<TreeNode>();
+        public static Table MarchpTable { get; private set; }
+        public static Table KlasTable { get; private set; }
+        public static Table KlasmTable { get; private set; }
+        public static Table KatEdizTable { get; private set; }
+
+        // Словари
+        public static Dictionary<string, List<TableRow>> MarchpDict { get; private set; }
+        public static Dictionary<string, List<TableRow>> SpecDict { get; private set; }
 
         public bool isRoutesLoad { get; private set; } = false;
         public bool isPurchasedProductLoad { get; private set; } = false;
 
-        public Dictionary MarchpDict => {
-            if (_marchpDict != null)
-                return _marchpDict;
-            else {
-                if (MarchpTable != null) {
-                    _marchpDict = new Dictionary<string, List<TableRow>>();
-
-                    foreach (TableRow row in MarchpTable) {
-                        if (_marchpDict.Containts(row["shifr"]))
-                            _marchpDict[row["shifr"]].Add(row);
-                        else {
-                            _marchpDict[row["shifr"]] = new List<TableRow>();
-                            _marchpDict[row["shifr"]].Add(row);
-                        }
-                    }
-
-                    return _marchpDict;
-                }
-                else {
-                    throw new Exception("Таблица MarchpTable отсутствует");
-                }
-            }
-        }
         #endregion Fields and Properties
 
         #region Constructors
@@ -904,6 +902,77 @@ public class Macro : MacroProvider {
         }
 
         #endregion Generated Tree methods
+
+        #region AddTable()
+
+        public static void AddTable(Table table) {
+            switch (table.Name.ToLower()) {
+                case "spec":
+                    AddSpecTable(table);
+                    break;
+                case "klas":
+                    AddKlasTable(table);
+                    break;
+                case "klasm":
+                    AddKlasmTable(table);
+                    break;
+                case "marchp":
+                    AddMarchpTable(table);
+                    break;
+                case "kat_ediz":
+                    AddKatEdizTable(table);
+                    break;
+                default:
+                    throw new Exception(string.Format("Таблица '{}' не поддерживается", table.Name));
+            }
+        }
+
+        #region Методы для обработки добавления различных таблиц
+        
+        private static void AddSpecTable(Table table) {
+            SpecTable = table;
+            SpecDict = new Dictionary<string, List<TableRow>>();
+            foreach (TableRow row in SpecTable.Rows) {
+                if (SpecDict.ContainsKey(row["izd"])) {
+                    SpecDict[row["izd"]].Add(row);
+                }
+                else {
+                    SpecDict[row["izd"]] = new List<TableRow>();
+                    SpecDict[row["izd"]].Add(row);
+                }
+            }
+        }
+
+        private static void AddKlasTable(Table table) {
+            KlasTable = table;
+        }
+
+        private static void AddKlasmTable(Table table) {
+            KlasmTable = table;
+        }
+        
+        private static void AddMarchpTable(Table table) {
+            MarchpTable = table;
+            MarchpDict = new Dictionary<string, List<TableRow>>();
+
+            foreach (TableRow row in MarchpTable.Rows) {
+                if (MarchpDict.ContainsKey(row["shifr"])) {
+                    MarchpDict[row["shifr"]].Add(row);
+                }
+                else {
+                    MarchpDict[row["shifr"]] = new List<TableRow>();
+                    MarchpDict[row["shifr"]].Add(row);
+                }
+            }
+        }
+
+        private static void AddKatEdizTable(Table table) {
+            KatEdizTable = table;
+        }
+
+        #endregion Методы для обработки добавления различных таблиц
+
+        #endregion AddTable()
 
         #region Methods for generating excel tables
 
@@ -1038,6 +1107,8 @@ public class Macro : MacroProvider {
         
         #endregion Methods for generating excel tables
 
+        #region Методы для печати дерева
+
         public void Print() {
             if (this.HeadOfTree == null) {
                 Console.WriteLine("Данное дерево не содержит элементов");
@@ -1070,6 +1141,8 @@ public class Macro : MacroProvider {
             }
         }
 
+        #endregion Методы для печати дерева
+
         #region Методы для сбора дополнительной информации о составе изделия
 
         #region GetInfoAboutPurchaseProducts
@@ -1080,50 +1153,37 @@ public class Macro : MacroProvider {
                 // Получаем номер первого цеха в изготовлении
                 string izg = string.Empty;
                 if (this.isRoutesLoad) {
-                    izg = node["route"].Split('-')[0];
+                    izg = node["route"] != "Отсутствует" ? node["route"].Split('-')[0] : "Отсутствует";
                 }
                 else {
-                    // Для начала пытаемся получить список цехозаходов для данного изделия (Получаем только позиции с правильными значениями norm)
-                    List<TableRow> shopCalls = MarchpTable.Rows.Where(row => (row["shifr"] == node["shifr"]) && (row["nper"] == "1") && ((row["norm"] == "1") || (row["norm"] == "0"))).ToList<TableRow>();
-                    if (shopCalls.Count == 0) {
-                        node["purchase"] = "Ошибка";
-                        continue;
-                    }
-                    else if (shopCalls.Count == 1) {
-                        izg = shopCalls[0]["izg"];
+                    if (MarchpDict.ContainsKey(node["shifr"])) {
+                        izg = MarchpDict[node["shifr"]]
+                            .Where(row => (row["norm"] == "1"))
+                            .OrderBy(row => int.Parse(row["nper"]))
+                            .Select(row => row["izg"])
+                            .FirstOrDefault();
+
+                        if (string.IsNullOrEmpty(izg)) {
+                            izg = MarchpDict[node["shifr"]]
+                                .Where(row => (row["norm"] == "0"))
+                                .OrderBy(row => int.Parse(row["nper"]))
+                                .Select(row => row["izg"])
+                                .FirstOrDefault();
+                        }
                     }
                     else {
-                        try {
-                            izg = shopCalls.FirstOrDefault(row => row["norm"] == "1")["izg"];
-                        }
-                        catch {
-                            izg = "Ошибка";
-                        }
+                        izg = "Отсутствует";
                     }
-                    
-                    /*
-                    try {
-                        izg = MarchpTable
-                            .Rows
-                            .FirstOrDefault(row => 
-                                    (row["shifr"] == node["shifr"]) &&
-                                    (row["nper"] == "1") &&
-                                    (row["norm"] != "0")
-                                    )["izg"];
-                    }
-                    catch {
-                        throw new Exception(string.Format("Для изделия '{0}'при определении признака 'Покупное' возникла ошибка", node["shifr"]));
-                    }
-                    */
-                }
 
-                if (!arrayOfUnits.Contains(izg)) {
-                    node["purchase"] = "Покупное";
-                }
-                else {
-                    node["purchase"] = "Не покупное";
+                    if (izg == "Отсутствует")
+                        node["purchase"] = "Покупное (отсутствует маршрут)";
+                    else if (arrayOfUnits.Contains(izg))
+                        node["purchase"] = "Не покупное";
+                    else
+                        node["purchase"] = "Покупное";
                 }
             }
+            // TODO Попробовать добавить в условие не только покупное, но так же и покупное (отсутствует маршрут)
 
             // Определяем позиции, которые входят в покупные
             foreach (TreeNode node in this.AllNodes.Where(node => node["purchase"] == "Покупное")) {
@@ -1147,29 +1207,28 @@ public class Macro : MacroProvider {
         #region GetInfoAboutRoutes
         // Метод для получения маршрутов изготовления для элементов состава
         public void GetInfoAboutRoutes() {
-            // TODO Переписать метод с учетом того, что маршрута с номером 1 может не быть (тогда основной маршрут будет нулевым)
             foreach (TreeNode node in this.AllNodes) {
-                // Получаем сначала все цехозаходы, которые относятся к данному изделию
-                var shopCalls = MarchpTable.Rows.Where(row => row["shifr"] == node["shifr"]);
-                if (shopCalls.Where(row => row["norm"] == "1").Count() > 0) {
-                    node["route"] = string.Join("-", shopCalls
-                        .Where(row => row["norm"] == "1")
-                        .OrderBy(row => int.Parse(row["nper"]))
-                        .Select(row => row["izg"])
-                        );
+                if (MarchpDict.ContainsKey(node["shifr"])) {
+                    // Пробуем сформировать марштур для norm 1
+                    node["route"] = string.Join("-", MarchpDict[node["shifr"]]
+                            .Where(row => row["norm"] == "1")
+                            .OrderBy(row => int.Parse(row["nper"]))
+                            .Select(row => row["izg"]));
+                    
+                    // Если маршрут нулевой, пробуем сформировать маршрут для norm 0
+                    if (string.IsNullOrEmpty(node["route"])) {
+                        node["route"] = string.Join("-", MarchpDict[node["shifr"]]
+                            .Where(row => row["norm"] == "0")
+                            .OrderBy(row => int.Parse(row["nper"]))
+                            .Select(row => row["izg"]));
+
+                    if (string.IsNullOrEmpty(node["route"]))
+                        node["route"] = "Отсутствует";
+                    }
+
                 }
                 else {
-                    // Проверяем, есть ли маршрут с norm 0
-                    if (shopCalls.Where(row => row["norm"] == "0").Count() > 0) {
-                        node["route"] = string.Join("-", shopCalls
-                                .Where(row => row["norm"] == "0")
-                                .OrderBy(row => int.Parse(row["nper"]))
-                                .Select(row => row["izg"])
-                                );
-                    }
-                    else {
-                        node["route"] = "Ошибка";
-                    }
+                    node["route"] = "Отсутствует";
                 }
             }
             this.isRoutesLoad = true;
@@ -1548,7 +1607,7 @@ public class Macro : MacroProvider {
         #region GetPathToDBFile()
         // Метод для формирования пути к файлу с исходными данными
         private string GetPathToDbfFile(string nameOfFile) {
-            // TODO Перенести логину получения пути файла из внешнего метода в данный метод
+            // TODO Перенести логику получения пути файла из внешнего метода в данный метод
             nameOfFile = nameOfFile.ToLower();
             if (!nameOfFile.EndsWith(".dbf"))
                 nameOfFile += ".dbf";
@@ -1837,6 +1896,72 @@ public class Macro : MacroProvider {
     #endregion ExcelTableOptions class
 
     #endregion ExcelTableGenerator
+
+    #region DiagnosticTimer
+
+    private static class DiagnosticTimer {
+
+        public static Dictionary<string, TimerRecord> Records { get; private set; } = new Dictionary<string, TimerRecord>();
+        private static List<string> Keys { get; set; } = new List<string>();
+
+        public static void Start(string key, string message) {
+            if (!Keys.Contains(key)) {
+                Keys.Add(key);
+            }
+            if (Records.ContainsKey(key)) {
+                throw new Exception(string.Format("Key '{0}' is already in the dictionary", key));
+            }
+            Records[key] = new TimerRecord(message);
+            Records[key].Start();
+        }
+
+        public static void End(string key) {
+            if (!Records.ContainsKey(key)) {
+                throw new Exception(string.Format("Key '{0} not exits in DiagnosticTimer'", key));
+            }
+            Records[key].End();
+            
+        }
+
+        public static string ToString() {
+            string message = string.Empty;
+            foreach (string key in Keys) {
+                try {
+                    message += string.Format("{0}\n", Records[key].ToString());
+                }
+                catch {
+                    message += string.Format("Для записи '{0}' указаны неполные данные\n", key);
+                }
+            }
+            return message;
+        }
+    }
+
+    private class TimerRecord {
+        private DateTime StartTime { get; set; }
+        private DateTime EndTime { get; set; }
+        public string Message { get; set; }
+
+        public TimerRecord(string message) {
+            this.Message = message;
+        }
+
+        public void Start() {
+            this.StartTime = DateTime.Now;
+        }
+
+        public void End() {
+            this.EndTime = DateTime.Now;
+        }
+
+        public override string ToString() {
+            if ((this.StartTime == DateTime.MinValue) || (this.EndTime == DateTime.MinValue))
+                throw new Exception ("TimerRecord сlass contains incomplete data");
+            return string.Format("{0}:\n{1}", this.Message, (this.EndTime.Subtract(this.StartTime)).ToString(@"mm\:ss"));
+        }
+    }
+
+    #endregion DiagnosticTimer
 
     #endregion Service classes
     
