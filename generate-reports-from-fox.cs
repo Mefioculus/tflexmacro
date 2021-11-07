@@ -870,16 +870,13 @@ public class Macro : MacroProvider {
 
         private static void GenerateTreeRecursively(TreeNode currentNode, TreeOfProduct tree) {
 
-            // Производим поиск с строками всех дочерних элементов в таблице
-            List<TableRow> childrenRows
-                = SpecTable.Rows.Where(row => row["izd"] == currentNode["shifr"]).ToList<TableRow>();
-            // Условие выхода из рекурсии
-            if (childrenRows.Count == 0)
+            // Проверяем, есть ли для данного изделия дочерние элементы
+            if (!TreeOfProduct.SpecDict.ContainsKey(currentNode["shifr"])) {
                 return;
+            }
 
-            // Обработка найденных дочерних элементов
-            foreach (TableRow children in childrenRows) {
-                // Проверяем, нет подключена ли уже такая нода
+            // Обработка дочерних элементов
+            foreach (TableRow children in TreeOfProduct.SpecDict[currentNode["shifr"]]) {
                 TreeNode searchedNode = currentNode.ChildNodes.FirstOrDefault(node => node["shifr"] == children["shifr"]);
 
                 if (searchedNode == null) {
@@ -890,12 +887,11 @@ public class Macro : MacroProvider {
                     childNode.QuantityInParent = int.Parse(children["prim"]);
                     // Подключаем новую ноду
                     currentNode.Add(childNode);
-                    tree.AllNodes.Add(childNode);
-                    // Вызываем фукнцию рекурсивно
+                    // Вызываем функцию рекурсивно
                     GenerateTreeRecursively(childNode, tree);
                 }
                 else {
-                    // В подключенных уже есть нода с таким обозначением, так что мы просто увеличиваем ее количество
+                    // Случай, когда в подключенных уже есть нода с таким обозначением, так что мы просто увеличиваем ее количество
                     searchedNode.QuantityInParent += int.Parse(children["prim"]);
                 }
             }
@@ -1271,6 +1267,7 @@ public class Macro : MacroProvider {
 
         public void Add(TreeNode node) {
             this.ChildNodes.Add(node);
+            this.Tree.AllNodes.Add(node);
         }
 
         public bool Contains(TreeNode node) {
