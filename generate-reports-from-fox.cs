@@ -177,55 +177,43 @@ public class Macro : MacroProvider {
 
         string message = string.Empty;
 
+        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
+
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        message += specTable.Status;
-
         Table klasTable = new Table("klas", pathToTempDirectoryFoxProDb);
-        message += klasTable.Status;
-
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+
+        DiagnosticTimer.End("tables");
+
+        message += specTable.Status;
+        message += klasTable.Status;
         message += marchpTable.Status;
 
         Message("Чтение таблиц FoxPro", message);
 
-        #endregion Производим чтение всех необходимых таблиц
+        DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
 
-        #region Формируем все необходимые словари
-
-        // Создаем словарь с стандартными изделиями
-        Dictionary<string, TableRow> allOkpCodesKlasTable = new Dictionary<string, TableRow>();
-        foreach (TableRow row in klasTable.Rows) {
-            allOkpCodesKlasTable[row["okp"]] = row;
-        }
-
-        #endregion Формируем все необходимые словари
-
-        #region Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
-
-        // Передаем в TreeOfTable таблица для последующего формирования деревьев
+        // Передаем в TreeOfProduct таблицы для последующего формирования деревьев
         TreeOfProduct.AddTable(specTable);
         TreeOfProduct.AddTable(marchpTable);
+        TreeOfProduct.AddTable(klasTable);
+
+        DiagnosticTimer.End("dicts");
+
+        #endregion Производим чтение всех необходимых таблиц
+
+        #region Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
 
         // Запрашиваем у пользователя список изделий, для которых необходимо формировать дерево
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
         foreach (string product in listOfSelectedProducts) {
 
+            DiagnosticTimer.Start(product, string.Format("Формирование выгрузки по материалам для изделия {0}", product));
+
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
             tree.GetInfoAboutPurchaseProducts();
             tree.GetInfoAboutRoutes();
-
-            // Дополняем ноды дерева информацией о стандартных изделиях
-            foreach (TreeNode node in tree.AllNodes) {
-                if (allOkpCodesKlasTable.ContainsKey(node["shifr"])) {
-                    node["type"] = "Стандартное изделие";
-                    node["gost"] = allOkpCodesKlasTable[node["shifr"]]["gost"];
-                }
-                else {
-                    node["type"] = "Не классифицировано";
-                    node["gost"] = string.Empty;
-                }
-            }
 
             // Генерируем таблицу по стандартным изделиям
 
@@ -261,9 +249,12 @@ public class Macro : MacroProvider {
                     "Признак",
                     "Маршрут"
                     });
+
+            DiagnosticTimer.End(product);
         }
 
         Message("Информация", "Формирование всех выгрузок стандартных изделий завершено");
+        Message("Времени затрачено", DiagnosticTimer.ToString());
 
         #endregion Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
     }
@@ -278,62 +269,40 @@ public class Macro : MacroProvider {
 
         string message = string.Empty;
 
+        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
+
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
-        message += specTable.Status;
-
         Table klasmTable = new Table("klasm", pathToTempDirectoryFoxProDb);
-        message += klasmTable.Status;
-
         Table katEdizTable = new Table("kat_ediz", pathToTempDirectoryFoxProDb);
-        message += katEdizTable.Status;
-
         Table normTable = new Table("norm", pathToTempDirectoryFoxProDb);
-        message += normTable.Status;
-
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+
+        DiagnosticTimer.End("tables");
+
+        message += specTable.Status;
+        message += klasmTable.Status;
+        message += katEdizTable.Status;
+        message += normTable.Status;
         message += marchpTable.Status;
+
+        DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
+
+        // Передаем в TreeOfProduct таблицы для последующего формирования деревьев
+        TreeOfProduct.AddTable(specTable);
+        TreeOfProduct.AddTable(klasmTable);
+        TreeOfProduct.AddTable(katEdizTable);
+        TreeOfProduct.AddTable(normTable);
+        TreeOfProduct.AddTable(marchpTable);
+
+        DiagnosticTimer.End("dicts");
 
         Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
 
-        #region Формируем словари с необходимыми данными
-
-        // Создаем словарь с материалами
-        Dictionary<string, TableRow> allOkpCodesKlasmTable = new Dictionary<string, TableRow>();
-        foreach (TableRow row in klasmTable.Rows) {
-            allOkpCodesKlasmTable[row["okp"]] = row;
-        }
-
-        // Создаем словарь с нормами материалов
-        Dictionary<string, List<TableRow>> allShifrsNormTable = new Dictionary<string, List<TableRow>>();
-        foreach (TableRow row in normTable.Rows) {
-            if (allShifrsNormTable.ContainsKey(row["shifr"])) {
-                allShifrsNormTable[row["shifr"]].Add(row);
-            }
-            else {
-                allShifrsNormTable[row["shifr"]] = new List<TableRow>();
-                allShifrsNormTable[row["shifr"]].Add(row);
-            }
-        }
-
-        // Создаем словарь с единицами измерения
-        Dictionary<int, string> unitsOfMeasurement = new Dictionary<int, string>();
-        int kod = 0; // Переменная для хранения кода единицы измерения
-        foreach (TableRow row in katEdizTable.Rows) {
-            kod = int.Parse(row["kod"]);
-            if (!unitsOfMeasurement.ContainsKey(kod)) {
-                unitsOfMeasurement[kod] = row["name"];
-            }
-        }
-
-        #endregion Формируем словари с необходимыми данными
-
         #region Для выбранных пользователей изделий формируем деревья и наполняем их необходимыми данными
 
         // Добавляем таблицы, необходимые для заполнения дерева
-        TreeOfProduct.AddTable(specTable);
-        TreeOfProduct.AddTable(marchpTable);
 
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
@@ -352,7 +321,7 @@ public class Macro : MacroProvider {
                     options
                     );
 
-            tree.FillDataForMaterial(table, allShifrsNormTable, allOkpCodesKlasmTable, unitsOfMeasurement);
+            tree.FillDataForMaterial(table);
 
             // Заполняем данные о ширине колонок и генерируем таблицу
             table.Columns.Add("Обозначение", 20);
@@ -812,10 +781,15 @@ public class Macro : MacroProvider {
         public static Table KlasTable { get; private set; }
         public static Table KlasmTable { get; private set; }
         public static Table KatEdizTable { get; private set; }
+        public static Table NormTable { get; private set; }
 
         // Словари
-        public static Dictionary<string, List<TableRow>> MarchpDict { get; private set; }
         public static Dictionary<string, List<TableRow>> SpecDict { get; private set; }
+        public static Dictionary<string, List<TableRow>> MarchpDict { get; private set; }
+        public static Dictionary<string, TableRow> KlasDict { get; private set; }
+        public static Dictionary<string, TableRow> KlasmDict { get; private set; }
+        public static Dictionary<int, string> KatEdizDict { get; private set; }
+        public static Dictionary<string, List<TableRow>> NormDict { get; private set; }
 
         public bool isRoutesLoad { get; private set; } = false;
         public bool isPurchasedProductLoad { get; private set; } = false;
@@ -918,6 +892,9 @@ public class Macro : MacroProvider {
                 case "kat_ediz":
                     AddKatEdizTable(table);
                     break;
+                case "norm":
+                    AddNormTable(table);
+                    break;
                 default:
                     throw new Exception(string.Format("Таблица '{}' не поддерживается", table.Name));
             }
@@ -925,6 +902,8 @@ public class Macro : MacroProvider {
 
         #region Методы для обработки добавления различных таблиц
         
+        #region AddSpecTable()
+
         private static void AddSpecTable(Table table) {
             SpecTable = table;
             SpecDict = new Dictionary<string, List<TableRow>>();
@@ -939,14 +918,35 @@ public class Macro : MacroProvider {
             }
         }
 
+        #endregion AddSpecTable()
+
+        #region AddKlasTable()
+
         private static void AddKlasTable(Table table) {
             KlasTable = table;
+            KlasDict = new Dictionary<string, TableRow>();
+            foreach (TableRow row in KlasTable.Rows) {
+                KlasDict[row["okp"]] = row;
+            }
         }
+
+        #endregion AddKlasTable()
+
+        #region AddKlasmTable()
 
         private static void AddKlasmTable(Table table) {
             KlasmTable = table;
+            KlasmDict = new Dictionary<string, TableRow>();
+
+            foreach (TableRow row in KlasmTable.Rows) {
+                KlasmDict[row["okp"]] = row;
+            }
         }
+
+        #endregion AddKlasmTable()
         
+        #region AddMarchpTable()
+
         private static void AddMarchpTable(Table table) {
             MarchpTable = table;
             MarchpDict = new Dictionary<string, List<TableRow>>();
@@ -962,9 +962,43 @@ public class Macro : MacroProvider {
             }
         }
 
+        #endregion AddMarchpTable()
+
+        #region AddKatEdizTable()
+
         private static void AddKatEdizTable(Table table) {
             KatEdizTable = table;
+            KatEdizDict = new Dictionary<int, string>();
+
+            int kod = 0; // Переменная для хранения кода единицы измерения
+            foreach (TableRow row in KatEdizTable.Rows) {
+                kod = int.Parse(row["kod"]);
+                if (!KatEdizDict.ContainsKey(kod)) {
+                    KatEdizDict[kod] = row["name"];
+                }
+            }
         }
+
+        #endregion AddKatEdizTable()
+
+        #region AddNormTable()
+
+        private static void AddNormTable(Table table) {
+            NormTable = table;
+            NormDict = new Dictionary<string, List<TableRow>>();
+
+            foreach (TableRow row in NormTable.Rows) {
+                if (NormDict.ContainsKey(row["shifr"])) {
+                    NormDict[row["shifr"]].Add(row);
+                }
+                else {
+                    NormDict[row["shifr"]] = new List<TableRow>();
+                    NormDict[row["shifr"]].Add(row);
+                }
+            }
+        }
+
+        #endregion AddNormTable()
 
         #endregion Методы для обработки добавления различных таблиц
 
@@ -1001,6 +1035,20 @@ public class Macro : MacroProvider {
         #region Формирование таблицы по стандартным изделиям
 
         public void FillDataForStIzd(ExcelTable exTable) {
+
+            // Дополняем дерево изделия информацией о стандартных изделиях
+            foreach (TreeNode node in this.AllNodes) {
+                if (TreeOfProduct.KlasDict.ContainsKey(node["shifr"])) {
+                    node["type"] = "Стандартное изделие";
+                    node["gost"] = TreeOfProduct.KlasDict[node["shifr"]]["gost"];
+                }
+                else {
+                    node["type"] = "Не классифицировано";
+                    node["gost"] = string.Empty;
+                }
+            }
+            
+            // Создаем словарь для отслеживания дубликатов (уже добавленных с таблицу строк)
             Dictionary<string, ExcelRow> alreadyExistDict = new Dictionary<string, ExcelRow>();
 
             foreach (TreeNode node in this.AllNodes) {
@@ -1035,7 +1083,7 @@ public class Macro : MacroProvider {
 
         #region Формирование таблицы по материалам
 
-        public void FillDataForMaterial(ExcelTable exTable, Dictionary<string, List<TableRow>> normDict, Dictionary<string, TableRow> klasmTable, Dictionary<int, string> unitsOfMeasurement) {
+        public void FillDataForMaterial(ExcelTable exTable) {
             //TODO Реализовать метод для формирования таблицы по материалам
             // Проходим по всем объектам дерева
 
@@ -1045,25 +1093,14 @@ public class Macro : MacroProvider {
             // Запускаем получение материала только для непокупных позиций
             // Отсеиваются так же входящие в покупные позиции, а так же позиция, для которой не было найдено маршрута
 
-            // Сообщаем пользователю, по скольким позициям не удалось определить, является ли ДСЕ покупной или нет
-            int countOfErrors = this.AllNodes.Where(node => node["purchase"] == "Ошибка").Count();
-            if (countOfErrors > 0) {
-                MessageBox.Show(string.Format("При определении признака покупных для изделие '{0}' возникло {1} ошибок", this.HeadOfTree["shifr"], countOfErrors), "Информация");
-                
-                string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), string.Format("{0}-log.txt", this.HeadOfTree["shifr"]));
-                string content = string.Join("\n", this.AllNodes.Where(node => node["purchase"] == "Ошибка").Select(node => node["shifr"]));
-                File.WriteAllText(pathToFile, content);
-            }
-
-
             foreach (TreeNode node in this.AllNodes.Where(node => node["purchase"] == "Не покупное")) {
                 int quantity = node.QuantityInTree;
 
                 
 
-                if (normDict.ContainsKey(node["shifr"])) {
+                if (TreeOfProduct.NormDict.ContainsKey(node["shifr"])) {
                     // Итерируемся через строки в таблице норм, относящимся к конкретному изделию
-                    foreach (TableRow normDictRow in normDict[node["shifr"]]) {
+                    foreach (TableRow normDictRow in TreeOfProduct.NormDict[node["shifr"]]) {
                         // Получаем количество данной ноды в дереве для получения количества материала
                         // Случай, когда словарь еще не содержит данного материала
                         if (!containerForRows.ContainsKey(normDictRow["okp"])) {
@@ -1074,14 +1111,14 @@ public class Macro : MacroProvider {
 
                             // Заполняем параметры строки
                             exRow["Обозначение"] = normDictRow["okp"]; // OKP материала
-                            exRow["Наименование"] = klasmTable[normDictRow["okp"]]["name"]; // Наименование материала
-                            exRow["Стандарт"] = klasmTable[normDictRow["okp"]]["gost"]; // Стандарт
+                            exRow["Наименование"] = TreeOfProduct.KlasmDict[normDictRow["okp"]]["name"]; // Наименование материала
+                            exRow["Стандарт"] = TreeOfProduct.KlasmDict[normDictRow["okp"]]["gost"]; // Стандарт
                             // TODO Пока что непонятно, что делать с единицами измерения, так как они есть в нормах, а так же
                             // в данных матерала. А так же в справочнике с единицами измерения есть переводные коэффициенты,
                             // так что возможно их так же придется использовать. Пока что воспользуюсь единицами измерения, которые указаны в нормах
-                            exRow["Единицы измерения"] = unitsOfMeasurement[int.Parse(normDictRow["edizm"])];// Единицы измерения
+                            exRow["Единицы измерения"] = TreeOfProduct.KatEdizDict[int.Parse(normDictRow["edizm"])];// Единицы измерения
                             exRow["Применяемость"] = (quantity * decimal.Parse(normDictRow["nmat"])).ToString();// Количество
-                            exRow["Вид"] = klasmTable[normDictRow["okp"]]["vid"]; // Вид материала 
+                            exRow["Вид"] = TreeOfProduct.KlasmDict[normDictRow["okp"]]["vid"]; // Вид материала 
 
                         }
                         // Случай, когда словарь уже содержит данный материал
