@@ -369,6 +369,8 @@ public class Macro : MacroProvider {
         message += trudTable.Status;
         message += katIzvTable.Status;
 
+        Message("Информация", message);
+
         // Передаем в TreeOfTable таблицы для последующего формирования деревьев
         TreeOfProduct.AddTable(specTable);
         TreeOfProduct.AddTable(trudTable);
@@ -822,7 +824,7 @@ public class Macro : MacroProvider {
         public static Dictionary<int, string> KatEdizDict { get; private set; }
         public static Dictionary<string, List<TableRow>> NormDict { get; private set; }
         public static Dictionary<string, List<TableRow>> TrudDict { get; private set; }
-        public static Dictionary<string, TableRow> KatIzvDict { get; private set; }
+        public static Dictionary<string, List<TableRow>> KatIzvDict { get; private set; }
 
         public bool isRoutesLoad { get; private set; } = false;
         public bool isPurchasedProductLoad { get; private set; } = false;
@@ -1041,14 +1043,18 @@ public class Macro : MacroProvider {
 
         #region AddKatIzvTable()
 
-        private static void AddKatIzvTable() {
+        private static void AddKatIzvTable(Table table) {
             KatIzvTable = table;
-            KatIzvDict = new Dictionary<string, TableRow>();
+            KatIzvDict = new Dictionary<string, List<TableRow>>();
 
             foreach (TableRow row in KatIzvTable.Rows) {
-                if (KatIzvDict.ContainsKey(row["shifr"]))
-                    throw new Exception(string.Format("В словаре KatIzvDict уже есть ключ '{0}'", row["shifr"]));
-                KatIzvDict[row["shifr"]] = row;
+                if (KatIzvDict.ContainsKey(row["shifr"])) {
+                    KatIzvDict[row["shifr"]].Add(row);
+                }
+                else {
+                    KatIzvDict[row["shifr"]] = new List<TableRow>();
+                    KatIzvDict[row["shifr"]].Add(row);
+                }
             }
         }
 
@@ -1739,8 +1745,19 @@ public class Macro : MacroProvider {
                     newRow["sh_izm"] = dataReader.GetString(4);
                     newRow["vnedr"] = dataReader.GetString(8);
                     // Получение даты в текстовом формате
-                    newRow["data_iz"] = dataReader.GetDateTime(5).ToString("dd:MM:yyyy");
-                    newRow["data_vv"] = dataReader.GetDateTime(9).ToString("dd:MM:yyyy");
+                    try {
+                        newRow["data_iz"] = dataReader.GetDateTime(5).ToString("dd:MM:yyyy");
+                    }
+                    catch {
+                        newRow["data_iz"] = string.Empty;
+                    }
+
+                    try {
+                        newRow["data_vv"] = dataReader.GetDateTime(9).ToString("dd:MM:yyyy");
+                    }
+                    catch {
+                        newRow["data_vv"] = string.Empty;
+                    }
                 }
                 catch {
                     this.ErrorsId.Add(counter - 1);
