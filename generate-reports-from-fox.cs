@@ -54,7 +54,13 @@ public class Macro : MacroProvider {
             "norm.dbf",
             "norm.cdx",
             "marchp.dbf",
-            "marchp.cdx"
+            "marchp.cdx",
+            "trud.tbk",
+            "trud.cdx",
+            "trud.dbf",
+            // "trud.bak"
+            "trud.fpt",
+            "kat_izv.dbf"
         };
     // Список подразделений, которые относятся к предприятию (Следовательно не являются покупными)
     private static string[] arrayOfUnits = new string[] {
@@ -348,6 +354,29 @@ public class Macro : MacroProvider {
     }
 
     #endregion ВыгрузитьМатериалы()
+
+    #region ВыгрузитьДанныеМаршрутныхКартДляОГТ()
+
+    public void ВыгрузитьДанныеМаршрутныхКартДляОГТ() {
+        Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
+        Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
+        Table trudTable = new Table("trud", pathToTempDirectoryFoxProDb);
+        Table katIzvTable = new Table("kat_izv", pathToTempDirectoryFoxProDb);
+
+        string message = string.Empty;
+        message += specTable.Status;
+        message += marchpTable.Status;
+        message += trudTable.Status;
+        message += katIzvTable.Status;
+
+        // Передаем в TreeOfTable таблицы для последующего формирования деревьев
+        TreeOfProduct.AddTable(specTable);
+        TreeOfProduct.AddTable(trudTable);
+        TreeOfProduct.AddTable(marchpTable);
+        TreeOfProduct.AddTable(katIzvTable);
+    }
+
+    #endregion ВыгрузитьДанныеМаршрутныхКартДляОГТ()
     
     #endregion EntryPoints
 
@@ -782,6 +811,8 @@ public class Macro : MacroProvider {
         public static Table KlasmTable { get; private set; }
         public static Table KatEdizTable { get; private set; }
         public static Table NormTable { get; private set; }
+        public static Table TrudTable { get; private set; }
+        public static Table KatIzvTable { get; private set; }
 
         // Словари
         public static Dictionary<string, List<TableRow>> SpecDict { get; private set; }
@@ -790,6 +821,8 @@ public class Macro : MacroProvider {
         public static Dictionary<string, TableRow> KlasmDict { get; private set; }
         public static Dictionary<int, string> KatEdizDict { get; private set; }
         public static Dictionary<string, List<TableRow>> NormDict { get; private set; }
+        public static Dictionary<string, List<TableRow>> TrudDict { get; private set; }
+        public static Dictionary<string, TableRow> KatIzvDict { get; private set; }
 
         public bool isRoutesLoad { get; private set; } = false;
         public bool isPurchasedProductLoad { get; private set; } = false;
@@ -892,6 +925,12 @@ public class Macro : MacroProvider {
                 case "kat_ediz":
                     AddKatEdizTable(table);
                     break;
+                case "trud":
+                    AddTrudTable(table);
+                    break;
+                case "kat_izv":
+                    AddKatIzvTable(table);
+                    break;
                 case "norm":
                     AddNormTable(table);
                     break;
@@ -964,6 +1003,25 @@ public class Macro : MacroProvider {
 
         #endregion AddMarchpTable()
 
+        #region AddTrudTable()
+
+        private static void AddTrudTable(Table table) {
+            TrudTable = table;
+            TrudDict = new Dictionary<string, List<TableRow>>();
+
+            foreach (TableRow row in TrudTable.Rows) {
+                if (TrudDict.ContainsKey(row["shifr"])) {
+                    TrudDict[row["shifr"]].Add(row);
+                }
+                else {
+                    TrudDict[row["shifr"]] = new List<TableRow>();
+                    TrudDict[row["shifr"]].Add(row);
+                }
+            }
+        }
+
+        #endregion AddTrudTable()
+
         #region AddKatEdizTable()
 
         private static void AddKatEdizTable(Table table) {
@@ -980,6 +1038,21 @@ public class Macro : MacroProvider {
         }
 
         #endregion AddKatEdizTable()
+
+        #region AddKatIzvTable()
+
+        private static void AddKatIzvTable() {
+            KatIzvTable = table;
+            KatIzvDict = new Dictionary<string, TableRow>();
+
+            foreach (TableRow row in KatIzvTable.Rows) {
+                if (KatIzvDict.ContainsKey(row["shifr"]))
+                    throw new Exception(string.Format("В словаре KatIzvDict уже есть ключ '{0}'", row["shifr"]));
+                KatIzvDict[row["shifr"]] = row;
+            }
+        }
+
+        #endregion AddKatIzvTable()
 
         #region AddNormTable()
 
@@ -1426,7 +1499,7 @@ public class Macro : MacroProvider {
                     ReadSpecTable(dataReader);
                     break;
                 case "trud":
-                    throw new Exception("Работа с таблицей trud еще не реализована");
+                    ReadTrudTable(dataReader);
                     break;
                 case "klas":
                     ReadKlasTable(dataReader);
@@ -1442,6 +1515,9 @@ public class Macro : MacroProvider {
                     break;
                 case "marchp":
                     ReadMarchpTable(dataReader);
+                    break;
+                case "kat_izv":
+                    ReadKatIzvTable(dataReader);
                     break;
                 default:
                     throw new Exception(
@@ -1484,6 +1560,23 @@ public class Macro : MacroProvider {
 
         private void ReadTrudTable(DbfDataReader.DbfDataReader dataReader) {
             int counter = 1;
+            while (dataReader.Read()) {
+                TableRow newRow = new TableRow(counter++);
+                try {
+                    newRow["shifr"] = dataReader.GetString(0);
+                    newRow["izg"] = dataReader.GetString(1);
+                    newRow["num_op"] = dataReader.GetString(2);
+                    newRow["shifr_op"] = dataReader.GetString(3);
+                    newRow["op_op"] = dataReader.GetString(11);
+                    newRow["naim_st"] = dataReader.GetString(12);
+                    newRow["prof"] = dataReader.GetString(13);
+                }
+                catch {
+                    this.ErrorsId.Add(counter - 1);
+                    continue;
+                }
+                this.Rows.Add(newRow);
+            }
         }
 
         #endregion ReadTrudTable method
@@ -1633,6 +1726,31 @@ public class Macro : MacroProvider {
         }
 
         #endregion ReadMarchpTable method
+
+        #region ReadKatIzvTable method
+
+        private void ReadKatIzvTable(DbfDataReader.DbfDataReader dataReader) {
+            int counter = 1;
+            while (dataReader.Read()) {
+                TableRow newRow = new TableRow(counter++);
+                try {
+                    newRow["shifr"] = dataReader.GetString(0);
+                    newRow["izd"] = dataReader.GetString(2);
+                    newRow["sh_izm"] = dataReader.GetString(4);
+                    newRow["vnedr"] = dataReader.GetString(8);
+                    // Получение даты в текстовом формате
+                    newRow["data_iz"] = dataReader.GetDateTime(5).ToString("dd:MM:yyyy");
+                    newRow["data_vv"] = dataReader.GetDateTime(9).ToString("dd:MM:yyyy");
+                }
+                catch {
+                    this.ErrorsId.Add(counter - 1);
+                    continue;
+                }
+                this.Rows.Add(newRow);
+            }
+        }
+
+        #endregion ReadKatIzvTable method
 
         #endregion Методы для обработки различных таблиц
 
