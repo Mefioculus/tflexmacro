@@ -26,6 +26,12 @@ WindowsBase.dll (так же необходим для работы DbfDataReade
 DocumentFormat.OpenXml для работы с Excel // Уже есть в директории DOCs, подключается через ссылку
 */
 
+// TODO Изменить механизм добавление справочника DOCs в методе дерева
+// (Предположительно нужно либо контекст передавать в дерево, либо сразу справочник)
+// TODO Из всех точек входа перенести методы GetInfo... в соответствующие методы заполнения данных Fill...
+// TODO В методы Fill... в начале добавить проверку исходных данных. При отсутствии каких-либо необходимых данных выдавать ошибку с перечнем того, чего не хватает.
+// TODO Переделать DiagnosticTimer таким образом, чтобы он перестал быть статическим
+
 
 public class Macro : MacroProvider {
 
@@ -129,11 +135,12 @@ public class Macro : MacroProvider {
 
         DiagnosticTimer.End("tables");
         
-        // Вывод статистики по выгрузке
+        // Вывод данных об ошибках, возникших в процессе чтения баз данных
         string message = string.Empty;
-        message += specTable.Status;
-        message += marchpTable.Status;
-        Message("Чтение таблиц FoxPro", message);
+        message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
+        message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
+        if (message != string.Empty)
+            Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
 
@@ -194,8 +201,6 @@ public class Macro : MacroProvider {
 
         #region Производим чтение всех необходимых таблиц
 
-        string message = string.Empty;
-
         DiagnosticTimer.Start("tables", "Выгрузка таблиц");
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
@@ -204,11 +209,13 @@ public class Macro : MacroProvider {
 
         DiagnosticTimer.End("tables");
 
-        message += specTable.Status;
-        message += klasTable.Status;
-        message += marchpTable.Status;
-
-        Message("Чтение таблиц FoxPro", message);
+        // Вывод данных об ошибках, возникших в процессе чтения баз данных
+        string message = string.Empty;
+        message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
+        message += KlasTable.ErrorsId.Count != 0 ? KlasTable.Status : string.Empty;
+        message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
+        if (message != string.Empty)
+            Message("Чтение таблиц FoxPro", message);
 
         DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
 
@@ -278,7 +285,6 @@ public class Macro : MacroProvider {
 
         #region Производим чтение всех необходимых таблиц
 
-        string message = string.Empty;
 
         DiagnosticTimer.Start("tables", "Выгрузка таблиц");
 
@@ -290,12 +296,16 @@ public class Macro : MacroProvider {
 
         DiagnosticTimer.End("tables");
 
-        message += specTable.Status;
-        message += klasmTable.Status;
-        message += katEdizTable.Status;
-        message += normTable.Status;
-        message += marchpTable.Status;
-
+        // Вывод данных об ошибках, возникших в процессе чтения баз данных
+        string message = string.Empty;
+        message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
+        message += klasmTable.ErrorsId.Count != 0 ? klasmTable.Status : string.Empty;
+        message += katEdizTable.ErrorsId.Count != 0 ? katEdizTable.Status : string.Empty;
+        message += normTable.ErrorsId.Count != 0 ? normTable.Status : string.Empty;
+        message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
+        if (message != string.Empty)
+            Message("Чтение таблиц FoxPro", message);
+        
         DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
 
         // Передаем в TreeOfProduct таблицы для последующего формирования деревьев
@@ -307,7 +317,6 @@ public class Macro : MacroProvider {
 
         DiagnosticTimer.End("dicts");
 
-        Message("Чтение таблиц FoxPro", message);
 
         #endregion Производим чтение всех необходимых таблиц
 
@@ -364,13 +373,14 @@ public class Macro : MacroProvider {
         Table trudTable = new Table("trud", pathToTempDirectoryFoxProDb);
         Table katIzvTable = new Table("kat_izv", pathToTempDirectoryFoxProDb);
 
+        // Вывод данных об ошибках, возникших в процессе чтения баз данных
         string message = string.Empty;
-        message += specTable.Status;
-        message += marchpTable.Status;
-        message += trudTable.Status;
-        message += katIzvTable.Status;
-
-        Message("Информация", message);
+        message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
+        message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
+        message += trudTable.ErrorsId.Count != 0 ? trudTable.Status : string.Empty;
+        message += KatIzvTable.ErrorsId.Count != 0 ? katIzvTable.Status : string.Empty;
+        if (message != string.Empty)
+            Message("Информация", message);
 
         // Передаем в TreeOfTable таблицы для последующего формирования деревьев
         TreeOfProduct.AddTable(specTable);
