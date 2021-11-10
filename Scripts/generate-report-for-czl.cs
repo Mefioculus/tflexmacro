@@ -279,7 +279,7 @@ private void GenerateMagneteTable(string tableString) {
         
         List<CellData> firstColumnNames = new List<CellData>() {
             new CellData("№ Контр. образца", widthOfColumns[2]),
-            new CellData("Магнитная индукция А/м при напряжении магнитного поля, Тл", lengthOfInductionColumnSummary),
+            new CellData("Магнитная индукция В, Тл при напряженности магнитного поля Н, A/м", lengthOfInductionColumnSummary),
             new CellData("Коэрцитивная сила, А/м", widthOfColumns[widthOfColumns.Count])
         };
 
