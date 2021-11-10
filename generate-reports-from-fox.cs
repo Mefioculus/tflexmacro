@@ -9,6 +9,8 @@ using System.Drawing;
 
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
+using TFlex.DOCs.Model.Structure;
+using TFlex.DOCs.Model.Search;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.References.Files;
 
@@ -37,6 +39,23 @@ public class Macro : MacroProvider {
         }
 
     #endregion Constructor
+
+    #region Guids
+
+    private static class Guids {
+        public static class References {
+            public static Guid АрхивОГТ = new Guid("500d4bcf-e02c-4b2e-8f09-29b64d4e7513");
+        }
+
+        public static class Parameters {
+            public static class АрхивОГТ {
+                public static Guid ОбозначениеДеталиУзла = new Guid("c11b5a98-c22c-42bc-8375-be30052ffba2");
+                public static Guid СканДокумента = new Guid("5947d0ce-b096-4791-96a4-e3ac03f9c49c");
+            }
+        }
+    }
+
+    #endregion Guids
 
     #region Fields and Properties
 
@@ -153,19 +172,13 @@ public class Macro : MacroProvider {
             tree.FillDataForTreeOfProduct(table);
             DiagnosticTimer.End(string.Format("fill ({0})", product));
 
-            table.Columns.Add("Обозначение", 20);
-            table.Columns.Add("Наименование", 20);
-            table.Columns.Add("Применяемость", 20);
-            table.Columns.Add("Маршрут", 20);
-            table.Columns.Add("Признак покупного", 20);
+            table.AddColumn("Обозначение", 20);
+            table.AddColumn("Наименование", 20);
+            table.AddColumn("Применяемость", 20);
+            table.AddColumn("Маршрут", 20);
+            table.AddColumn("Признак покупного", 20);
 
-            table.Generate(new string[] {
-                    "Обозначение",
-                    "Наименование",
-                    "Применяемость",
-                    "Маршрут",
-                    "Признак покупного"
-                    });
+            table.Generate();
         }
         
         Message("Информация", "Выгрузка произведена");
@@ -238,23 +251,15 @@ public class Macro : MacroProvider {
             tree.FillDataForStIzd(table);
 
             // Заполняем данные о ширине колонок
-            table.Columns.Add("Изделие", 20);
-            table.Columns.Add("Обозначение", 20);
-            table.Columns.Add("Наименование", 20);
-            table.Columns.Add("ГОСТ", 20);
-            table.Columns.Add("Применяемость", 20);
-            table.Columns.Add("Признак", 20);
-            table.Columns.Add("Маршрут", 20);
+            table.AddColumn("Изделие", 20);
+            table.AddColumn("Обозначение", 20);
+            table.AddColumn("Наименование", 20);
+            table.AddColumn("ГОСТ", 20);
+            table.AddColumn("Применяемость", 20);
+            table.AddColumn("Признак", 20);
+            table.AddColumn("Маршрут", 20);
 
-            table.Generate(new string[] {
-                    "Изделие",
-                    "Обозначение",
-                    "Наименование",
-                    "ГОСТ",
-                    "Применяемость",
-                    "Признак",
-                    "Маршрут"
-                    });
+            table.Generate();
 
             DiagnosticTimer.End(product);
         }
@@ -330,21 +335,14 @@ public class Macro : MacroProvider {
             tree.FillDataForMaterial(table);
 
             // Заполняем данные о ширине колонок и генерируем таблицу
-            table.Columns.Add("Обозначение", 20);
-            table.Columns.Add("Наименование", 20);
-            table.Columns.Add("Применяемость", 20);
-            table.Columns.Add("Единицы измерения", 20);
-            table.Columns.Add("Вид", 20);
-            table.Columns.Add("Стандарт", 20);
+            table.AddColumn("Обозначение", 20);
+            table.AddColumn("Наименование", 20);
+            table.AddColumn("Применяемость", 20);
+            table.AddColumn("Единицы измерения", 20);
+            table.AddColumn("Вид", 20);
+            table.AddColumn("Стандарт", 20);
 
-            table.Generate(new string[] {
-                    "Обозначение",
-                    "Наименование",
-                    "Стандарт",
-                    "Применяемость",
-                    "Единицы измерения",
-                    "Вид"
-                    });
+            table.Generate();
 
         }
 
@@ -358,6 +356,9 @@ public class Macro : MacroProvider {
     #region ВыгрузитьДанныеМаршрутныхКартДляОГТ()
 
     public void ВыгрузитьДанныеМаршрутныхКартДляОГТ() {
+
+        #region Производим чтение всех необходимых таблиц
+
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
         Table trudTable = new Table("trud", pathToTempDirectoryFoxProDb);
@@ -376,6 +377,52 @@ public class Macro : MacroProvider {
         TreeOfProduct.AddTable(trudTable);
         TreeOfProduct.AddTable(marchpTable);
         TreeOfProduct.AddTable(katIzvTable);
+
+        #endregion Производим чтение всех необходимых таблиц
+
+        #region Формируем дерево изделия и генерируем отчет
+
+        string [] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
+
+        foreach (string product in listOfSelectedProducts) {
+            // Генерируем дерево
+            TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
+
+            ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Данные о наличии МК"};
+
+            ExcelTable table = new ExcelTable(
+                    GetDirectory(),
+                    string.Format("{0} (наличие мк)", product),
+                    options
+                    );
+
+            // Заполняем всю необходимую информацию
+            Reference archiveOgt = Context.Connection.ReferenceCatalog.Find(Guids.References.АрхивОГТ).CreateReference();
+            tree.FillDataAboutMK(table, archiveOgt);
+
+            table.AddColumn("Шифр", 20);
+            table.AddColumn("Наименование", 20);
+            table.AddColumn("Родитель", 20);
+            table.AddColumn("Наличие в FoxPro", 20);
+            table.AddColumn("Наличие в Архиве ОГТ", 20);
+            table.AddColumn("Статус", 20);
+            table.AddColumn("Изготовитель", 20);
+            table.AddColumn("ПКИ", 20);
+            table.AddColumn("Дубликат", 20);
+            table.AddColumn("Маршрут", 20);
+            table.AddColumn("Маршрут по МК", 20);
+            table.AddColumn("Сверка маршрутов", 20);
+            table.AddColumn("Номер извещения", 20);
+            table.AddColumn("Внедрено", 20);
+            table.AddColumn("Дата внедрения", 20);
+            table.AddColumn("Замечания (Опер(Подр) Опис/Обор/Проф)", 40);
+
+            table.Generate();
+            
+        }
+
+        #endregion Формируем дерево изделия и генерируем отчет
+
     }
 
     #endregion ВыгрузитьДанныеМаршрутныхКартДляОГТ()
@@ -1163,7 +1210,6 @@ public class Macro : MacroProvider {
         #region Формирование таблицы по материалам
 
         public void FillDataForMaterial(ExcelTable exTable) {
-            //TODO Реализовать метод для формирования таблицы по материалам
             // Проходим по всем объектам дерева
 
             // Создаем контейнер для строк для того, чтобы суммировать количество по позициям с одинаковым кодом
@@ -1216,6 +1262,90 @@ public class Macro : MacroProvider {
         }
 
         #endregion Формирование таблицы по материалам
+
+        #region Формирование таблицы по наличию МК в системах
+
+        public void FillDataAboutMK(ExcelTable exTable, Reference archiveOgt) {
+
+            // Получаем дополнительные данные о составе
+            this.GetInfoAboutRoutes(); // Получаем маршруты
+            this.GetInfoAboutPurchaseProducts(); // Определяем покупные изделия
+            this.GetInfoAboutMkRoutes(); // Получаем маршруты на основе технологических процессов
+            this.GetInfoAboutNotification(); // Получаем данные об извещениях на изделия
+            this.GetInfoAboutMkInTflex(archiveOgt); // Получаем информацию о наличии маршрутной карты в Архиве ОГТ
+
+            // Список добавленных позиций
+            Dictionary<string, string> addedItems = new Dictionary<string, string>();
+
+            // Реализовать код формирования эксель таблицы
+            foreach (TreeNode node in this.AllNodes) {
+                ExcelRow exRow = new ExcelRow();
+                exTable.Add(exRow);
+
+                // Заполняем поля
+                exRow["Шифр"] = node["shifr"];
+                exRow["Наименование"] = node["name"];
+                exRow["Родитель"] = node.ParentNode != null ? node.ParentNode["shifr"] : string.Empty;
+                exRow["Изготовитель"] = node["izg"];
+                exRow["Маршрут"] = node["route"];
+                exRow["Маршрут по МК"] = node["mkRoute"];
+                exRow["Замечания (Опер(Подр) Опис/Обор/Проф)"] = node["errors"];
+                exRow["ПКИ"] = node["purchase"];
+                exRow["Сверка маршрутов"] = exRow["Маршрут"] == exRow["Маршрут по МК"] ? "Совпадают" : "Не совпадают";
+                exRow["Дубликат"] = addedItems.ContainsKey(node["shifr"]) ? "Дубликат" : string.Empty;
+                exRow["Номер извещения"] = node["sh_izm"];
+                exRow["Внедрено"] = node["vnedr"];
+                exRow["Дата внедрения"] = node["data_vv"];
+                exRow["Наличие в Архиве ОГТ"] = node["statusArchiveOgt"];
+
+                if (string.IsNullOrWhiteSpace(exRow["Маршрут по МК"])) {
+                    exRow["Наличие в FoxPro"] = "Не найдена";
+
+                    switch (exRow["Наличие в Архиве ОГТ"]) {
+                        case "Изделие отсутствует":
+                            exRow["Статус"] = "Результаты требуют уточнения";
+                            break;
+                        case "Технология не найдена":
+                            exRow["Статус"] = "Создается";
+                            break;
+                        case "Технология найдена":
+                            exRow["Статус"] = "Результаты требуют уточнения";
+                            break;
+                        default:
+                            throw new Exception(string.Format("Некорректный статус:\n{0}", exRow["Наличие в Архиве ОГТ"]));
+                    }
+                }
+                else {
+                    if (string.IsNullOrWhiteSpace(exRow["Замечания (Опер(Подр) Опис/Обор/Проф)"])) {
+                        exRow["Наличие в FoxPro"] = "Найдена, все данные";
+                        switch (exRow["Наличие в Архиве ОГТ"]) {
+                            case "Изделие отсутствует":
+                                exRow["Статус"] = "Результаты требуют уточнения";
+                                break;
+                            case "Технология не найдена":
+                                exRow["Статус"] = "Корректируется";
+                                break;
+                            case "Технология найдена":
+                                exRow["Статус"] = "Готово";
+                                break;
+                            default:
+                                throw new Exception(string.Format("Некорректный статус:\n{0}", exRow["Наличие в Архиве ОГТ"]));
+                        }
+                    }
+                    else {
+                        exRow["Наличие в FoxPro"] = "Найдена, есть замечания";
+                        exRow["Статус"] = "Результаты требуют уточнения";
+                    }
+                }
+
+                // TODO Рассмотреть вариант использованя множества
+                // Добавление шифра с справочник с целью проверки, есть ли уже такая позиция
+                if (!addedItems.ContainsKey(node["shifr"]))
+                    addedItems.Add(node["shifr"], node["name"]);
+            }
+        }
+
+        #endregion Формирование таблицы по наличию МК в системах
         
         #endregion Methods for generating excel tables
 
@@ -1265,7 +1395,7 @@ public class Macro : MacroProvider {
                 // Получаем номер первого цеха в изготовлении
                 string izg = string.Empty;
                 if (this.isRoutesLoad) {
-                    izg = node["route"] != "Отсутствует" ? node["route"].Split('-')[0] : "Отсутствует";
+                    izg = node["izg"];
                 }
                 else {
                     if (MarchpDict.ContainsKey(node["shifr"])) {
@@ -1286,14 +1416,14 @@ public class Macro : MacroProvider {
                     else {
                         izg = "Отсутствует";
                     }
-
-                    if (izg == "Отсутствует")
-                        node["purchase"] = "Покупное (отсутствует маршрут)";
-                    else if (arrayOfUnits.Contains(izg))
-                        node["purchase"] = "Не покупное";
-                    else
-                        node["purchase"] = "Покупное";
                 }
+
+                if (izg == "Отсутствует")
+                    node["purchase"] = "Покупное (отсутствует маршрут)";
+                else if (arrayOfUnits.Contains(izg))
+                    node["purchase"] = "Не покупное";
+                else
+                    node["purchase"] = "Покупное";
             }
             // TODO Попробовать добавить в условие не только покупное, но так же и покупное (отсутствует маршрут)
 
@@ -1338,15 +1468,130 @@ public class Macro : MacroProvider {
                         node["route"] = "Отсутствует";
                     }
 
+                    // Заполняем информацию о изготовителе
+                    node["izg"] = node["route"].Split('-')[0];
+
                 }
                 else {
                     node["route"] = "Отсутствует";
+                    node["izg"] = "Отсутствует";
                 }
             }
             this.isRoutesLoad = true;
         }
 
         #endregion GetInfoAboutRoutes
+
+        #region GetInfoAboutMkRoutes
+
+        private void GetInfoAboutMkRoutes() {
+            // Метод для получения технологического маршртура (из таблицы Trud) а так же замечаний, возникших
+            // в процессе анализа
+            List<string> shops = new List<string>(); // Аккумулятор цехов маршрута
+            List<string> remarks = new List<string>(); // Аккумулятор замечаний, возникших в процессе обработки информации
+            List<string> errors = new List<string>(); // Аккумулятор финального замечания по технологии
+            bool techonogyIsEmpty = true; // Флаг для определения, пустая ли технология
+
+            foreach (TreeNode node in this.AllNodes) {
+
+                // Проходим по операциям технологического процесса для получения маршрута и замечаний по технологии
+                if (TrudDict.ContainsKey(node["shifr"])) {
+                    foreach (TableRow operation in TrudDict[node["shifr"]]) {
+
+                        // Добавляем подразделение в список только в том случае, если оно уже не было
+                        // добавлено на предыдущем этапе (для формирования именно маршртура)
+                        if (shops.Count == 0)
+                            shops.Add(operation["izg"]);
+                        else {
+                            if (shops[shops.Count - 1] != operation["izg"])
+                                shops.Add(operation["izg"]);
+                        }
+
+                        // Составляем список замечаний, которые возникли в процессе просмотра технологии
+                        remarks.Add(string.IsNullOrWhiteSpace(operation["op_op"]) ? "-" : "+");
+                        remarks.Add(string.IsNullOrWhiteSpace(operation["naim_st"]) ? "-" : "+");
+                        remarks.Add(string.IsNullOrWhiteSpace(operation["prof"]) ? "-" : "+");
+
+                        // Если по операции присутствует замечание, добавляем его в список errors
+                        string mark = string.Join("/", remarks);
+                        remarks.Clear();
+
+                        if (mark != "+/+/+")
+                            errors.Add(string.Format("{0}({1}) {2}", operation["num_op"], operation["izg"], mark));
+                        else
+                            techonogyIsEmpty = false;
+                    }
+
+                    node["mkRoute"] = string.Join("-", shops);
+                    node["errors"] = techonogyIsEmpty && (errors.Count != 0) ? "Технология пустая" : string.Join(";", errors);
+
+                    // Обнуление списков и флага для следующей ноды
+                    shops.Clear();
+                    errors.Clear();
+                    techonogyIsEmpty = true;
+                }
+                else {
+                    node["mkRoute"] = string.Empty;
+                    node["errors"] = string.Empty;
+                }
+            }
+        }
+
+        #endregion GetInfoAboutMkRoutes
+
+        #region GetInfoAboutNotification
+        
+        private void GetInfoAboutNotification() {
+            int count = 0;
+            foreach (TreeNode node in this.AllNodes) {
+
+                // Получаем изменения на данное изделие
+                if (KatIzvDict.ContainsKey(node["shifr"])) {
+                    count = KatIzvDict[node["shifr"]].Count;
+
+                    node["sh_izm"] = KatIzvDict[node["shifr"]][count - 1]["sh_izm"];
+                    node["vnedr"] = KatIzvDict[node["shifr"]][count - 1]["vnedr"];
+                    node["data_vv"] = KatIzvDict[node["shifr"]][count - 1]["data_vv"];
+                }
+                else {
+                    node["sh_izm"] = string.Empty;
+                    node["vnedr"] = string.Empty;
+                    node["data_vv"] = string.Empty;
+                }
+            }
+        }
+
+        #endregion GetInfoAboutNotification
+
+        #region GetInfoAboutMkInTflex
+
+        private void GetInfoAboutMkInTflex(Reference archiveOgt) {
+            // Получаем справочник архива ОГТ
+            ParameterInfo shifrParam =
+                archiveOgt.ParameterGroup.Parameters.Find(Guids.Parameters.АрхивОГТ.ОбозначениеДеталиУзла);
+
+            // Одним запросом из базы данных получаем все объекты, которые совпадают по обозначениям
+            string[] shifrs = this.AllNodes.Select(node => node["shifr"]).ToArray();
+            List<ReferenceObject> resultOfSearch = archiveOgt.Find(shifrParam, ComparisonOperator.IsOneOf, shifrs);
+
+            foreach (TreeNode node in this.AllNodes) {
+                // Проверяем, есть ли запись о данном изделии в архиве ОГТ
+                ReferenceObject searchedRecord =
+                    resultOfSearch.FirstOrDefault(record => (string)(record[shifrParam].Value) == node["shifr"]);
+
+                if (searchedRecord != null) {
+                    node["statusArchiveOgt"]
+                        = string.IsNullOrWhiteSpace(searchedRecord[Guids.Parameters.АрхивОГТ.СканДокумента].GetString()) ?
+                        "Технология не найдена" : "Технология найдена";
+                }
+                else {
+                    node["statusArchiveOgt"] = "Изделие отсутствует";
+                }
+
+            }
+        }
+
+        #endregion GetInfoAboutMkInTflex
 
         #endregion Методы для сбора дополнительной информации о составе изделия
     }
@@ -1421,7 +1666,12 @@ public class Macro : MacroProvider {
         // Индексатор для обращения к параметрам
         public string this[string key] {
             get {
-                return this.Parameters[key];
+                try {
+                    return this.Parameters[key];
+                }
+                catch {
+                    throw new Exception(string.Format("Объект 'TreeNode' не содержит ключа '{0}'", key));
+                }
             }
             set {
                 this.Parameters[key] = value;
@@ -1849,7 +2099,12 @@ public class Macro : MacroProvider {
         // Индексатор
         public string this[string key] {
             get {
-                return this.Parameters[key];
+                try {
+                    return this.Parameters[key];
+                }
+                catch {
+                    throw new Exception(string.Format("Объект 'TableRow' не содержит ключа '{0}'", key));
+                }
             }
 
             set {
@@ -1862,7 +2117,7 @@ public class Macro : MacroProvider {
 
     #endregion Table classes
 
-    #region ExcelTableGenerator
+    #region ExcelTable classes
     // Классы для генерации Excel файлов
 
     #region ExcelTable class
@@ -1875,7 +2130,8 @@ public class Macro : MacroProvider {
         private string NameOfFile { get; set; }
         private string PathToFile { get; set; }
         private List<ExcelRow> Rows { get; set; } = new List<ExcelRow>();
-        public Dictionary<string, int> Columns { get; set; } = new Dictionary<string, int>();
+        //public Dictionary<string, int> Columns { get; set; } = new Dictionary<string, int>();
+        public List<ExcelColumn> Columns { get; private set; } = new List<ExcelColumn>();
         private ExcelTableOptions Options { get; set; }
 
         #endregion Fields and Properties
@@ -1897,26 +2153,24 @@ public class Macro : MacroProvider {
 
         #endregion Constructors
 
+        #region Adding methods
+
         public void Add(ExcelRow row) {
             this.Rows.Add(row);
         }
 
+        public void AddColumn(string name, int width) {
+            this.Columns.Add(new ExcelColumn(name, width));
+        }
+
+        #endregion Adding methods
+
         #region Generate()
 
-        public void Generate(string[] namesOfColumns) {
+        public void Generate() {
             // Данный метод генерирует таблицу с заданной последовательностью колонок.
+            string[] namesOfColumns = this.Columns.Select(col => col.Name).ToArray();
             
-            // Производим проверку на правильность входных данных
-            foreach (string columnName in namesOfColumns) {
-                if (!this.Columns.ContainsKey(columnName))
-                    throw new Exception(
-                            string.Format(
-                                "При генерации таблицы возникла ошибка. ExcelTable не содержит информации о колонке '{0}'",
-                                columnName
-                                )
-                            );
-            }
-
             // Производим подготовительные работы (создаем промежуточные классы, необходимые для работы)
             using (SpreadsheetDocument document =
                     SpreadsheetDocument.Create(this.PathToFile, SpreadsheetDocumentType.Workbook)) {
@@ -1936,7 +2190,7 @@ public class Macro : MacroProvider {
                             new Column() {
                             Min = (uint)i,
                             Max = (uint)colCount,
-                            Width = this.Columns[namesOfColumns[i - 1]],
+                            Width = this.Columns[i - 1].Width,
                             CustomWidth = true
                             }
                             );
@@ -2055,6 +2309,20 @@ public class Macro : MacroProvider {
 
     #endregion ExcelRow class
 
+    #region ExcelColumn class
+
+    public class ExcelColumn {
+        public string Name { get; private set; }
+        public int Width { get; private set; }
+
+        public ExcelColumn (string name, int width) {
+            this.Name = name;
+            this.Width = width;
+        }
+    }
+
+    #endregion ExcelColumn class
+
     #region ExcelTableOptions class
 
     public class ExcelTableOptions {
@@ -2064,10 +2332,11 @@ public class Macro : MacroProvider {
 
     #endregion ExcelTableOptions class
 
-    #endregion ExcelTableGenerator
+    #endregion ExcelTable classes
 
     #region DiagnosticTimer
 
+    // TODO Переделать данный класс из статического в обычный
     private static class DiagnosticTimer {
 
         public static Dictionary<string, TimerRecord> Records { get; private set; } = new Dictionary<string, TimerRecord>();
