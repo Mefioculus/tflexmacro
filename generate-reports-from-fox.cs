@@ -42,6 +42,7 @@ public class Macro : MacroProvider {
             // Производим копирование файлов базы данных для последующей работы с ними
             if (!CopyDataBaseFiles())
                 throw new Exception("Во время получения файлов базы данных FoxPro возникла ошибка");
+            tmr = new DiagnosticTimer();
         }
 
     #endregion Constructor
@@ -68,6 +69,7 @@ public class Macro : MacroProvider {
     private static string pathToSourceDirectoryFoxProDb = @"\\fs\FoxProDB\COMDB\PROIZV";
     private static string pathToTempDirectoryFoxProDb = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
+    private static DiagnosticTimer tmr;
     // Список файлов, которые нужно грузить в кэш директорию
     private static string[] arrayOfDbFiles =
         new string[] {
@@ -128,12 +130,12 @@ public class Macro : MacroProvider {
         
         #region Производим чтение всех необходимых таблиц
 
-        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
+        tmr.Start("tables", "Выгрузка таблиц");
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
 
-        DiagnosticTimer.End("tables");
+        tmr.End("tables");
         
         // Вывод данных об ошибках, возникших в процессе чтения баз данных
         string message = string.Empty;
@@ -147,25 +149,25 @@ public class Macro : MacroProvider {
         #region Формируем дерево изделия
 
         // Передаем таблицы, необходимые для формирования дерева
-        DiagnosticTimer.Start("dictionaries", "Формирование словарей");
+        tmr.Start("dictionaries", "Формирование словарей");
 
         TreeOfProduct.AddTable(specTable);
         TreeOfProduct.AddTable(marchpTable);
 
-        DiagnosticTimer.End("dictionaries");
+        tmr.End("dictionaries");
 
         string[] listOfSelectedProducts = GetNamesOfProductsFromUser(specTable);
 
         foreach (string product in listOfSelectedProducts) {
             // Формируем деревья для выбранных изделий
-            DiagnosticTimer.Start(string.Format("tree ({0})", product), string.Format("Формирование дерева для '{0}'", product));
+            tmr.Start(string.Format("tree ({0})", product), string.Format("Формирование дерева для '{0}'", product));
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
-            DiagnosticTimer.End(string.Format("tree ({0})", product));
+            tmr.End(string.Format("tree ({0})", product));
 
-            DiagnosticTimer.Start(string.Format("data ({0})", product), string.Format("Наполнение дерева дополнительными данными для изделия '{0}'", product));
+            tmr.Start(string.Format("data ({0})", product), string.Format("Наполнение дерева дополнительными данными для изделия '{0}'", product));
             tree.GetInfoAboutPurchaseProducts();
             tree.GetInfoAboutRoutes();
-            DiagnosticTimer.End(string.Format("data ({0})", product));
+            tmr.End(string.Format("data ({0})", product));
 
             // Создаем таблицу и заполняем ее
             ExcelTableOptions options = new ExcelTableOptions() { UseAutoFilter = true, NameOfSheet = "Выгрузка состава изделия" };
@@ -175,9 +177,9 @@ public class Macro : MacroProvider {
                     options
                     );
 
-            DiagnosticTimer.Start(string.Format("fill ({0})", product), string.Format("Генерация таблицы для выгрузки дерева изделия", product));
+            tmr.Start(string.Format("fill ({0})", product), string.Format("Генерация таблицы для выгрузки дерева изделия", product));
             tree.FillDataForTreeOfProduct(table);
-            DiagnosticTimer.End(string.Format("fill ({0})", product));
+            tmr.End(string.Format("fill ({0})", product));
 
             table.AddColumn("Обозначение", 20);
             table.AddColumn("Наименование", 20);
@@ -189,7 +191,7 @@ public class Macro : MacroProvider {
         }
         
         Message("Информация", "Выгрузка произведена");
-        Message("Информация", DiagnosticTimer.ToString());
+        Message("Информация", tmr.ToString());
         #endregion Формируем дерево изделия
     }
 
@@ -201,30 +203,30 @@ public class Macro : MacroProvider {
 
         #region Производим чтение всех необходимых таблиц
 
-        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
+        tmr.Start("tables", "Выгрузка таблиц");
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
         Table klasTable = new Table("klas", pathToTempDirectoryFoxProDb);
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
 
-        DiagnosticTimer.End("tables");
+        tmr.End("tables");
 
         // Вывод данных об ошибках, возникших в процессе чтения баз данных
         string message = string.Empty;
         message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
-        message += KlasTable.ErrorsId.Count != 0 ? KlasTable.Status : string.Empty;
+        message += klasTable.ErrorsId.Count != 0 ? klasTable.Status : string.Empty;
         message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
         if (message != string.Empty)
             Message("Чтение таблиц FoxPro", message);
 
-        DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
+        tmr.Start("dicts", "Создание необходимых словарей");
 
         // Передаем в TreeOfProduct таблицы для последующего формирования деревьев
         TreeOfProduct.AddTable(specTable);
         TreeOfProduct.AddTable(marchpTable);
         TreeOfProduct.AddTable(klasTable);
 
-        DiagnosticTimer.End("dicts");
+        tmr.End("dicts");
 
         #endregion Производим чтение всех необходимых таблиц
 
@@ -235,7 +237,7 @@ public class Macro : MacroProvider {
 
         foreach (string product in listOfSelectedProducts) {
 
-            DiagnosticTimer.Start(product, string.Format("Формирование выгрузки по материалам для изделия {0}", product));
+            tmr.Start(product, string.Format("Формирование выгрузки по материалам для изделия {0}", product));
 
             TreeOfProduct tree = TreeOfProduct.GenerateTree(product);
             tree.GetInfoAboutPurchaseProducts();
@@ -268,11 +270,11 @@ public class Macro : MacroProvider {
 
             table.Generate();
 
-            DiagnosticTimer.End(product);
+            tmr.End(product);
         }
 
         Message("Информация", "Формирование всех выгрузок стандартных изделий завершено");
-        Message("Времени затрачено", DiagnosticTimer.ToString());
+        Message("Времени затрачено", tmr.ToString());
 
         #endregion Для выбранных пользователем изделий формируем деревья и наполняем их необходимыми параметрами
     }
@@ -286,7 +288,7 @@ public class Macro : MacroProvider {
         #region Производим чтение всех необходимых таблиц
 
 
-        DiagnosticTimer.Start("tables", "Выгрузка таблиц");
+        tmr.Start("tables", "Выгрузка таблиц");
 
         Table specTable = new Table("spec", pathToTempDirectoryFoxProDb);
         Table klasmTable = new Table("klasm", pathToTempDirectoryFoxProDb);
@@ -294,7 +296,7 @@ public class Macro : MacroProvider {
         Table normTable = new Table("norm", pathToTempDirectoryFoxProDb);
         Table marchpTable = new Table("marchp", pathToTempDirectoryFoxProDb);
 
-        DiagnosticTimer.End("tables");
+        tmr.End("tables");
 
         // Вывод данных об ошибках, возникших в процессе чтения баз данных
         string message = string.Empty;
@@ -306,7 +308,7 @@ public class Macro : MacroProvider {
         if (message != string.Empty)
             Message("Чтение таблиц FoxPro", message);
         
-        DiagnosticTimer.Start("dicts", "Создание необходимых словарей");
+        tmr.Start("dicts", "Создание необходимых словарей");
 
         // Передаем в TreeOfProduct таблицы для последующего формирования деревьев
         TreeOfProduct.AddTable(specTable);
@@ -315,7 +317,7 @@ public class Macro : MacroProvider {
         TreeOfProduct.AddTable(normTable);
         TreeOfProduct.AddTable(marchpTable);
 
-        DiagnosticTimer.End("dicts");
+        tmr.End("dicts");
 
 
         #endregion Производим чтение всех необходимых таблиц
@@ -378,7 +380,7 @@ public class Macro : MacroProvider {
         message += specTable.ErrorsId.Count != 0 ? specTable.Status : string.Empty;
         message += marchpTable.ErrorsId.Count != 0 ? marchpTable.Status : string.Empty;
         message += trudTable.ErrorsId.Count != 0 ? trudTable.Status : string.Empty;
-        message += KatIzvTable.ErrorsId.Count != 0 ? katIzvTable.Status : string.Empty;
+        message += katIzvTable.ErrorsId.Count != 0 ? katIzvTable.Status : string.Empty;
         if (message != string.Empty)
             Message("Информация", message);
 
@@ -430,6 +432,8 @@ public class Macro : MacroProvider {
             table.Generate();
             
         }
+
+        Message("Информация", "Все отчеты сформированы");
 
         #endregion Формируем дерево изделия и генерируем отчет
 
@@ -2006,14 +2010,14 @@ public class Macro : MacroProvider {
                     newRow["vnedr"] = dataReader.GetString(8);
                     // Получение даты в текстовом формате
                     try {
-                        newRow["data_iz"] = dataReader.GetDateTime(5).ToString("dd:MM:yyyy");
+                        newRow["data_iz"] = dataReader.GetDateTime(5).ToString("dd.MM.yyyy");
                     }
                     catch {
                         newRow["data_iz"] = string.Empty;
                     }
 
                     try {
-                        newRow["data_vv"] = dataReader.GetDateTime(9).ToString("dd:MM:yyyy");
+                        newRow["data_vv"] = dataReader.GetDateTime(9).ToString("dd.MM.yyyy");
                     }
                     catch {
                         newRow["data_vv"] = string.Empty;
@@ -2347,12 +2351,12 @@ public class Macro : MacroProvider {
     #region DiagnosticTimer
 
     // TODO Переделать данный класс из статического в обычный
-    private static class DiagnosticTimer {
+    private class DiagnosticTimer {
 
-        public static Dictionary<string, TimerRecord> Records { get; private set; } = new Dictionary<string, TimerRecord>();
-        private static List<string> Keys { get; set; } = new List<string>();
+        public Dictionary<string, TimerRecord> Records { get; private set; } = new Dictionary<string, TimerRecord>();
+        private List<string> Keys { get; set; } = new List<string>();
 
-        public static void Start(string key, string message) {
+        public void Start(string key, string message) {
             if (!Keys.Contains(key)) {
                 Keys.Add(key);
             }
@@ -2363,7 +2367,7 @@ public class Macro : MacroProvider {
             Records[key].Start();
         }
 
-        public static void End(string key) {
+        public void End(string key) {
             if (!Records.ContainsKey(key)) {
                 throw new Exception(string.Format("Key '{0} not exits in DiagnosticTimer'", key));
             }
@@ -2371,7 +2375,7 @@ public class Macro : MacroProvider {
             
         }
 
-        public static string ToString() {
+        public string ToString() {
             string message = string.Empty;
             foreach (string key in Keys) {
                 try {
