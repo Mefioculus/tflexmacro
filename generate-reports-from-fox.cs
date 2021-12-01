@@ -186,6 +186,7 @@ public class Macro : MacroProvider {
             table.AddColumn("Применяемость", 20);
             table.AddColumn("Маршрут", 20);
             table.AddColumn("Признак покупного", 20);
+            table.AddColumn("ОКП", 10);
 
             table.Generate();
         }
@@ -1166,6 +1167,15 @@ public class Macro : MacroProvider {
                 }
                 if (node.ContainsParameter("route")) {
                     exRow["Маршрут"] = node["route"];
+                }
+                
+                // Заполнение параметра для последующей фильтрации по признаку OKP
+                try {
+                    Convert.ToInt64(node["shifr"]);
+                    exRow["ОКП"] = "Да";
+                }
+                catch {
+                    exRow["ОКП"] = "Нет";
                 }
             }
         }
