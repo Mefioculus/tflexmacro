@@ -26,10 +26,19 @@ public class Macro : MacroProvider {
 
     private const string sourcePath = @"\\fs\FoxProDB\COMDB\PROIZV";
     private readonly string backupPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Таблицы FoxPro");
-    private readonly string[] metaFilesExtensions = new string[] {"bak","cdx", "dbc", "dct", "dcx", "fpt", "tbk"};
+    private static readonly string[] metaFilesExtensions = new string[] {
+        ".bak",
+        ".cdx",
+        ".dbc",
+        ".dct",
+        ".dcx",
+        ".fpt",
+        ".tbk"
+    };
 
     public override void Run() {
-
+        DbRepository sourceRepository = new DbRepository(TypeRepository.Source, sourcePath);
+        Message("Информация", sourceRepository.ToString());
     }
 
     private class DbRepository {
@@ -42,7 +51,7 @@ public class Macro : MacroProvider {
         public int Count { get; private set; }
         public int CountDbf => this.DbfFiles.Count;
         public int CountMeta => this.MetaFiles.Count;
-        public int CountOther => this.MetaFiles.Count;
+        public int CountOther => this.OtherFiles.Count;
 
         public DbRepository(TypeRepository type, string pathToDir) {
             if (Directory.Exists(pathToDir)) {
@@ -56,15 +65,38 @@ public class Macro : MacroProvider {
                 this.OtherFiles = new List<FileInfo>(this.Count);
 
                 // Производим добавление информации о файлах
-                string allExtensions = string.Empty;
                 foreach (string file in files) {
-                    FileInfo fileInfo = new FileInfo(file);
-                    allExtensions += string.Format("{0}\n", fileInfo.Extension);
+                    FileInfo fileInfo = new FileInfo(file.ToLower());
+                    if (fileInfo.Extension == ".dbf") {
+                        this.DbfFiles.Add(fileInfo);
+                        continue;
+                    }
+                    if (metaFilesExtensions.Contains(fileInfo.Extension)) {
+                        this.MetaFiles.Add(fileInfo);
+                        continue;
+                    }
+                    this.OtherFiles.Add(fileInfo);
                 }
 
-                MessageBox.Show(allExtensions, "Информация");
             }
 
+        }
+
+        public override string ToString() {
+            return string.Format(
+                    "Путь директории: {0}\n" +
+                    "Тип репозитория: {1}\n" +
+                    "Количество DBF файлов: {2}\n" +
+                    "Количество Мета файлов: {3}\n" +
+                    "Количество Остальных файлов: {4}\n" +
+                    "Общее количество файлов: {5}\n",
+                    this.Dir,
+                    this.Type.ToString(),
+                    this.CountDbf.ToString(),
+                    this.CountMeta.ToString(),
+                    this.CountOther.ToString(),
+                    this.Count.ToString()
+                    );
         }
 
     }
