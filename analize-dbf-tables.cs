@@ -41,11 +41,14 @@ public class Macro : MacroProvider {
         Message("Информация", Path.GetPathRoot(backupPath));
 
 
-        DbRepository sourceRepository = new DbRepository(TypeRepository.Source, sourcePath);
+        DbRepository sourceRepository = new DbRepository(sourcePath);
         Message("Информация", sourceRepository.ToString());
 
-        DbRepository backupRepository = new DbRepository(TypeRepository.Backup, backupPath);
+        DbRepository backupRepository = new DbRepository(backupPath);
         Message("Информация", backupRepository.ToString());
+
+        Message("Сравнение исходного репозитория с локальным", sourceRepository.Compare(backupRepository));
+        Message("Сравнение локального репозитория с исходным", backupRepository.Compare(sourceRepository));
     }
 
     private class DbRepository {
@@ -61,11 +64,14 @@ public class Macro : MacroProvider {
         public int CountOther => this.OtherFiles.Count;
         public bool CanWrite { get; private set; } = false;
 
-        public DbRepository(TypeRepository type, string pathToDir) {
+        public DbRepository(string pathToDir) {
             if (Directory.Exists(pathToDir)) {
                 // Присваиваем исходные параметры
-                this.Type = type;
                 this.Dir = pathToDir;
+
+                // Определяем тип репозитория
+                this.Type = Path.GetPathRoot(this.Dir).EndsWith(@"\") ? TypeRepository.Backup : TypeRepository.Source;
+
 
                 // Начинаем обработку файлов
                 string[] files = Directory.GetFiles(this.Dir);
@@ -123,9 +129,66 @@ public class Macro : MacroProvider {
                 backup = otherRepository;
             }
 
-            return string.Empty;
+            // Проверяем на отсутстующие файлы
+            string missingFiles = string.Join("\n", CompareForPresence(source, backup));
+            string diffDates = string.Join("\n", CompareForOutdate(source, backup));
+            string templateString = 
+                "В результате сравнения исходной базы данных и локального бэкапа было обнаружено" +
+                "Отсутствующие файлы:\n{0}\n\nРазница в датах:\n{1}";
+
+            return string.Format(templateString, missingFiles, diffDates);
         }
 
+        private static List<string> CompareForPresence(DbRepository source, DbRepository backup) {
+            List<string> missingFiles = new List<string>(source.Count);
+
+            // Производим сравнение dbf файлов
+            foreach (KeyValuePair<string, FileInfo> kvp in source.DbfFiles)
+                if (!backup.DbfFiles.ContainsKey(kvp.Key))
+                    missingFiles.Add(kvp.Key);
+
+            // Производим сравнение meta файлов
+            foreach (KeyValuePair<string, FileInfo> kvp in source.MetaFiles)
+                if (!backup.MetaFiles.ContainsKey(kvp.Key))
+                    missingFiles.Add(kvp.Key);
+
+            // Производим сравнение остальных файлов
+            foreach (KeyValuePair<string, FileInfo> kvp in source.OtherFiles)
+                if (!backup.OtherFiles.ContainsKey(kvp.Key))
+                    missingFiles.Add(kvp.Key);
+
+            if (missingFiles.Count == 0)
+                missingFiles.Add("Нет отсутствующих файлов");
+            return missingFiles;
+        }
+
+        private static List<string> CompareForOutdate(DbRepository source, DbRepository backup) {
+            List<string> outdatedFiles = new List<string>(source.Count);
+
+            foreach (KeyValuePair<string, FileInfo> kvp in source.DbfFiles)
+                if (backup.DbfFiles.ContainsKey(kvp.Key))
+                    if (kvp.Value.LastWriteTime != backup.DbfFiles[kvp.Key].LastWriteTime)
+                        outdatedFiles.Add(string.Format("Файл {0} устарел на {1:N1} дн.", kvp.Key, kvp.Value.LastWriteTime.Subtract(backup.DbfFiles[kvp.Key].LastWriteTime).TotalDays));
+
+            foreach (KeyValuePair<string, FileInfo> kvp in source.MetaFiles)
+                if (backup.MetaFiles.ContainsKey(kvp.Key))
+                    if (kvp.Value.LastWriteTime != backup.MetaFiles[kvp.Key].LastWriteTime)
+                        outdatedFiles.Add(string.Format("Файл {0} устарел на {1:N1} дн.", kvp.Key, kvp.Value.LastWriteTime.Subtract(backup.MetaFiles[kvp.Key].LastWriteTime).TotalDays));
+
+            foreach (KeyValuePair<string, FileInfo> kvp in source.OtherFiles)
+                if (backup.OtherFiles.ContainsKey(kvp.Key))
+                    if (kvp.Value.LastWriteTime != backup.OtherFiles[kvp.Key].LastWriteTime)
+                        outdatedFiles.Add(string.Format("Файл {0} устарел на {1:N1} дн.", kvp.Key, kvp.Value.LastWriteTime.Subtract(backup.OtherFiles[kvp.Key].LastWriteTime).TotalDays));
+            
+            if (outdatedFiles.Count == 0)
+                outdatedFiles.Add("Все файлы актуальные");
+            return outdatedFiles;
+        }
+
+    }
+
+    private class RepositoryMissedFiles {
+        
     }
 
     public enum TypeRepository {
