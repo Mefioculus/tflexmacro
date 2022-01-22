@@ -22,6 +22,8 @@ System.Data.dll - необходим для работы DbfDataReader
 
 /*
 TODO: Реализовать оповещение пользователя о несоответствиях в удаленном и локальном репозитории, позволить пользователю выбрать, какие файлы требуется обновить
+- Для начала нужно реализовать группирование файлов по таблице
+- Разработать форму для запроса от пользователя информации по обновлению таблиц
 TODO: Реализовать копирование файлов (по возможности с параллельными вычислениями)
 TODO: Реализовать класс, который в себе будет инкапсулировать функционал по работе с таблицами
 */
@@ -45,27 +47,36 @@ public class Macro : MacroProvider {
 
     public override void Run() {
         DbRepository sourceRepository = new DbRepository(sourcePath);
-        Message("Информация", sourceRepository.ToString());
-
         DbRepository backupRepository = new DbRepository(backupPath);
+
+        Message("Информация", sourceRepository.ToString());
         Message("Информация", backupRepository.ToString());
 
-        Message("Сравнение исходного репозитория с локальным", sourceRepository.Compare(backupRepository).ToString());
-        Message("Сравнение локального репозитория с исходным", backupRepository.Compare(sourceRepository).ToString());
+        RepositoryMissedFiles missedFiles = sourceRepository.Compare(backupRepository);
+        Message("Сравнение исходного репозитория с локальным", missedFiles.ToString());
+
+        missedFiles.AskAndDownload(this);
+        /*
+        // Печатаем информацию, сгруппированную по таблицам
+        foreach (string nameOfTable in missedFiles.OutdatedFiles.Select(kvp => kvp.Key.Split('.')[0]).Distinct()) {
+            Message("Все файлы таблицы Spec", string.Join("\n", missedFiles.GetPathsForTable(nameOfTable)));
+        }
+        */
+        
     }
 
     private class DbRepository {
         public TypeRepository Type { get; private set; } = TypeRepository.None;
-        public StatusRepository Status { get; private set; } = StatusRepository.Empty;
+        //public StatusRepository Status { get; private set; } = StatusRepository.Empty;
         public string Dir { get; private set; }
         public Dictionary<string, FileInfo> DbfFiles { get; private set; }
         public Dictionary<string, FileInfo> MetaFiles { get; private set; }
         public Dictionary<string, FileInfo> OtherFiles { get; private set; }
-        public int Count { get; private set; }
+        public Dictionary<string, FileInfo> AllFiles { get; private set; }
+        public int Count => this.AllFiles.Count;
         public int CountDbf => this.DbfFiles.Count;
         public int CountMeta => this.MetaFiles.Count;
         public int CountOther => this.OtherFiles.Count;
-        public bool CanWrite { get; private set; } = false;
 
         public DbRepository(string pathToDir) {
             if (Directory.Exists(pathToDir)) {
@@ -75,30 +86,35 @@ public class Macro : MacroProvider {
                 // Определяем тип репозитория
                 this.Type = Path.GetPathRoot(this.Dir).EndsWith(@"\") ? TypeRepository.Backup : TypeRepository.Source;
 
-
-                // Начинаем обработку файлов
-                string[] files = Directory.GetFiles(this.Dir);
-                this.Count = files.Length;
-
-                this.DbfFiles = new Dictionary<string, FileInfo>(this.Count);
-                this.MetaFiles = new Dictionary<string, FileInfo>(this.Count);
-                this.OtherFiles = new Dictionary<string, FileInfo>(this.Count);
-
-                // Производим добавление информации о файлах
-                foreach (string file in files) {
-                    FileInfo fileInfo = new FileInfo(file.ToLower());
-                    if (fileInfo.Extension == ".dbf") {
-                        this.DbfFiles.Add(fileInfo.Name, fileInfo);
-                        continue;
-                    }
-                    if (metaFilesExtensions.Contains(fileInfo.Extension)) {
-                        this.MetaFiles.Add(fileInfo.Name, fileInfo);
-                        continue;
-                    }
-                    this.OtherFiles.Add(fileInfo.Name, fileInfo);
-                }
+                // Получаем данные по файлам, содержащимся в репозитории
+                UpdateInfo();
             }
+        }
 
+        public void UpdateInfo() {
+
+            string[] files = Directory.GetFiles(this.Dir);
+
+            this.DbfFiles = new Dictionary<string, FileInfo>(files.Length);
+            this.MetaFiles = new Dictionary<string, FileInfo>(files.Length);
+            this.OtherFiles = new Dictionary<string, FileInfo>(files.Length);
+            this.AllFiles = new Dictionary<string, FileInfo>(files.Length);
+
+            foreach (string file in files) {
+                FileInfo fileInfo = new FileInfo(file.ToLower());
+                if (fileInfo.Extension == ".dbf") {
+                    this.DbfFiles[fileInfo.Name] = fileInfo;
+                    this.AllFiles[fileInfo.Name] = fileInfo;
+                    continue;
+                }
+                if (metaFilesExtensions.Contains(fileInfo.Extension)) {
+                    this.MetaFiles[fileInfo.Name] = fileInfo;
+                    this.AllFiles[fileInfo.Name] = fileInfo;
+                    continue;
+                }
+                this.OtherFiles[fileInfo.Name] = fileInfo;
+                this.AllFiles[fileInfo.Name] = fileInfo;
+            }
         }
 
         public override string ToString() {
@@ -169,10 +185,13 @@ public class Macro : MacroProvider {
     private class RepositoryMissedFiles {
         public DbRepository Source { get; private set; }
         public DbRepository Backup { get; private set; }
+
         public List<string> MissedFiles { get; private set; }
         public Dictionary<string, TimeSpan> OutdatedFiles { get; private set; }
-        public int CountMissed => MissedFiles.Count;
-        public int CountOutdated => OutdatedFiles.Count;
+
+        public int CountMissed => this.MissedFiles.Count;
+        public int CountOutdated => this.OutdatedFiles.Count;
+        public int Count => this.MissedFiles.Count + this.OutdatedFiles.Count;
 
         public RepositoryMissedFiles(DbRepository source, DbRepository backup, int capacity = 256) {
             if (source.Type != TypeRepository.Source)
@@ -193,6 +212,39 @@ public class Macro : MacroProvider {
             if (this.OutdatedFiles.ContainsKey(name))
                 throw new Exception(string.Format("Объект с названием '{0}' уже находился в списке устаревших файлов", name));
             this.OutdatedFiles[name] = span;
+        }
+
+        public void AskAndDownload(Macro provider) {
+            // TODO реализовать метод запроса, какие файлы требуется скичивать в локальный репозиторий
+            // Спросить об обновлении отсутствующих файлов
+            List<string> tables = new List<string>();
+
+            if (provider.Question("Произвести скачивание отсутствующих таблиц?"))
+                tables.AddRange(this.MissedFiles.Select(file => file.Split('.')[0]));
+
+            if (provider.Question("Произвести скачивание устаревших таблиц?"))
+                tables.AddRange(this.OutdatedFiles.Select(kvp => kvp.Key.Split('.')[0]));
+
+            // Убираем возможные дубликаты
+            tables = tables.Distinct().ToList<string>();
+
+            provider.Message("Список таблиц на обновление информации", string.Join("\n", tables));
+            DownloadFiles(tables);
+        }
+
+        private void DownloadFiles(List<string> tables) {
+            // TODO Реализовать параллельное скачивание всех потребных файлов
+            
+        }
+
+        public List<string> GetPathsForTable(string nameOfTable) {
+            if (nameOfTable.ToLower().EndsWith(".dbf"))
+                nameOfTable = nameOfTable.Split('.')[0];
+
+            return this.Source.AllFiles
+                .Where(kvp => kvp.Key.Split('.')[0] == nameOfTable.ToLower())
+                .Select(kvp => kvp.Value.FullName)
+                .ToList<string>();
         }
 
         public override string ToString() {
