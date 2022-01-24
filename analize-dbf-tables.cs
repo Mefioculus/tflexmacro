@@ -6,6 +6,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Windows.Forms;
 
+using System.Threading;
+using System.Threading.Tasks;
+
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.Structure;
@@ -46,8 +49,12 @@ public class Macro : MacroProvider {
     };
 
     public override void Run() {
+        /*
         DbRepository sourceRepository = new DbRepository(sourcePath);
         DbRepository backupRepository = new DbRepository(backupPath);
+        */
+        DbRepository sourceRepository = new DbRepository(backupPath, TypeRepository.Source);
+        DbRepository backupRepository = new DbRepository(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "backupFolder"), TypeRepository.Backup);
 
         Message("Информация", sourceRepository.ToString());
         Message("Информация", backupRepository.ToString());
@@ -62,8 +69,12 @@ public class Macro : MacroProvider {
             Message("Все файлы таблицы Spec", string.Join("\n", missedFiles.GetPathsForTable(nameOfTable)));
         }
         */
+
+        Message("Информация", "Работа макроса завершена");
         
     }
+
+    #region Classes
 
     private class DbRepository {
         public TypeRepository Type { get; private set; } = TypeRepository.None;
@@ -89,6 +100,12 @@ public class Macro : MacroProvider {
                 // Получаем данные по файлам, содержащимся в репозитории
                 UpdateInfo();
             }
+        }
+
+        public DbRepository(string pathToDir, TypeRepository type) {
+            this.Dir = pathToDir;
+            this.Type = type;
+            UpdateInfo();
         }
 
         public void UpdateInfo() {
@@ -219,23 +236,72 @@ public class Macro : MacroProvider {
             // Спросить об обновлении отсутствующих файлов
             List<string> tables = new List<string>();
 
-            if (provider.Question("Произвести скачивание отсутствующих таблиц?"))
+            if (provider.Question(string.Format("Произвести скачивание отсутствующих таблиц? ({0} шт.)", this.MissedFiles.Count)))
                 tables.AddRange(this.MissedFiles.Select(file => file.Split('.')[0]));
 
-            if (provider.Question("Произвести скачивание устаревших таблиц?"))
+            if (provider.Question(string.Format("Произвести скачивание устаревших таблиц? ({0} шт.)", this.OutdatedFiles.Count)))
                 tables.AddRange(this.OutdatedFiles.Select(kvp => kvp.Key.Split('.')[0]));
 
             // Убираем возможные дубликаты
             tables = tables.Distinct().ToList<string>();
 
-            provider.Message("Список таблиц на обновление информации", string.Join("\n", tables));
-            DownloadFiles(tables);
+            //TODO Добавить проверку на то, что Source и Backup действительно Source и Backup
+            DownloadFilesAsync(tables);
         }
 
-        private void DownloadFiles(List<string> tables) {
-            // TODO Реализовать параллельное скачивание всех потребных файлов
-            
+        private void DownloadFilesAsync(List<string> tables, int threads = 8) {
+            // Получаем список файлов, которые необходимо скачать по названиям таблиц
+            List<string> pathsOfTableFiles = new List<string>();
+
+            foreach (string table in tables)
+                pathsOfTableFiles.AddRange(this.GetPathsForTable(table));
+
+            // Производим разделение файлов на потребное количество потоков
+
+            // Количество тредов будет ограничено восемью
+            if (threads > 8)
+                threads = 8;
+            if (threads < 1) 
+                threads = 1;
+
+            // Формируем список файлов на скачивание
+            List<List<string>> pathsForTreads = new List<List<string>>();
+            for (int i = 0; i < threads; i++) {
+                pathsForTreads.Add(new List<string>());
+            }
+
+            int index = 0;
+            foreach (string path in pathsOfTableFiles) {
+                pathsForTreads[index++].Add(path);
+                if (index == threads)
+                    index = 0;
+            }
+
+            // Запускаем копирование файлов
+            List<Task> tasks = new List<Task>();
+
+            foreach (List<string> paths in pathsForTreads) {
+                tasks.Add(Task.Run(() => DownloadFiles(paths, this.Backup.Dir)));
+            }
+
+            Task.WaitAll(tasks.ToArray<Task>());
         }
+
+        
+        private async Task DownloadFiles(List<string> paths, string destinationDirectory) {
+
+            //TODO: Если директория назначения не существует, не производить копирование
+            if (!Directory.Exists(destinationDirectory))
+                return;
+
+            foreach (string path in paths)
+                // Для каждого файла производим копирование (флаг true отвечает за перезапись файла, если он
+                // уже существовал)
+                File.Copy(path, Path.Combine(destinationDirectory, Path.GetFileName(path)), true);
+
+            return;
+        }
+        
 
         public List<string> GetPathsForTable(string nameOfTable) {
             if (nameOfTable.ToLower().EndsWith(".dbf"))
@@ -276,6 +342,10 @@ public class Macro : MacroProvider {
 
     }
 
+    #endregion Classes
+
+    #region Enums
+
     public enum TypeRepository {
         None,
         Source,
@@ -289,6 +359,7 @@ public class Macro : MacroProvider {
         Complete
     }
 
+    #endregion Enums
 }
 
 
