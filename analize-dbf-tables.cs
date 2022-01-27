@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using System.Text;
+using System.Text; // Для работы с кодировкой
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
@@ -15,6 +15,8 @@ using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
 using TFlex.DOCs.Model.References;
 
+using DbfDataReader;
+
 /*
 Так же для работы данного макроса потребуется подключение дополнительных библиотек:
 
@@ -24,7 +26,8 @@ System.Data.dll - необходим для работы DbfDataReader
 */
 
 /*
-TODO: Реализовать класс, который в себе будет инкапсулировать функционал по работе с таблицами
+TODO: В классе TablesHandler реализовать возможность поиска по таблицам
+TODO: Переделать большие ToString через StringBuilder для ускорения работы
 */
 
 public class Macro : MacroProvider {
@@ -45,12 +48,14 @@ public class Macro : MacroProvider {
     };
 
     public override void Run() {
-        /*
-        DbRepository sourceRepository = new DbRepository(sourcePath);
-        DbRepository backupRepository = new DbRepository(backupPath);
-        */
 
         Backuper backuper = new Backuper(sourcePath, backupPath, this);
+
+        // Получаем словарь с доступными dbf таблицами
+        TablesHandler handler = new TablesHandler(backuper.GetPathDbfFiles(), this);
+
+        //Message("Доступные dbf таблицы", handler.ToString());
+        //Message("Доступные колонки", string.Join("\n", handler.GetColumns()));
 
         Message("Информация", "Работа макроса завершена");
         
@@ -59,6 +64,7 @@ public class Macro : MacroProvider {
     #region Classes
 
     private class Backuper {
+    // Класс, искапсулирующий всю логику по проведению бэкапа базы данных FoxPro
 
         private DbRepository SourceRepository { get; set; }
         private DbRepository BackupRepository { get; set; }
@@ -84,6 +90,24 @@ public class Macro : MacroProvider {
 
             // Запрашиваем у пользователя подтверждение о начале копирования
             this.MissedFiles.AskAndDownload(this.MacroProvider);
+        }
+
+        public Dictionary<string, string> GetPathDbfFiles() {
+            Dictionary<string, string> result = new Dictionary<string, string>(this.BackupRepository.CountDbf);
+
+            foreach (KeyValuePair<string, FileInfo> kvp in this.BackupRepository.DbfFiles)
+                result[kvp.Key.Split('.')[0]] = kvp.Value.FullName;
+
+            return result;
+        }
+
+        public override string ToString() {
+            if (this.MissedFiles.Count == 0)
+                return "Локальный репозиторий полностью соответствует удаленному репозиторию";
+
+            string template = "В локальном репозитории найдено {0} несоответствий. Из них:\n{1} - отсутствующие файлы\n{2} - устаревшие файлы";
+
+            return string.Format(template, this.MissedFiles.Count, this.MissedFiles.CountMissed, this.MissedFiles.CountOutdated);
         }
 
         private class DbRepository {
@@ -358,6 +382,74 @@ public class Macro : MacroProvider {
                 string outdatedFilesString = sb.ToString();
 
                 return string.Format(templateString, missedFilesStr, outdatedFilesString);
+            }
+        }
+    }
+
+    private class TablesHandler {
+    // Класс, инкапсулирующий всю логику по чтению таблиц FoxPro и поиску в них запрашиваемой информации
+
+        private Macro MacroProvider { get; set; }
+        private List<Table> Tables { get; set; }
+        private List<String> Columns { get; set; }
+
+        public TablesHandler(Dictionary<string, string> tables, Macro provider) {
+
+            this.MacroProvider = provider;
+            this.Tables = new List<Table>(tables.Count);
+            this.Columns = new List<string>();
+
+            foreach(KeyValuePair<string, string> kvp in tables) {
+                Table newTable = new Table(kvp.Key, kvp.Value);
+                this.Tables.Add(newTable);
+                this.Columns.AddRange(newTable.Columns);
+            }
+
+            this.Columns = this.Columns
+                .Distinct()
+                .OrderBy()
+                .ToList<string>();
+        }
+
+        public List<string> GetColumns() {
+            return this.Columns;
+        }
+
+
+        public override string ToString() {
+            string template = "Таблицы, переданные в обработкик:\n{0}";
+
+            return string.Format(template, string.Join("\n", this.Tables.Select(table => table.ToString())));
+        }
+
+        private class Table {
+            public string Name { get; private set; }
+            public string Path { get; private set; }
+            private DbfTable DbfTable { get; set; }
+            public List<string> Columns { get; private set; }
+
+            public Table(string name, string path) {
+                this.Name = name;
+                this.Path = path;
+
+                this.DbfTable = new DbfTable(this.Path, Encoding.GetEncoding(1251));
+                this.Columns = new List<string>();
+
+                GetColumns();
+            }
+
+            private void GetColumns() {
+                foreach (DbfColumn column in this.DbfTable.Columns) {
+                    this.Columns.Add(column.ColumnName);
+                }
+            }
+
+            public string ColumnsToString() {
+                return string.Join("; ", this.Columns);
+            }
+
+            public override string ToString() {
+                return string.Format("{0}  ->  '{1}';", this.Name, this.Path);
             }
         }
     }
