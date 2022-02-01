@@ -26,8 +26,10 @@ System.Data.dll - необходим для работы DbfDataReader
 */
 
 /*
-TODO: В классе TablesHandler реализовать возможность поиска по таблицам
-TODO: Переделать большие ToString через StringBuilder для ускорения работы
+TODO: Написать графический интерфейс для запроса у пользователя параметров поиска
+TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
+TODO: Реализовать поиск сразу по всем колонкам, если колонка не указана пользователем
+TODO: Реализовтаь поиск по вхождению
 */
 
 public class Macro : MacroProvider {
@@ -54,8 +56,12 @@ public class Macro : MacroProvider {
         // Получаем словарь с доступными dbf таблицами
         TablesHandler handler = new TablesHandler(backuper.GetPathDbfFiles(), this);
 
+        // Запрашиваем у пользователя значения параметром поиска, производим поиск и выводим результаты поиска в файл
+        handler.AskAndSearch();
+
         //Message("Доступные dbf таблицы", handler.ToString());
-        //Message("Доступные колонки", string.Join("\n", handler.GetColumns()));
+        //Message("Доступные колонки", string.Join("\n", handler.AllColumns.Keys()));
+        //Message("Все таблицы, в которых есть колонка SHIFR", string.Join("\n", handler.AllColumns["SHIFR"].Name));
 
         Message("Информация", "Работа макроса завершена");
         
@@ -334,7 +340,6 @@ public class Macro : MacroProvider {
             
             private async Task DownloadFiles(List<string> paths, string destinationDirectory) {
 
-                //TODO: Если директория назначения не существует, не производить копирование
                 if (!Directory.Exists(destinationDirectory))
                     return;
 
@@ -365,7 +370,7 @@ public class Macro : MacroProvider {
                 // Получаем строку с сообщением об отсутствующих файлах
                 StringBuilder sb = new StringBuilder();
                 foreach (string file in this.MissedFiles) {
-                    sb.AppendLine(string.Format("- {0}", file));
+                    sb.AppendFormat("- {0}\n", file);
                 }
                 if (sb.Length == 0)
                     sb.AppendLine("В локальной папке нет отсутствующих файлов");
@@ -391,30 +396,64 @@ public class Macro : MacroProvider {
 
         private Macro MacroProvider { get; set; }
         private List<Table> Tables { get; set; }
-        private List<String> Columns { get; set; }
+        private List<string> AllColumns { get; set; }
 
         public TablesHandler(Dictionary<string, string> tables, Macro provider) {
 
             this.MacroProvider = provider;
             this.Tables = new List<Table>(tables.Count);
-            this.Columns = new List<string>();
+            this.AllColumns = new List<string>();
 
             foreach(KeyValuePair<string, string> kvp in tables) {
+                // Инициируем новую таблицу
                 Table newTable = new Table(kvp.Key, kvp.Value);
                 this.Tables.Add(newTable);
-                this.Columns.AddRange(newTable.Columns);
+
+                // Производим инициализацию списка всех доступных колонок
+                foreach (string columnName in newTable.GetColumnNames()) {
+                    if (!this.AllColumns.Contains(columnName))
+                        this.AllColumns.Add(columnName);
+                }
             }
 
-            this.Columns = this.Columns
-                .Distinct()
-                .OrderBy()
-                .ToList<string>();
         }
 
-        public List<string> GetColumns() {
-            return this.Columns;
+        public void AskAndSearch() {
+            // TODO Реализовать диалог для запроса у пользователя информации, необходимой
+            // для проведения поиска
+            // (название поля, по которому производить поиск, искомое значение, регистрозависимость поиска, вхождение или точное совпадение)
+            string searchedColumn = "SHIFR";
+            string searchedValue = "8А2240031";
+            string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "resultOfSearch.txt");
+            SearchOptions options = new SearchOptions(searchedColumn, searchedValue);
+            PerformSearch(options);
+            PrintSearchResult(pathToFile);
         }
 
+        private void PerformSearch(SearchOptions options) {
+            foreach (Table table in this.Tables) {
+                if (table.ContainsColumn(options.SearchedColumn, options.CaseSensitive))
+                    table.Search(options);
+            }
+        }
+
+        private void PrintSearchResult(string pathToFile) {
+            StringBuilder sb = new StringBuilder();
+            foreach (Table table in this.Tables) {
+                if (table.HaveResults) {
+                    sb.AppendLine(table.PrintResultOfSearch());
+                    sb.AppendLine();
+                }
+                else {
+                    continue;
+                }
+            }
+
+            //TODO: Добавить проверку пути на корректность (есть ли данная директория, или же отсутствует);
+
+            // Производим запись данных в файл
+            File.WriteAllText(pathToFile, sb.ToString());
+        }
 
         public override string ToString() {
             string template = "Таблицы, переданные в обработкик:\n{0}";
@@ -422,36 +461,253 @@ public class Macro : MacroProvider {
             return string.Format(template, string.Join("\n", this.Tables.Select(table => table.ToString())));
         }
 
+
+        #region Inner TableHandler classes
+
         private class Table {
             public string Name { get; private set; }
             public string Path { get; private set; }
             private DbfTable DbfTable { get; set; }
-            public List<string> Columns { get; private set; }
+            private Dictionary<string, DbfColumn> ColumnsDict { get; set; }
+            private SearchResult Result { get; set; }
+            public bool HaveResults => Result != null;
 
             public Table(string name, string path) {
                 this.Name = name;
                 this.Path = path;
 
                 this.DbfTable = new DbfTable(this.Path, Encoding.GetEncoding(1251));
-                this.Columns = new List<string>();
-
-                GetColumns();
+                this.ColumnsDict = new Dictionary<string, DbfColumn>();
+                foreach (DbfColumn col in this.DbfTable.Columns)
+                    this.ColumnsDict[col.ColumnName] = col;
             }
 
-            private void GetColumns() {
-                foreach (DbfColumn column in this.DbfTable.Columns) {
-                    this.Columns.Add(column.ColumnName);
+            public bool ContainsColumn(string searchedColumn, bool caseSensitive = false) {
+                // Метод для проверки существования искомой колонки в текущей таблице
+                if (caseSensitive == true)
+                    return this.ColumnsDict.ContainsKey(searchedColumn);
+                else
+                    return this.ColumnsDict.Keys.Select(key => key.ToLower()).Contains(searchedColumn.ToLower());
+            }
+
+            public List<string> GetColumnNames() {
+                return this.ColumnsDict.Select(kvp => kvp.Value.ColumnName).ToList<string>();
+            }
+
+            public DbfColumn GetDbfColumn(string searchedColumn, bool caseSensitive = false) {
+                // Метод для получения информации о колонке в текущей таблице
+                if (caseSensitive == true) {
+                    if (this.ColumnsDict.ContainsKey(searchedColumn))
+                        return this.ColumnsDict[searchedColumn];
+                    else
+                        return null;
                 }
+                if (caseSensitive == false) {
+                    List<DbfColumn> resultOfSearch = this.ColumnsDict
+                        .Where(kvp => kvp.Key.ToLower() == searchedColumn.ToLower())
+                        .Select(kvp => kvp.Value)
+                        .ToList<DbfColumn>();
+                    if (resultOfSearch.Count == 0)
+                        return null;
+                    if (resultOfSearch.Count == 1)
+                        return resultOfSearch[0];
+                    if (resultOfSearch.Count > 1)
+                        throw new Exception("При выполнении метода GetDbfColumn класса Table возникла ошибка. При заданных параметрах поиска обнаружено больше одного совпадения");
+                }
+                return null;
             }
 
-            public string ColumnsToString() {
-                return string.Join("; ", this.Columns);
+            public void Search(SearchOptions options) {
+                // Получаем данные колонки для того, чтобы в дальнейшем получить название колонки а так же тип возвращаемого значения
+                DbfColumn column = this.GetDbfColumn(options.SearchedColumn, options.CaseSensitive);
+                // Если данная колонка не была обнаружена, завершаем поиск
+                if (column == null)
+                    return;
+
+                DbfDataReaderOptions dbfOptions = new DbfDataReaderOptions() {
+                    SkipDeletedRecords = true,
+                    Encoding = Encoding.GetEncoding(1251)
+                };
+                this.Result = new SearchResult(this.Name, options, this.ColumnsDict.Select(kvp => kvp.Key).ToList<string>());
+
+                using (DbfDataReader.DbfDataReader reader = new DbfDataReader.DbfDataReader(this.DbfTable.Path, dbfOptions)) {
+                    while (reader.Read()) {
+                        string stringValue = DataObjectToString(reader[column.ColumnName], column.DataType);
+                        if (stringValue == options.SearchedValue) {
+                            foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
+                                this.Result.Add(kvp.Value.ColumnName, DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType));
+                            }
+                        }
+                        else
+                            continue;
+
+                    }
+                }
+
+                if (this.Result.IsEmpty)
+                    this.Result = null;
             }
+
+            private static string DataObjectToString(object value, Type typeOfValue) {
+                // Проверка на то, что данное поле содержит какую-то информацию
+                if (value == null)
+                    return string.Empty; // Возвращаем пустую строку в том случае, если запрос из базы данных вернул null
+
+                string result;
+
+                switch (typeOfValue.ToString()) {
+                    case "System.Int32":
+                        result = ((int)value).ToString();
+                        break;
+                    case "System.Int64":
+                        result = ((long)value).ToString();
+                        break;
+                    case "System.String":
+                        result = (string)value;
+                        break;
+                    case "System.DateTime":
+                        result = ((DateTime)value).ToString("dd.MM.yyyy");
+                        break;
+                    case "System.Boolean":
+                        result = ((bool)value).ToString();
+                        break;
+                    case "System.Single":
+                        result = ((float)value).ToString();
+                        break;
+                    case "System.Double":
+                        result = ((double)value).ToString();
+                        break;
+                    case "System.Decimal":
+                        result = ((decimal)value).ToString();
+                        break;
+                    default:
+                        string template = "При определении типа значения, полученного из таблицы, возникла ошибка.\n Тип {0} не определен";
+                        throw new Exception(string.Format(template, typeOfValue.ToString()));
+                }
+                return result;
+            }
+
+
+            public string PrintResultOfSearch() {
+                if (this.Result == null)
+                    return string.Empty;
+                return this.Result.ToString();
+            }
+
 
             public override string ToString() {
                 return string.Format("{0}  ->  '{1}';", this.Name, this.Path);
             }
         }
+
+        private class SearchResult {
+
+            public string TableName { get; private set; }
+            public string SearchedValue { get; private set; }
+            public string SearchedColumn { get; private set; }
+            private List<string> ColumnNames { get; set; }
+            private List<string> ColumnTemplate { get; set; }
+            private Dictionary<string, List<string>> Values { get; set; }
+            private int RowCount { get; set; }
+            private int WidthOfTable { get; set; }
+            public bool IsEmpty => this.Values.Select(kvp => kvp.Value.Count).Max() == 0;
+
+            public SearchResult(string tableName, SearchOptions options, List<string> columns) {
+                this.TableName = tableName;
+                this.SearchedColumn = options.SearchedColumn;
+                this.SearchedValue = options.SearchedValue;
+                this.ColumnNames = columns;
+                this.Values = new Dictionary<string, List<string>>();
+                foreach (string columnName in this.ColumnNames)
+                    this.Values[columnName] = new List<string>();
+            }
+
+            public void Add(string columnName, string cellValue) {
+
+                if (!this.Values.ContainsKey(columnName)) {
+                    throw new Exception(string.Format("Таблица '{0}' не содержит колонки '{1}'", this.TableName, columnName));
+                }
+
+                this.Values[columnName].Add(cellValue);
+            }
+
+            public override string ToString() {
+                StringBuilder sb = new StringBuilder();
+
+                // Для начала заполняем шапку таблицы
+                sb.AppendFormat("Результаты поиска значения '{0}' колонки '{1}' в таблице '{2}'\n", this.SearchedValue, this.SearchedColumn, this.TableName);
+
+                // Получаем termplate для корректного форматирования каждой из колонок
+                this.ColumnTemplate = new List<string>();
+                foreach (string column in this.ColumnNames) {
+                    this.ColumnTemplate.Add(
+                            "{0," +
+                            (this.Values[column].Select(val => val.Length).Append(column.Length).Max() + 1).ToString()
+                            + "}");
+                }
+
+                // Определяем количество строк в результирующей таблице
+                this.RowCount = this.Values.Select(kvp => kvp.Value.Count).Max();
+
+                sb.AppendLine();
+
+                int tempSbLength = sb.Length;
+                // Для начала выводим название колонок
+                for (int colInd = 0; colInd < this.ColumnNames.Count; colInd++) {
+                    sb.Append("|");
+                    sb.AppendFormat(this.ColumnTemplate[colInd], this.ColumnNames[colInd]);
+                }
+                sb.Append("|\n");
+
+                // Определяем шинину таблицы
+                this.WidthOfTable = sb.Length - tempSbLength;
+                // Добавляем разделитель соответствующего разделя
+                string splitter = new string('-', this.WidthOfTable - 1);
+                sb.AppendLine(splitter);
+
+                // Затем выводим все собранные значения
+                for (int rowInd = 0; rowInd < this.RowCount; rowInd++) {
+                    for (int colInd = 0; colInd < this.ColumnNames.Count; colInd++) {
+                        sb.Append("|");
+                        sb.AppendFormat(this.ColumnTemplate[colInd], this.Values[this.ColumnNames[colInd]][rowInd]);
+                    }
+                    sb.Append("|\n");
+                }
+                sb.AppendLine(splitter);
+                sb.AppendLine();
+
+                return sb.ToString();
+            }
+            
+        }
+
+        private class SearchOptions {
+            public string SearchedColumn { get; private set; }
+            public string SearchedValue { get; private set; }
+            public bool ExactMatch { get; private set; }
+            public bool CaseSensitive { get; private set; }
+
+            public SearchOptions(string column, string value, bool exactMatch, bool caseSensitive) {
+                this.SearchedColumn = column;
+                this.SearchedValue = value;
+                this.ExactMatch = exactMatch;
+                this.CaseSensitive = caseSensitive;
+            }
+
+            public SearchOptions(string column, string value, bool exactMatch) : this(column, value, exactMatch, false) {
+            }
+
+            public SearchOptions(string column, string value) : this(column, value, true) {
+            }
+
+            public override string ToString() {
+                string template = "Поисковый запрос: найти значение '{0}' в колонке '{1}' (Точное совпадение: '{2}'; Регистрозависимость: '{3}')";
+                return string.Format(template, this.SearchedValue, this.SearchedColumn, this.ExactMatch.ToString(), this.CaseSensitive.ToString());
+            }
+        }
+
+        #endregion Inner TableHandler classes
+
     }
 
     #endregion Classes
