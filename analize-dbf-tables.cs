@@ -26,10 +26,8 @@ System.Data.dll - необходим для работы DbfDataReader
 */
 
 /*
-TODO: Написать графический интерфейс для запроса у пользователя параметров поиска
-TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
-TODO: Реализовать поиск сразу по всем колонкам, если колонка не указана пользователем
 TODO: Реализовтаь поиск по вхождению
+TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
 */
 
 public class Macro : MacroProvider {
@@ -426,18 +424,6 @@ public class Macro : MacroProvider {
         }
     }
 
-    private class BackuperOptions {
-        public string SourceDir { get; private set; }
-        public string BackupDir { get; private set; }
-        public bool ShowInfo { get; private set; }
-
-        public BackuperOptions(string source, string backup, bool showInfo = false) {
-            this.SourceDir = source;
-            this.BackupDir = backup;
-            this.ShowInfo = showInfo;
-        }
-    }
-
     private class TablesHandler {
     // Класс, инкапсулирующий всю логику по чтению таблиц FoxPro и поиску в них запрашиваемой информации
 
@@ -485,18 +471,23 @@ public class Macro : MacroProvider {
 
             while (true) {
                 dialog.Show();
-                string pathToFile = Path.Combine(dialog["Директория с результатами поиска"], dialog["Название файла"]);
-                //SearchOptions options = new SearchOptions(searchedColumn, searchedValue);
-                //PerformSearch(options);
-                //PrintSearchResult(pathToFile);
-                if (!this.MacroProvider.Question("Повторить поиск?"))
+                
+                // Данный участок требуется для преобразования динамически полученного списка List<object> в List<string>
+                List<string> cols = new List<string>();
+                foreach (object obj in dialog[columns])
+                    cols.Add((string)obj);
+
+                SearchOptions options = new SearchOptions(cols, dialog[request]);
+                PerformSearch(options);
+                PrintSearchResult(Path.Combine(dialog[directory], dialog[file]));
+                if (!this.MacroProvider.Question("Поиск успешно завершен.\nПовторить поиск с другими параметрами?"))
                     break;
             }
         }
 
         private void PerformSearch(SearchOptions options) {
             foreach (Table table in this.Tables) {
-                if (table.ContainsColumn(options.SearchedColumn, options.CaseSensitive))
+                if (table.ContainsColumn(options))
                     table.Search(options);
             }
         }
@@ -546,46 +537,36 @@ public class Macro : MacroProvider {
                     this.ColumnsDict[col.ColumnName] = col;
             }
 
-            public bool ContainsColumn(string searchedColumn, bool caseSensitive = false) {
-                // Метод для проверки существования искомой колонки в текущей таблице
-                if (caseSensitive == true)
-                    return this.ColumnsDict.ContainsKey(searchedColumn);
-                else
-                    return this.ColumnsDict.Keys.Select(key => key.ToLower()).Contains(searchedColumn.ToLower());
+            public bool ContainsColumn(SearchOptions options) {
+                foreach (string column in options.SearchedColumns) {
+                    if (this.ColumnsDict.ContainsKey(column))
+                        return true;
+                }
+                return false;
             }
 
             public List<string> GetColumnNames() {
                 return this.ColumnsDict.Select(kvp => kvp.Value.ColumnName).ToList<string>();
             }
 
-            public DbfColumn GetDbfColumn(string searchedColumn, bool caseSensitive = false) {
-                // Метод для получения информации о колонке в текущей таблице
-                if (caseSensitive == true) {
-                    if (this.ColumnsDict.ContainsKey(searchedColumn))
-                        return this.ColumnsDict[searchedColumn];
-                    else
-                        return null;
-                }
-                if (caseSensitive == false) {
-                    List<DbfColumn> resultOfSearch = this.ColumnsDict
-                        .Where(kvp => kvp.Key.ToLower() == searchedColumn.ToLower())
-                        .Select(kvp => kvp.Value)
-                        .ToList<DbfColumn>();
-                    if (resultOfSearch.Count == 0)
-                        return null;
-                    if (resultOfSearch.Count == 1)
-                        return resultOfSearch[0];
-                    if (resultOfSearch.Count > 1)
-                        throw new Exception("При выполнении метода GetDbfColumn класса Table возникла ошибка. При заданных параметрах поиска обнаружено больше одного совпадения");
-                }
-                return null;
+            public List<DbfColumn> GetDbfColumn(SearchOptions options) {
+                // Получаем список колонок данной таблицы, по которым нужно вести поиск
+                List<DbfColumn> result = this.ColumnsDict
+                    .Where(kvp => options.SearchedColumns.Contains(kvp.Key))
+                    .Select(kvp => kvp.Value)
+                    .ToList<DbfColumn>();
+
+                if (result.Count == 0)
+                    return null;
+
+                return result;
             }
 
             public void Search(SearchOptions options) {
                 // Получаем данные колонки для того, чтобы в дальнейшем получить название колонки а так же тип возвращаемого значения
-                DbfColumn column = this.GetDbfColumn(options.SearchedColumn, options.CaseSensitive);
+                List<DbfColumn> columns = this.GetDbfColumn(options);
                 // Если данная колонка не была обнаружена, завершаем поиск
-                if (column == null)
+                if (columns == null)
                     return;
 
                 DbfDataReaderOptions dbfOptions = new DbfDataReaderOptions() {
@@ -596,15 +577,16 @@ public class Macro : MacroProvider {
 
                 using (DbfDataReader.DbfDataReader reader = new DbfDataReader.DbfDataReader(this.DbfTable.Path, dbfOptions)) {
                     while (reader.Read()) {
-                        string stringValue = DataObjectToString(reader[column.ColumnName], column.DataType);
-                        if (stringValue == options.SearchedValue) {
-                            foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
-                                this.Result.Add(kvp.Value.ColumnName, DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType));
+                        foreach (DbfColumn column in columns) {
+                            string stringValue = DataObjectToString(reader[column.ColumnName], column.DataType);
+
+                            if (stringValue == options.SearchedValue) {
+                                foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
+                                    this.Result.Add(kvp.Value.ColumnName, DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType));
+                                }
+                                break;
                             }
                         }
-                        else
-                            continue;
-
                     }
                 }
 
@@ -668,7 +650,7 @@ public class Macro : MacroProvider {
 
             public string TableName { get; private set; }
             public string SearchedValue { get; private set; }
-            public string SearchedColumn { get; private set; }
+            public string SearchedColumns { get; private set; }
             private List<string> ColumnNames { get; set; }
             private List<string> ColumnTemplate { get; set; }
             private Dictionary<string, List<string>> Values { get; set; }
@@ -678,7 +660,7 @@ public class Macro : MacroProvider {
 
             public SearchResult(string tableName, SearchOptions options, List<string> columns) {
                 this.TableName = tableName;
-                this.SearchedColumn = options.SearchedColumn;
+                this.SearchedColumns = string.Join("; ", options.SearchedColumns);
                 this.SearchedValue = options.SearchedValue;
                 this.ColumnNames = columns;
                 this.Values = new Dictionary<string, List<string>>();
@@ -699,7 +681,7 @@ public class Macro : MacroProvider {
                 StringBuilder sb = new StringBuilder();
 
                 // Для начала заполняем шапку таблицы
-                sb.AppendFormat("Результаты поиска значения '{0}' колонки '{1}' в таблице '{2}'\n", this.SearchedValue, this.SearchedColumn, this.TableName);
+                sb.AppendFormat("Результаты поиска значения '{0}' колонки '{1}' в таблице '{2}'\n", this.SearchedValue, this.SearchedColumns, this.TableName);
 
                 // Получаем termplate для корректного форматирования каждой из колонок
                 this.ColumnTemplate = new List<string>();
@@ -746,27 +728,28 @@ public class Macro : MacroProvider {
         }
 
         private class SearchOptions {
-            public string SearchedColumn { get; private set; }
+            public List<string> SearchedColumns { get; private set; }
             public string SearchedValue { get; private set; }
             public bool ExactMatch { get; private set; }
             public bool CaseSensitive { get; private set; }
 
-            public SearchOptions(string column, string value, bool exactMatch, bool caseSensitive) {
-                this.SearchedColumn = column;
+            public SearchOptions(List<string> columns, string value, bool exactMatch, bool caseSensitive) {
+                // TODO: Изменить название на SearchedColumns
+                this.SearchedColumns = columns;
                 this.SearchedValue = value;
                 this.ExactMatch = exactMatch;
                 this.CaseSensitive = caseSensitive;
             }
 
-            public SearchOptions(string column, string value, bool exactMatch) : this(column, value, exactMatch, false) {
+            public SearchOptions(List<string> columns, string value, bool exactMatch) : this(columns, value, exactMatch, false) {
             }
 
-            public SearchOptions(string column, string value) : this(column, value, true) {
+            public SearchOptions(List<string> columns, string value) : this(columns, value, true) {
             }
 
             public override string ToString() {
                 string template = "Поисковый запрос: найти значение '{0}' в колонке '{1}' (Точное совпадение: '{2}'; Регистрозависимость: '{3}')";
-                return string.Format(template, this.SearchedValue, this.SearchedColumn, this.ExactMatch.ToString(), this.CaseSensitive.ToString());
+                return string.Format(template, this.SearchedValue, this.SearchedColumns, this.ExactMatch.ToString(), this.CaseSensitive.ToString());
             }
         }
 
