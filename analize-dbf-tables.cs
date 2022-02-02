@@ -470,17 +470,20 @@ public class Macro : MacroProvider {
             dialog.AddFlag(strictMatch, true);
 
             while (true) {
-                dialog.Show();
-                
-                // Данный участок требуется для преобразования динамически полученного списка List<object> в List<string>
-                List<string> cols = new List<string>();
-                foreach (object obj in dialog[columns])
-                    cols.Add((string)obj);
+                if (dialog.Show()) {
+                    // Данный участок требуется для преобразования динамически полученного списка List<object> в List<string>
+                    List<string> cols = new List<string>();
+                    foreach (object obj in dialog[columns])
+                        cols.Add((string)obj);
 
-                SearchOptions options = new SearchOptions(cols, dialog[request]);
-                PerformSearch(options);
-                PrintSearchResult(Path.Combine(dialog[directory], dialog[file]));
-                if (!this.MacroProvider.Question("Поиск успешно завершен.\nПовторить поиск с другими параметрами?"))
+                    SearchOptions options = new SearchOptions(cols, dialog[request]);
+                    PerformSearch(options);
+                    PrintSearchResult(Path.Combine(dialog[directory], dialog[file]));
+                    if (!this.MacroProvider.Question("Поиск успешно завершен.\nПовторить поиск с другими параметрами?")) {
+                        break;
+                    }
+                }
+                else
                     break;
             }
         }
