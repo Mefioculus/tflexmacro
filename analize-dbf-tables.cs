@@ -466,35 +466,32 @@ public class Macro : MacroProvider {
         }
 
         public void AskAndSearch() {
-            // TODO Реализовать диалог для запроса у пользователя информации, необходимой
-            // для проведения поиска
-            // (название поля, по которому производить поиск, искомое значение, регистрозависимость поиска, вхождение или точное совпадение)
-            string searchedColumn = "SHIFR";
-            string searchedValue = "8А2240031";
-            string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "resultOfSearch.txt");
-            SearchOptions options = new SearchOptions(searchedColumn, searchedValue);
+            // Название полей в диалоге
+            string columns = "Колонка";
+            string request = "Поисковый запрос";
+            string directory = "Директория с результатами поиска";
+            string file = "Название файла";
+            string caseSensitive = "Регистрозависимый";
+            string strictMatch = "Точное совпадение";
 
             // Конфигурация диалога ввода
             InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры поиска");
-            dialog.AddSelectFromList("Колонка", this.AllColumns);
-            dialog.AddString("Поисковый запрос", string.Empty);
-            dialog.AddString("Путь к файлу", pathToFile);
-            dialog.AddFlag("Регистрозависимый", false);
-            dialog.AddFlag("Точное совпадение", true);
+            dialog.AddMultiselectFromList(columns, this.AllColumns.OrderBy(col => col).ToList<string>(), true);
+            dialog.AddString(request, string.Empty, false, true);
+            dialog.AddString(directory, Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+            dialog.AddString(file, "ResultOfSearch.txt");
+            dialog.AddFlag(caseSensitive, false);
+            dialog.AddFlag(strictMatch, true);
 
-            dialog.Show();
-
-            // Проверяем полученные от пользователя параметры поиска
-            string messageTemplate = "Выбранная колонка: {0}\nВыбранный поисковый запрос: {1}";
-            this.MacroProvider.Message("Информация", string.Format(messageTemplate, (string)dialog["Колонка"], (string)dialog["Поисковый запрос"]));
-
-
-
-
-
-            
-            //PerformSearch(options);
-            //PrintSearchResult(pathToFile);
+            while (true) {
+                dialog.Show();
+                string pathToFile = Path.Combine(dialog["Директория с результатами поиска"], dialog["Название файла"]);
+                //SearchOptions options = new SearchOptions(searchedColumn, searchedValue);
+                //PerformSearch(options);
+                //PrintSearchResult(pathToFile);
+                if (!this.MacroProvider.Question("Повторить поиск?"))
+                    break;
+            }
         }
 
         private void PerformSearch(SearchOptions options) {
