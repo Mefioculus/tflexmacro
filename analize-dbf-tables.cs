@@ -77,25 +77,60 @@ public class Macro : MacroProvider {
         private RepositoryMissedFiles MissedFiles { get; set; }
         private Macro MacroProvider { get; set; }
 
-        public Backuper (string sourceDir, string backupDir, Macro provider) {
+        public Backuper (string sourcePath, string backupPath, Macro provider) {
             // Инициализируем репозитории
+            this.MacroProvider = provider;
+            bool showInfo = false;
+
+            // Запрашиваем параметры у пользователя
+            GetParametersFromUser(ref sourcePath, ref backupPath, ref showInfo);
+
             try {
-                this.SourceRepository = new DbRepository(sourceDir);
-                this.BackupRepository = new DbRepository(backupDir);
+                this.SourceRepository = new DbRepository(sourcePath);
+                this.BackupRepository = new DbRepository(backupPath);
             }
             catch (Exception e) {
                 throw new Exception(e.Message);
             }
-            this.MacroProvider = provider;
 
             // Выводим пользователю сообщение об инициализированных репозиториях
-            this.MacroProvider.Message("Информация об инициализированных репозиториях", string.Format("{0}\n\n{1}", this.SourceRepository.ToString(), this.BackupRepository.ToString()));
+            if (showInfo) {
+                string message = string.Format("{0}\n\n{1}", this.SourceRepository.ToString(), this.BackupRepository.ToString());
+                this.MacroProvider.Message("Информация об инициализированных репозиториях", message);
+            }
 
             // Запускаем сравнение репозиториев
             this.MissedFiles = this.SourceRepository.Compare(this.BackupRepository);
 
             // Запрашиваем у пользователя подтверждение о начале копирования
             this.MissedFiles.AskAndDownload(this.MacroProvider);
+        }
+
+        private void GetParametersFromUser(ref string sourcePath, ref string backupPath, ref bool showInfo) {
+            InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры для бэкапа базы данных FoxPro");
+            dialog.AddString("Источник", sourcePath);
+            dialog.AddString("Бэкап", backupPath);
+            dialog.AddFlag("Показывать информацию", showInfo);
+
+            if (dialog.Show()) {
+
+                // Производим проверку пути источника
+                if (sourcePath != dialog["Источник"])
+                    if (!Directory.Exists(dialog["Источник"]))
+                        throw new Exception(string.Format("Директория, указанная для источника не существует:\n{0}", dialog["Источник"]));
+                    else
+                        sourcePath = dialog["Источник"];
+
+                // Производим проверку пути бэкапа
+                if (backupPath != dialog["Бэкап"])
+                    backupPath = dialog["Бэкап"];
+
+                if (!Directory.Exists(backupPath))
+                    Directory.CreateDirectory(backupPath);
+
+                // Заполняем флаг, показывать ли информацию
+                showInfo = dialog["Показывать информацию"];
+            }
         }
 
         public Dictionary<string, string> GetPathDbfFiles() {
@@ -391,6 +426,18 @@ public class Macro : MacroProvider {
         }
     }
 
+    private class BackuperOptions {
+        public string SourceDir { get; private set; }
+        public string BackupDir { get; private set; }
+        public bool ShowInfo { get; private set; }
+
+        public BackuperOptions(string source, string backup, bool showInfo = false) {
+            this.SourceDir = source;
+            this.BackupDir = backup;
+            this.ShowInfo = showInfo;
+        }
+    }
+
     private class TablesHandler {
     // Класс, инкапсулирующий всю логику по чтению таблиц FoxPro и поиску в них запрашиваемой информации
 
@@ -426,8 +473,28 @@ public class Macro : MacroProvider {
             string searchedValue = "8А2240031";
             string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "resultOfSearch.txt");
             SearchOptions options = new SearchOptions(searchedColumn, searchedValue);
-            PerformSearch(options);
-            PrintSearchResult(pathToFile);
+
+            // Конфигурация диалога ввода
+            InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры поиска");
+            dialog.AddSelectFromList("Колонка", this.AllColumns);
+            dialog.AddString("Поисковый запрос", string.Empty);
+            dialog.AddString("Путь к файлу", pathToFile);
+            dialog.AddFlag("Регистрозависимый", false);
+            dialog.AddFlag("Точное совпадение", true);
+
+            dialog.Show();
+
+            // Проверяем полученные от пользователя параметры поиска
+            string messageTemplate = "Выбранная колонка: {0}\nВыбранный поисковый запрос: {1}";
+            this.MacroProvider.Message("Информация", string.Format(messageTemplate, (string)dialog["Колонка"], (string)dialog["Поисковый запрос"]));
+
+
+
+
+
+            
+            //PerformSearch(options);
+            //PrintSearchResult(pathToFile);
         }
 
         private void PerformSearch(SearchOptions options) {
