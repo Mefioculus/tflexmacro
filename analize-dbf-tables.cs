@@ -26,7 +26,8 @@ System.Data.dll - необходим для работы DbfDataReader
 */
 
 /*
-TODO: Реализовтаь поиск по вхождению
+TODO: Реализовать класс для сохранения настроек поиска между записями
+TODO: Подумать по поводу того, что делать с теми записями, у которых есть перенос строки (при печати таких структур структура таблицы рушится)
 TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
 */
 
@@ -456,7 +457,6 @@ public class Macro : MacroProvider {
             string columns = "Колонка";
             string request = "Поисковый запрос";
             string directory = "Директория с результатами поиска";
-            string file = "Название файла";
             string caseSensitive = "Регистрозависимый";
             string strictMatch = "Точное совпадение";
 
@@ -464,11 +464,11 @@ public class Macro : MacroProvider {
             InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры поиска");
             dialog.AddMultiselectFromList(columns, this.AllColumns.OrderBy(col => col).ToList<string>(), true);
             dialog.AddString(request, string.Empty, false, true);
-            dialog.AddString(directory, Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
-            dialog.AddString(file, "ResultOfSearch.txt");
+            dialog.AddString(directory, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Результаты поиска в FoxPro"));
             dialog.AddFlag(caseSensitive, false);
             dialog.AddFlag(strictMatch, true);
 
+            List<string> listOfFileToOpen = new List<string>();
             while (true) {
                 if (dialog.Show()) {
                     // Данный участок требуется для преобразования динамически полученного списка List<object> в List<string>
@@ -476,15 +476,27 @@ public class Macro : MacroProvider {
                     foreach (object obj in dialog[columns])
                         cols.Add((string)obj);
 
-                    SearchOptions options = new SearchOptions(cols, dialog[request]);
+                    SearchOptions options = new SearchOptions(cols, dialog[request], dialog[strictMatch], dialog[caseSensitive]);
                     PerformSearch(options);
-                    PrintSearchResult(Path.Combine(dialog[directory], dialog[file]));
+                    string pathToFile = Path.Combine(dialog[directory], string.Format("Search '{0}'.txt", dialog[request]));
+                    listOfFileToOpen.Add(pathToFile);
+                    PrintSearchResult(pathToFile);
                     if (!this.MacroProvider.Question("Поиск успешно завершен.\nПовторить поиск с другими параметрами?")) {
                         break;
                     }
                 }
                 else
                     break;
+            }
+
+            // Производим открытие файлов в блокноте
+            if (this.MacroProvider.Question("Открыть сгенерированные файлы?")) {
+                foreach (string file in listOfFileToOpen) {
+                    System.Diagnostics.Process notepad = new System.Diagnostics.Process();
+                    notepad.StartInfo.FileName = "notepad.exe";
+                    notepad.StartInfo.Arguments = file;
+                    notepad.Start();
+                }
             }
         }
 
@@ -507,7 +519,9 @@ public class Macro : MacroProvider {
                 }
             }
 
-            //TODO: Добавить проверку пути на корректность (есть ли данная директория, или же отсутствует);
+            string directory = Path.GetDirectoryName(pathToFile);
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
 
             // Производим запись данных в файл
             File.WriteAllText(pathToFile, sb.ToString());
@@ -581,9 +595,9 @@ public class Macro : MacroProvider {
                 using (DbfDataReader.DbfDataReader reader = new DbfDataReader.DbfDataReader(this.DbfTable.Path, dbfOptions)) {
                     while (reader.Read()) {
                         foreach (DbfColumn column in columns) {
-                            string stringValue = DataObjectToString(reader[column.ColumnName], column.DataType);
+                            string actualValueInString = DataObjectToString(reader[column.ColumnName], column.DataType);
 
-                            if (stringValue == options.SearchedValue) {
+                            if (IsMatch(actualValueInString, options)) {
                                 foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
                                     this.Result.Add(kvp.Value.ColumnName, DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType));
                                 }
@@ -595,6 +609,24 @@ public class Macro : MacroProvider {
 
                 if (this.Result.IsEmpty)
                     this.Result = null;
+            }
+
+            private static bool IsMatch(string actualValue, SearchOptions options) {
+                // Готовим исходные данные с учетом регистрозависимости поиска
+                string searchedValue;
+                if (options.CaseSensitive == false) {
+                    actualValue = actualValue.ToLower();
+                    searchedValue = options.SearchedValue.ToLower();
+                }
+                else {
+                    searchedValue = options.SearchedValue;
+                }
+
+                // Производим сравнение
+                if (options.ExactMatch == true)
+                    return (searchedValue == actualValue);
+                else
+                    return actualValue.Contains(searchedValue);
             }
 
             private static string DataObjectToString(object value, Type typeOfValue) {
