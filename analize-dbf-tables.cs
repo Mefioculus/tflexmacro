@@ -649,7 +649,7 @@ public class Macro : MacroProvider {
                             if (IsMatch(actualValueInString, options)) {
                                 Dictionary<string, string[]> row = new Dictionary<string, string[]>();
                                 foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
-                                    row[kvp.Value.ColumnName] = DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType).Split(new string[] { "\n", "\r", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                                    row[kvp.Value.ColumnName] = DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType).Split(new string[] { Environmant.NewLine }, StringSplitOptions.RemoveEmptyEntries);
                                 }
                                 this.Result.AddRow(row);
                                 break;
