@@ -29,7 +29,6 @@ Newtonsoft.Json.dll - необходим для сериализации и со
 */
 
 /*
-TODO: Реализовать класс для сохранения настроек поиска между записями
 TODO: Подумать по поводу того, что делать с теми записями, у которых есть перенос строки (при печати таких структур структура таблицы рушится)
 TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
 */
@@ -648,9 +647,11 @@ public class Macro : MacroProvider {
                             string actualValueInString = DataObjectToString(reader[column.ColumnName], column.DataType);
 
                             if (IsMatch(actualValueInString, options)) {
+                                Dictionary<string, string[]> row = new Dictionary<string, string[]>();
                                 foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
-                                    this.Result.Add(kvp.Value.ColumnName, DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType));
+                                    row[kvp.Value.ColumnName] = DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType).Split(new string[] { "\n", "\r", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
                                 }
+                                this.Result.AddRow(row);
                                 break;
                             }
                         }
@@ -760,6 +761,22 @@ public class Macro : MacroProvider {
                 }
 
                 this.Values[columnName].Add(cellValue);
+            }
+
+            public void AddRow(Dictionary<string, string[]> row) {
+                // Так как в ячейке некоторых таблиц может быть текст, разделенный новыми строками,
+                // для корректного отображения таких данных их нужно правильно обработать количество и добавить сообветствующее количество новых строк
+                // Получаем максимальное количество строк
+                int maxCountLinesInRow = row.Select(kvp => kvp.Value.Length).Max();
+
+                foreach (KeyValuePair<string, string[]> kvp in row) {
+                    for (int i = 0; i < maxCountLinesInRow; i++) {
+                        if (i < kvp.Value.Length)
+                            this.Add(kvp.Key, kvp.Value[i]);
+                        else
+                            this.Add(kvp.Key, string.Empty);
+                    }
+                }
             }
 
             public override string ToString() {
