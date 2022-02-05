@@ -16,12 +16,15 @@ using TFlex.DOCs.Model.Search;
 using TFlex.DOCs.Model.References;
 
 using DbfDataReader;
+using Newtonsoft.Json;
 
 /*
 Так же для работы данного макроса потребуется подключение дополнительных библиотек:
 
 DbfDataReader.dll - для чтения dbf файлов
 System.Data.dll - необходим для работы DbfDataReader
+
+Newtonsoft.Json.dll - необходим для сериализации и сохранения настроек
 
 */
 
@@ -50,10 +53,13 @@ public class Macro : MacroProvider {
 
     public override void Run() {
 
-        Backuper backuper = new Backuper(sourcePath, backupPath, this);
+        Settings savedSettings = new Settings("analize-dbf-tables-settings.json");
+        savedSettings.Load();
+
+        Backuper backuper = new Backuper(sourcePath, backupPath, this, savedSettings);
 
         // Получаем словарь с доступными dbf таблицами
-        TablesHandler handler = new TablesHandler(backuper.GetPathDbfFiles(), this);
+        TablesHandler handler = new TablesHandler(backuper.GetPathDbfFiles(), this, savedSettings);
 
         // Запрашиваем у пользователя значения параметром поиска, производим поиск и выводим результаты поиска в файл
         handler.AskAndSearch();
@@ -75,10 +81,12 @@ public class Macro : MacroProvider {
         private DbRepository BackupRepository { get; set; }
         private RepositoryMissedFiles MissedFiles { get; set; }
         private Macro MacroProvider { get; set; }
+        private Settings Settings { get; set; }
 
-        public Backuper (string sourcePath, string backupPath, Macro provider) {
+        public Backuper (string sourcePath, string backupPath, Macro provider, Settings settings = null) {
             // Инициализируем репозитории
             this.MacroProvider = provider;
+            this.Settings = settings;
             bool showInfo = false;
 
             // Запрашиваем параметры у пользователя
@@ -107,28 +115,48 @@ public class Macro : MacroProvider {
 
         private void GetParametersFromUser(ref string sourcePath, ref string backupPath, ref bool showInfo) {
             InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры для бэкапа базы данных FoxPro");
-            dialog.AddString("Источник", sourcePath);
-            dialog.AddString("Бэкап", backupPath);
-            dialog.AddFlag("Показывать информацию", showInfo);
+
+            string sourceField = "Источник";
+            string backupField = "Бэкап";
+            string showInfoField = "Показывать информацию";
+
+            // Пробуем получить ранее сохраненные параметры пользователя
+            sourcePath = (this.Settings != null) && (this.Settings.ContainsKey(sourceField)) ? this.Settings[sourceField] : sourcePath;
+            backupPath = (this.Settings != null) && (this.Settings.ContainsKey(backupPath)) ? this.Settings[backupPath] : backupPath;
+            showInfo = (this.Settings != null) && (this.Settings.ContainsKey(showInfoField)) ? bool.Parse(this.Settings[showInfoField]) : showInfo;
+
+            dialog.AddString(sourceField, sourcePath);
+            dialog.AddString(backupField, backupPath);
+            dialog.AddFlag(showInfoField, showInfo);
+
 
             if (dialog.Show()) {
 
                 // Производим проверку пути источника
-                if (sourcePath != dialog["Источник"])
-                    if (!Directory.Exists(dialog["Источник"]))
-                        throw new Exception(string.Format("Директория, указанная для источника не существует:\n{0}", dialog["Источник"]));
+                if (sourcePath != dialog[sourceField])
+                    if (!Directory.Exists(dialog[sourceField]))
+                        throw new Exception(string.Format("Директория, указанная для источника не существует:\n{0}", dialog[sourceField]));
                     else
-                        sourcePath = dialog["Источник"];
+                        sourcePath = dialog[sourceField];
 
                 // Производим проверку пути бэкапа
-                if (backupPath != dialog["Бэкап"])
-                    backupPath = dialog["Бэкап"];
+                if (backupPath != dialog[backupField])
+                    backupPath = dialog[backupField];
 
                 if (!Directory.Exists(backupPath))
                     Directory.CreateDirectory(backupPath);
 
                 // Заполняем флаг, показывать ли информацию
-                showInfo = dialog["Показывать информацию"];
+                showInfo = dialog[showInfoField];
+
+                // Производим обновление и сохранение выбранных пользователем настроек
+                if (this.Settings != null) {
+                    this.Settings[sourceField] = dialog[sourceField];
+                    this.Settings[backupField] = dialog[backupField];
+                    this.Settings[showInfoField] = dialog[showInfoField].ToString();
+
+                    this.Settings.Save();
+                }
             }
         }
 
@@ -431,12 +459,14 @@ public class Macro : MacroProvider {
         private Macro MacroProvider { get; set; }
         private List<Table> Tables { get; set; }
         private List<string> AllColumns { get; set; }
+        private Settings Settings { get; set; }
 
-        public TablesHandler(Dictionary<string, string> tables, Macro provider) {
+        public TablesHandler(Dictionary<string, string> tables, Macro provider, Settings settings = null) {
 
             this.MacroProvider = provider;
             this.Tables = new List<Table>(tables.Count);
             this.AllColumns = new List<string>();
+            this.Settings = settings;
 
             foreach(KeyValuePair<string, string> kvp in tables) {
                 // Инициируем новую таблицу
@@ -454,34 +484,54 @@ public class Macro : MacroProvider {
 
         public void AskAndSearch() {
             // Название полей в диалоге
-            string columns = "Колонка";
-            string request = "Поисковый запрос";
-            string directory = "Директория с результатами поиска";
-            string caseSensitive = "Регистрозависимый";
-            string strictMatch = "Точное совпадение";
+            string columnsField = "Колонка";
+            string requestField = "Поисковый запрос";
+            string directoryField = "Директория с результатами поиска";
+            string caseSensitiveField = "Регистрозависимый";
+            string strictMatchField = "Точное совпадение";
+
+            string request, directory;
+            bool caseSensitive, strictMatch;
 
             // Конфигурация диалога ввода
+            // В том случае, если существуют ранее сохраненные результаты ввода, выдать в диалоге их
             InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры поиска");
-            dialog.AddMultiselectFromList(columns, this.AllColumns.OrderBy(col => col).ToList<string>(), true);
-            dialog.AddString(request, string.Empty, false, true);
-            dialog.AddString(directory, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Результаты поиска в FoxPro"));
-            dialog.AddFlag(caseSensitive, false);
-            dialog.AddFlag(strictMatch, true);
+
+            request =  (this.Settings != null) && (this.Settings.ContainsKey(requestField)) ?
+                this.Settings[requestField] : string.Empty;
+            directory =  (this.Settings != null) && (this.Settings.ContainsKey(directoryField)) ?
+                this.Settings[directoryField] : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Результаты поиска в FoxPro");
+            caseSensitive = (this.Settings != null) && (this.Settings.ContainsKey(caseSensitiveField))
+                ? bool.Parse(this.Settings[caseSensitiveField]) : false;
+            strictMatch = (this.Settings != null) && (this.Settings.ContainsKey(strictMatchField))
+                ? bool.Parse(this.Settings[strictMatchField]) : false;
+
+            dialog.AddMultiselectFromList(columnsField, this.AllColumns.OrderBy(col => col).ToList<string>(), true);
+            dialog.AddString(requestField, request, false, true);
+            dialog.AddString(directoryField, directory);
+            dialog.AddFlag(caseSensitiveField, caseSensitive);
+            dialog.AddFlag(strictMatchField, strictMatch);
 
             List<string> listOfFileToOpen = new List<string>();
             while (true) {
                 if (dialog.Show()) {
                     // Данный участок требуется для преобразования динамически полученного списка List<object> в List<string>
                     List<string> cols = new List<string>();
-                    foreach (object obj in dialog[columns])
+                    foreach (object obj in dialog[columnsField])
                         cols.Add((string)obj);
 
-                    SearchOptions options = new SearchOptions(cols, dialog[request], dialog[strictMatch], dialog[caseSensitive]);
+                    SearchOptions options = new SearchOptions(cols, dialog[requestField], dialog[strictMatchField], dialog[caseSensitiveField]);
                     PerformSearch(options);
-                    string pathToFile = Path.Combine(dialog[directory], string.Format("Search '{0}'.txt", dialog[request]));
+                    string pathToFile = Path.Combine(dialog[directoryField], string.Format("Search '{0}'.txt", dialog[requestField]));
                     listOfFileToOpen.Add(pathToFile);
                     PrintSearchResult(pathToFile);
                     if (!this.MacroProvider.Question("Поиск успешно завершен.\nПовторить поиск с другими параметрами?")) {
+                        // Производим сохранение введенных полей пользователем
+                        this.Settings[requestField] = dialog[requestField];
+                        this.Settings[directoryField] = dialog[directoryField];
+                        this.Settings[caseSensitiveField] = dialog[caseSensitiveField].ToString();
+                        this.Settings[strictMatchField] = dialog[strictMatchField].ToString();
+                        this.Settings.Save();
                         break;
                     }
                 }
@@ -490,7 +540,7 @@ public class Macro : MacroProvider {
             }
 
             // Производим открытие файлов в блокноте
-            if (this.MacroProvider.Question("Открыть сгенерированные файлы?")) {
+            if ((listOfFileToOpen.Count != 0) && (this.MacroProvider.Question("Открыть сгенерированные файлы?"))) {
                 foreach (string file in listOfFileToOpen) {
                     System.Diagnostics.Process notepad = new System.Diagnostics.Process();
                     notepad.StartInfo.FileName = "notepad.exe";
@@ -790,6 +840,72 @@ public class Macro : MacroProvider {
 
         #endregion Inner TableHandler classes
 
+    }
+
+    private class Settings {
+        private Dictionary<string, string> Fields { get; set; }
+        public string Dir { get; private set; }
+        public string Name { get; private set; }
+        public string PathToFile => Path.Combine(this.Dir, this.Name);
+        public bool Exists => File.Exists(this.PathToFile);
+        public int Count => this.Fields.Count;
+
+        #region Constructors
+
+        public Settings(string directory, string name) {
+            this.Dir = directory;
+            this.Name = name;
+            this.Fields = new Dictionary<string, string>();
+
+            if (!Directory.Exists(this.Dir))
+                throw new Exception(string.Format("Директория для сохранения настроек отсутствует:\n{0}", this.Dir));
+        }
+
+        public Settings(string name) : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"), name) {
+        }
+
+        public Settings() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"), "Macro-Settings.json") {
+        }
+
+        #endregion Constructors
+
+        public bool Load() {
+            if (File.Exists(this.PathToFile)) {
+                string jsonString = File.ReadAllText(this.PathToFile);
+                this.Fields = JsonConvert.DeserializeObject<Dictionary<string, string>>(jsonString);
+                return true;
+            }
+            return false;
+        }
+
+        public void Save() {
+            string jsonString = JsonConvert.SerializeObject(this.Fields);
+            File.WriteAllText(this.PathToFile, jsonString);
+        }
+
+        public string this[string key] {
+            get {
+                try {
+                    return this.Fields[key];
+                }
+                catch (Exception e) {
+                    throw new Exception(string.Format("При попытке обращения к ключу {0} пользовательский настроек макроса возникла ошибка.\n\n{1}", key, e.Message));
+                }
+            }
+            set {
+                this.Fields[key] = value;
+            }
+        }
+
+        public bool ContainsKey(string key) => this.Fields.ContainsKey(key);
+
+        public bool ContainsValue(string value) => this.Fields.ContainsValue(value);
+
+        public void Clear() {
+            this.Fields.Clear();
+            this.Save();
+        }
+        
     }
 
     #endregion Classes
