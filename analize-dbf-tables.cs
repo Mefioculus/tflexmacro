@@ -29,8 +29,7 @@ Newtonsoft.Json.dll - необходим для сериализации и со
 */
 
 /*
-TODO: Подумать по поводу того, что делать с теми записями, у которых есть перенос строки (при печати таких структур структура таблицы рушится)
-TODO: Реализовать параллельный поиск по нескольким таблицам одновременно
+TODO: Реализовать более равномерное распределение реботы при асинхронном выполнении поиска
 */
 
 public class Macro : MacroProvider {
@@ -520,7 +519,7 @@ public class Macro : MacroProvider {
                         cols.Add((string)obj);
 
                     SearchOptions options = new SearchOptions(cols, dialog[requestField], dialog[strictMatchField], dialog[caseSensitiveField]);
-                    PerformSearch(options);
+                    PerformSearchAsync(options, 8);
                     string pathToFile = Path.Combine(dialog[directoryField], string.Format("Search '{0}'.txt", dialog[requestField]));
                     listOfFileToOpen.Add(pathToFile);
                     PrintSearchResult(pathToFile);
@@ -549,11 +548,37 @@ public class Macro : MacroProvider {
             }
         }
 
-        private void PerformSearch(SearchOptions options) {
+        private void PerformSearchAsync(SearchOptions options, int quantityOfThreads = 8) {
+            // Производим разделение таблиц на количенство потоков для 
+            // произведения асинхроного выполнения поиска
+            List<List<Table>> tablesForThreads = new List<List<Table>>();
+            for (int i = 0; i < quantityOfThreads; i++) {
+                tablesForThreads.Add(new List<Table>());
+            }
+            
+            int index = 0;
             foreach (Table table in this.Tables) {
+                tablesForThreads[index++].Add(table);
+                if (index == quantityOfThreads)
+                    index = 0;
+            }
+
+            // Запускаем выполнение поиска
+            List<Task> tasks = new List<Task>(quantityOfThreads);
+
+            foreach (List<Table> tables in tablesForThreads) {
+                tasks.Add(Task.Run(() => this.PerformSearch(options, tables)));
+            }
+
+            Task.WaitAll(tasks.ToArray<Task>());
+        }
+
+        private async Task PerformSearch(SearchOptions options, List<Table> tables) {
+            foreach (Table table in tables) {
                 if (table.ContainsColumn(options))
                     table.Search(options);
             }
+            return;
         }
 
         private void PrintSearchResult(string pathToFile) {
@@ -649,7 +674,7 @@ public class Macro : MacroProvider {
                             if (IsMatch(actualValueInString, options)) {
                                 Dictionary<string, string[]> row = new Dictionary<string, string[]>();
                                 foreach (KeyValuePair<string, DbfColumn> kvp in this.ColumnsDict) {
-                                    row[kvp.Value.ColumnName] = DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType).Split(new string[] { Environmant.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                                    row[kvp.Value.ColumnName] = DataObjectToString(reader[kvp.Value.ColumnName], kvp.Value.DataType).Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
                                 }
                                 this.Result.AddRow(row);
                                 break;
