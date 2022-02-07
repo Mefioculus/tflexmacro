@@ -28,10 +28,6 @@ Newtonsoft.Json.dll - необходим для сериализации и со
 
 */
 
-/*
-TODO: Реализовать более равномерное распределение реботы при асинхронном выполнении поиска
-TODO: Исправить неверное использование асинхронности в коде
-*/
 
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
@@ -399,7 +395,7 @@ public class Macro : MacroProvider {
             }
 
             
-            private async Task DownloadFiles(List<string> paths, string destinationDirectory) {
+            private void DownloadFiles(List<string> paths, string destinationDirectory) {
 
                 if (!Directory.Exists(destinationDirectory))
                     return;
@@ -574,7 +570,7 @@ public class Macro : MacroProvider {
             Task.WaitAll(tasks.ToArray<Task>());
         }
 
-        private async Task PerformSearch(SearchOptions options, List<Table> tables) {
+        private void PerformSearch(SearchOptions options, List<Table> tables) {
             foreach (Table table in tables) {
                 if (table.ContainsColumn(options))
                     table.Search(options);
