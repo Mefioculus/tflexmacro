@@ -554,7 +554,7 @@ public class Macro : MacroProvider {
             }
             
             int index = 0;
-            foreach (Table table in this.Tables) {
+            foreach (Table table in this.Tables.Where(t => t.ContainsColumn(options))) {
                 tablesForThreads[index++].Add(table);
                 if (index == quantityOfThreads)
                     index = 0;
@@ -564,18 +564,16 @@ public class Macro : MacroProvider {
             List<Task> tasks = new List<Task>(quantityOfThreads);
 
             foreach (List<Table> tables in tablesForThreads) {
-                tasks.Add(Task.Run(() => this.PerformSearch(options, tables)));
+                if (tables.Count != 0)
+                    tasks.Add(Task.Run(() => this.PerformSearch(options, tables)));
             }
 
             Task.WaitAll(tasks.ToArray<Task>());
         }
 
         private void PerformSearch(SearchOptions options, List<Table> tables) {
-            foreach (Table table in tables) {
-                if (table.ContainsColumn(options))
-                    table.Search(options);
-            }
-            return;
+            foreach (Table table in tables)
+                table.Search(options);
         }
 
         private void PrintSearchResult(string pathToFile) {
