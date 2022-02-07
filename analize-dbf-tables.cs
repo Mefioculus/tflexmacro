@@ -30,6 +30,7 @@ Newtonsoft.Json.dll - необходим для сериализации и со
 
 /*
 TODO: Реализовать более равномерное распределение реботы при асинхронном выполнении поиска
+TODO: Исправить неверное использование асинхронности в коде
 */
 
 public class Macro : MacroProvider {
@@ -158,11 +159,11 @@ public class Macro : MacroProvider {
             }
         }
 
-        public Dictionary<string, string> GetPathDbfFiles() {
-            Dictionary<string, string> result = new Dictionary<string, string>(this.BackupRepository.CountDbf);
+        public List<KeyValuePair<string, string>> GetPathDbfFiles() {
+            List<KeyValuePair<string,string>> result = new List<KeyValuePair<string, string>>(this.BackupRepository.CountDbf);
 
-            foreach (KeyValuePair<string, FileInfo> kvp in this.BackupRepository.DbfFiles)
-                result[kvp.Key.Split('.')[0]] = kvp.Value.FullName;
+            foreach (KeyValuePair<string, FileInfo> kvp in this.BackupRepository.DbfFiles.OrderByDescending(kvp => kvp.Value.Length))
+                result.Add(new KeyValuePair<string, string>(kvp.Key.Split('.')[0], kvp.Value.FullName));
 
             return result;
         }
@@ -459,7 +460,7 @@ public class Macro : MacroProvider {
         private List<string> AllColumns { get; set; }
         private Settings Settings { get; set; }
 
-        public TablesHandler(Dictionary<string, string> tables, Macro provider, Settings settings = null) {
+        public TablesHandler(List<KeyValuePair<string, string>> tables, Macro provider, Settings settings = null) {
 
             this.MacroProvider = provider;
             this.Tables = new List<Table>(tables.Count);
