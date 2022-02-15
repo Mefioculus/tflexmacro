@@ -18,8 +18,6 @@ public class Macro : MacroProvider {
         }
 
 
-
-
     public override void Run() {
         ЗагрузитьГосты();
     }
@@ -29,6 +27,7 @@ public class Macro : MacroProvider {
 
         DocumentRepository repo = new DocumentRepository(this);
         Message("Информация", repo.ToString());
+        Message("Информация", repo.ErrorMessage);
 
     }
 
@@ -202,9 +201,11 @@ public class Macro : MacroProvider {
 
         public string Dir { get; private set; }
         public string[] Files { get; private set; }
+        private string SearchPattern { get; set; }
         private MacroProvider Provider { get; set; }
         private List<RegulatoryDocument> Documents { get; set; }
         private Dictionary<string, List<Exception>> Errors { get; set; }
+        public string ErrorMessage => this.GetErrorMessage();
 
         public DocumentRepository(MacroProvider provider) {
 
@@ -229,14 +230,12 @@ public class Macro : MacroProvider {
 
         private void GetInputDataFromUser() {
             // Запросить у пользователя директорию, в которой производить поиск
-            string pathToDirectory = @"D:\ГОСТы";
-            string searchPattern = "*.pdf";
+            this.Dir = @"D:\ГОСТы";
+            this.SearchPattern = "*.pdf";
 
             // TODO: Предусмотреть указание типа заранее
-
-            this.Files = Directory.GetFiles(pathToDirectory, searchPattern, SearchOption.AllDirectories);
+            this.Files = Directory.GetFiles(this.Dir, this.SearchPattern, SearchOption.AllDirectories);
         }
-
         
         private void ReadDocuments() {
             // TODO: Предусмотреть указание типа заранее
@@ -262,6 +261,16 @@ public class Macro : MacroProvider {
                 "Ошибок в процессе обработки документов: {2}\n";
             return string.Format(template, this.Files.Length, this.Documents.Count, this.Errors.Count);
         }
+
+        private string GetErrorMessage() {
+            if (this.Errors.Count == 0)
+                return string.Empty;
+
+            string template = "В процессе обработки файлов в директории '{0}' возникли следующие ошибки:\n{1}";
+            string innerTemplate = "У файла '{0}':\n{1}\n";
+            return string.Format(template, this.Dir, string.Join("\n", this.Errors.Select(kvp => string.Format(innerTemplate, kvp.Key, string.Join("\n", kvp.Value.Select(err => err.Message))))));
+
+        }
     }
 
     public enum TypeOfDocument {
@@ -283,21 +292,4 @@ public class Macro : MacroProvider {
         Обработан
     }
 
-    // TODO: Доработать
-    public enum RegExps {
-        ФайлГОСТ,
-        ОбозначениеГОСТ,
-        ФайлОСТ,
-        ОбозначениеОСТ,
-        ФайлСТП,
-        ОбозначениеСТП,
-        ФайлПИ,
-        ОбозначениеПИ,
-        ФайлТУ,
-        ОбозначениеТУ,
-        ФайлНормаль,
-        ОбозначениеНормаль,
-        ФайлМетрология,
-        ОбозначениеМетрология
-    }
 }
