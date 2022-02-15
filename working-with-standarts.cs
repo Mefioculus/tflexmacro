@@ -20,6 +20,7 @@ public class Macro : MacroProvider {
 
     public override void Run() {
         ЗагрузитьГосты();
+        Message("Информация", "Работа макроса завершена");
     }
 
     public void ЗагрузитьГосты() {
@@ -27,7 +28,10 @@ public class Macro : MacroProvider {
 
         DocumentRepository repo = new DocumentRepository(this);
         Message("Информация", repo.ToString());
-        Message("Информация", repo.ErrorMessage);
+        if (repo.ErrorMessage != string.Empty)
+            if (Question(string.Format("{0}\n\nПерейти к исправлению?", repo.ErrorMessage))) {
+                repo.FixErrors();
+            }
 
     }
 
@@ -42,7 +46,7 @@ public class Macro : MacroProvider {
     public class RegulatoryDocument {
         // Регулярные выражения
         private static Dictionary<TypeOfDocument, Regex> TypeRegexPatterns = new Dictionary<TypeOfDocument, Regex> () {
-            [TypeOfDocument.ГОСТ] = new Regex(@"^[Гг][Оо][Сс][Тт](\s[\w]{1,6})?\s(\d{1,5}[\.\-]){1,3}\d{2,4}\s")
+            [TypeOfDocument.ГОСТ] = new Regex(@"^[Гг][Оо][Сс][Тт](\s[\w]{1,6})?\s(\d{1,5}[\.\-]){1,3}\d{2,4}")
             //[TypeOfDocument.ОСТ] = new Regex(@""),
             //[TypeOfDocument.ТУ] = new Regex(@""),
             //[TypeOfDocument.ПИ] = new Regex(@""),
@@ -68,18 +72,14 @@ public class Macro : MacroProvider {
         public string TypeString => this.GetStringRepresentationOfType(this.Type);
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
 
-        public RegulatoryDocument(string pathToFile, TypeOfDocument type = TypeOfDocument.Неизвестно) {
-            // Проверка на то, что файл существует
-            if (!File.Exists(pathToFile)) {
-                string template =
-                    "При инициализации объекта справочника 'Нормативные документы' возникла ошибка\n" +
-                    "Исходный файл по пути '{0}' не был обнаружен";
-                throw new Exception(string.Format(template, pathToFile));
-            }
+        public RegulatoryDocument(string pathToFile, TypeOfDocument type = TypeOfDocument.Неизвестно) : this(new FileInfo(pathToFile), type) {
+        }
+
+        public RegulatoryDocument(FileInfo file, TypeOfDocument type = TypeOfDocument.Неизвестно) {
 
             this.AdditionalField = new Dictionary<string, string>();
 
-            this.LinkedFile = new FileInfo(pathToFile);
+            this.LinkedFile = file;
             this.Type = type;
 
             // Определение и проверка типа документа
@@ -89,7 +89,7 @@ public class Macro : MacroProvider {
                 CheckType();
 
             if (this.Type == TypeOfDocument.Неизвестно)
-                throw new Exception(string.Format("Не удалось однозначно определить тип документа по названию файла: {0}", this.LinkedFile.Name));
+                throw new Exception("Не удалось определить тип документа по названию файла");
 
             FillFieldsData(this.Type);
         }
@@ -141,21 +141,23 @@ public class Macro : MacroProvider {
             // Для начала получаем из названия файла тип документа плюс его обозначение
             Match typeAndDesignationOfDocMatch = AdditionalRegexPatterns["type and designation"].Match(fileName);
             if (!typeAndDesignationOfDocMatch.Success)
-                throw new Exception(string.Format("Ошибка при получении типа документа и его обозначения ({0})", fileName));
+                throw new Exception("Ошибка при получении типа документа и его обозначения");
             this.Name = fileName
                 .Replace(typeAndDesignationOfDocMatch.Value, string.Empty)
                 .Trim();
+            if (string.IsNullOrWhiteSpace(this.Name))
+                throw new Exception("Отсутствует название ГОСТ");
 
             // Получаем обозначение документа
             Match designationMatch = AdditionalRegexPatterns["designation"].Match(fileName);
             if (!designationMatch.Success)
-                throw new Exception(string.Format("Ошибка при получении обозначения документа ({0})", fileName));
+                throw new Exception("Ошибка при получении обозначения документа");
             this.Designation = designationMatch.Value;
 
             // Получаем тип объекта
             Match typeMatch = AdditionalRegexPatterns["type of document"].Match(fileName);
             if (!designationMatch.Success)
-                throw new Exception(string.Format("Ошибка при получении типа документа ({0})", fileName));
+                throw new Exception("Ошибка при получении типа документа");
             
             // Проверяем, есть ли у данного ГОСТа дополнительный тип
             string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -204,8 +206,8 @@ public class Macro : MacroProvider {
         private string SearchPattern { get; set; }
         private MacroProvider Provider { get; set; }
         private List<RegulatoryDocument> Documents { get; set; }
-        private Dictionary<string, List<Exception>> Errors { get; set; }
-        public string ErrorMessage => this.GetErrorMessage();
+        private Dictionary<FileInfo, Exception> Errors { get; set; }
+        public string ErrorMessage { get; private set; }
 
         public DocumentRepository(MacroProvider provider) {
 
@@ -217,7 +219,7 @@ public class Macro : MacroProvider {
 
             // Инициируем основные коллекции класса
             this.Documents = new List<RegulatoryDocument>();
-            this.Errors = new Dictionary<string, List<Exception>>();
+            this.Errors = new Dictionary<FileInfo, Exception>();
 
             // Запрашиваем файлы у пользователя
             GetInputDataFromUser();
@@ -225,7 +227,7 @@ public class Macro : MacroProvider {
             // Производим чтение документов и при возникновении ошибок регистрацию их
             ReadDocuments();
 
-
+            this.ErrorMessage = GetErrorMessage();
         }
 
         private void GetInputDataFromUser() {
@@ -244,12 +246,9 @@ public class Macro : MacroProvider {
                     RegulatoryDocument newDoc = new RegulatoryDocument(file);
                     this.Documents.Add(newDoc);
                 }
-                catch (Exception e) {
-                    string fileName = Path.GetFileNameWithoutExtension(file);
-                    if (this.Errors.ContainsKey(fileName))
-                        this.Errors[fileName].Add(e);
-                    else
-                        this.Errors[fileName] = new List<Exception>() { e };
+                catch (Exception exception) {
+                    FileInfo fileInfo = new FileInfo(file);
+                    this.Errors[fileInfo] = exception;
                 }
             }
         }
@@ -262,14 +261,21 @@ public class Macro : MacroProvider {
             return string.Format(template, this.Files.Length, this.Documents.Count, this.Errors.Count);
         }
 
+        public void FixErrors() {
+            // TODO: Реализовать метод по корректировке неправильных названий файлов
+        }
+
         private string GetErrorMessage() {
             if (this.Errors.Count == 0)
                 return string.Empty;
 
-            string template = "В процессе обработки файлов в директории '{0}' возникли следующие ошибки:\n{1}";
-            string innerTemplate = "У файла '{0}':\n{1}\n";
-            return string.Format(template, this.Dir, string.Join("\n", this.Errors.Select(kvp => string.Format(innerTemplate, kvp.Key, string.Join("\n", kvp.Value.Select(err => err.Message))))));
+            string template = "В процессе обработки файлов в директории '{0}' возникли следующие ошибки:\n\n{1}";
+            string innerTemplate = "файл '{0}': {1}\n";
+            return string.Format(template, this.Dir, string.Join("\n", this.Errors.Select(kvp => string.Format(innerTemplate, kvp.Key.Name, kvp.Value.Message))));
+        }
 
+        public void RefreshErrorMessage() {
+            this.ErrorMessage = GetErrorMessage();
         }
     }
 
