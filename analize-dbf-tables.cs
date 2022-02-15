@@ -78,7 +78,7 @@ public class Macro : MacroProvider {
         private Macro MacroProvider { get; set; }
         private Settings Settings { get; set; }
 
-        public Backuper (string sourcePath, string backupPath, Macro provider, Settings settings = null) {
+        public Backuper (string sourcePath, string backupPath, Macro provider, Settings settings) {
             // Инициализируем репозитории
             this.MacroProvider = provider;
             this.Settings = settings;
@@ -116,9 +116,9 @@ public class Macro : MacroProvider {
             string showInfoField = "Показывать информацию";
 
             // Пробуем получить ранее сохраненные параметры пользователя
-            sourcePath = (this.Settings != null) && (this.Settings.ContainsKey(sourceField)) ? this.Settings[sourceField] : sourcePath;
-            backupPath = (this.Settings != null) && (this.Settings.ContainsKey(backupPath)) ? this.Settings[backupPath] : backupPath;
-            showInfo = (this.Settings != null) && (this.Settings.ContainsKey(showInfoField)) ? bool.Parse(this.Settings[showInfoField]) : showInfo;
+            sourcePath = this.Settings.RetrieveOrDefault<string>(sourceField, sourcePath);
+            backupPath = this.Settings.RetrieveOrDefault<string>(backupField, backupPath);
+            showInfo = this.Settings.RetrieveOrDefault<bool>(showInfoField, showInfo);
 
             dialog.AddString(sourceField, sourcePath);
             dialog.AddString(backupField, backupPath);
@@ -391,7 +391,8 @@ public class Macro : MacroProvider {
                     tasks.Add(Task.Run(() => this.DownloadFiles(paths, this.Backup.Dir)));
                 }
 
-                Task.WaitAll(tasks.ToArray<Task>());
+                if (tasks.Count != 0)
+                    Task.WaitAll(tasks.ToArray<Task>());
             }
 
             
@@ -456,7 +457,7 @@ public class Macro : MacroProvider {
         private List<string> AllColumns { get; set; }
         private Settings Settings { get; set; }
 
-        public TablesHandler(List<KeyValuePair<string, string>> tables, Macro provider, Settings settings = null) {
+        public TablesHandler(List<KeyValuePair<string, string>> tables, Macro provider, Settings settings) {
 
             this.MacroProvider = provider;
             this.Tables = new List<Table>(tables.Count);
@@ -485,21 +486,14 @@ public class Macro : MacroProvider {
             string caseSensitiveField = "Регистрозависимый";
             string strictMatchField = "Точное совпадение";
 
-            string request, directory;
-            bool caseSensitive, strictMatch;
+            string request = this.Settings.RetrieveOrDefault<string>(requestField, string.Empty);
+            string directory = this.Settings.RetrieveOrDefault<string>(directoryField, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Результаты поиска в FoxPro"));
+            bool caseSensitive = this.Settings.RetrieveOrDefault<bool>(caseSensitiveField, false);
+            bool strictMatch = this.Settings.RetrieveOrDefault<bool>(strictMatchField, false);
 
             // Конфигурация диалога ввода
             // В том случае, если существуют ранее сохраненные результаты ввода, выдать в диалоге их
             InputDialog dialog = new InputDialog(this.MacroProvider.Context, "Укажите параметры поиска");
-
-            request =  (this.Settings != null) && (this.Settings.ContainsKey(requestField)) ?
-                this.Settings[requestField] : string.Empty;
-            directory =  (this.Settings != null) && (this.Settings.ContainsKey(directoryField)) ?
-                this.Settings[directoryField] : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Результаты поиска в FoxPro");
-            caseSensitive = (this.Settings != null) && (this.Settings.ContainsKey(caseSensitiveField))
-                ? bool.Parse(this.Settings[caseSensitiveField]) : false;
-            strictMatch = (this.Settings != null) && (this.Settings.ContainsKey(strictMatchField))
-                ? bool.Parse(this.Settings[strictMatchField]) : false;
 
             dialog.AddMultiselectFromList(columnsField, this.AllColumns.OrderBy(col => col).ToList<string>(), true);
             dialog.AddString(requestField, request, false, true);
@@ -568,7 +562,8 @@ public class Macro : MacroProvider {
                     tasks.Add(Task.Run(() => this.PerformSearch(options, tables)));
             }
 
-            Task.WaitAll(tasks.ToArray<Task>());
+            if (tasks.Count != 0)
+                Task.WaitAll(tasks.ToArray<Task>());
         }
 
         private void PerformSearch(SearchOptions options, List<Table> tables) {
@@ -918,6 +913,34 @@ public class Macro : MacroProvider {
         public void Save() {
             string jsonString = JsonConvert.SerializeObject(this.Fields);
             File.WriteAllText(this.PathToFile, jsonString);
+        }
+
+        public T RetrieveOrDefault<T>(string key, T defaultValue) {
+            if (this.Fields.ContainsKey(key)) {
+                switch (defaultValue.GetType().ToString()) {
+                    case "System.String":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Int32":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Int64":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.DateTime":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Boolean":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Single":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Double":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    case "System.Decimal":
+                        return (T)Convert.ChangeType(this.Fields[key], typeof(T));
+                    default:
+                        string template = "При получении значения из словаря сохраненных ранее настроек возникла ошибка:\nТип {0} не поддерживается";
+                        throw new Exception(string.Format(template, typeof(T).ToString()));
+                }
+            }
+            else
+                return defaultValue;
         }
 
         public string this[string key] {
