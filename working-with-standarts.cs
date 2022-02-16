@@ -35,31 +35,37 @@ public class Macro : MacroProvider {
 
     }
 
-    private string[] GetFilesFromUser() {
-        // Запросить у пользователя директорию, в которой производить поиск
-        string pathToDirectory = @"D:\ГОСТы";
-        string searchPattern = "*.pdf";
-
-        return Directory.GetFiles(pathToDirectory, searchPattern, SearchOption.AllDirectories);
-    }
-
     public class RegulatoryDocument {
         // Регулярные выражения
-        private static Dictionary<TypeOfDocument, Regex> TypeRegexPatterns = new Dictionary<TypeOfDocument, Regex> () {
-            [TypeOfDocument.ГОСТ] = new Regex(@"^[Гг][Оо][Сс][Тт](\s[\w]{1,6})?\s(\d{1,5}[\.\-]){1,3}\d{2,4}")
-            //[TypeOfDocument.ОСТ] = new Regex(@""),
-            //[TypeOfDocument.ТУ] = new Regex(@""),
-            //[TypeOfDocument.ПИ] = new Regex(@""),
-            //[TypeOfDocument.СТО] = new Regex(@""),
-            //[TypeOfDocument.СТП] = new Regex(@""),
-            //[TypeOfDocument.Нормали] = new Regex(@""),
-            //[TypeOfDocument.Метрология] = new Regex(@""),
-        };
 
-        private static Dictionary<string, Regex> AdditionalRegexPatterns = new Dictionary<string, Regex> () {
-            ["designation"] = new Regex(@"(\d{1,5}[\.\-]){1,3}\d{2,4}"),
-            ["type of document"] = new Regex(@"^([\w]{1,10}\s){1,2}"),
-            ["type and designation"] = new Regex(@"^([\w]{1,10}\s){1,2}(\d{1,5}[\.\-]){1,3}\d{2,4}")
+        private static class RegexPatterns {
+            public static class Types {
+                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт]");
+                public static Regex ОСТ = new Regex(@"^[Оо][Сс][Тт]");
+                public static Regex ТУ = new Regex(@"^[Тт][Уу]");
+                public static Regex ПИ = new Regex(@"^[Пп][Ии]");
+                public static Regex СТО = new Regex(@"^[Сс][Тт][Оо]");
+                public static Regex СТП = new Regex(@"^[Сс][Тт][Пп]");
+                public static Regex Нормали = new Regex(@"[Нн][Оо][Рр][Мм][Аа][Лл]");
+                public static Regex Метрология = new Regex(@"[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]");
+            }
+
+            public static class Common {
+                public static Regex Designation = new Regex(@"(\d{1,5}[\.\-]){1,3}\d{2,4}");
+                public static Regex TypeOfDocument = new Regex(@"^([\w]{1,10}\s){1,2}");
+                public static Regex TypeAndDesignation = new Regex(@"^([\w]{1,10}\s){1,2}(\d{1,5}[\.\-]){1,3}\d{2,4}");
+            }
+        }
+
+        private static Dictionary<TypeOfDocument, Regex> TypeRegexPatterns = new Dictionary<TypeOfDocument, Regex> () {
+            [TypeOfDocument.ГОСТ] = RegexPatterns.Types.ГОСТ,
+            [TypeOfDocument.ОСТ] = RegexPatterns.Types.ОСТ,
+            [TypeOfDocument.ТУ] = RegexPatterns.Types.ТУ,
+            [TypeOfDocument.ПИ] = RegexPatterns.Types.ПИ,
+            [TypeOfDocument.СТО] = RegexPatterns.Types.СТО,
+            [TypeOfDocument.СТП] = RegexPatterns.Types.СТП,
+            [TypeOfDocument.Нормали] = RegexPatterns.Types.Нормали,
+            [TypeOfDocument.Метрология] = RegexPatterns.Types.Метрология
         };
 
 
@@ -139,7 +145,7 @@ public class Macro : MacroProvider {
             string fileName = Regex.Replace(LinkedFile.Name, @"\.[pP][dD][fF]$", string.Empty);
             
             // Для начала получаем из названия файла тип документа плюс его обозначение
-            Match typeAndDesignationOfDocMatch = AdditionalRegexPatterns["type and designation"].Match(fileName);
+            Match typeAndDesignationOfDocMatch = RegexPatterns.Common.TypeAndDesignation.Match(fileName);
             if (!typeAndDesignationOfDocMatch.Success)
                 throw new Exception("Ошибка при получении типа документа и его обозначения");
             this.Name = fileName
@@ -149,13 +155,13 @@ public class Macro : MacroProvider {
                 throw new Exception("Отсутствует название ГОСТ");
 
             // Получаем обозначение документа
-            Match designationMatch = AdditionalRegexPatterns["designation"].Match(fileName);
+            Match designationMatch = RegexPatterns.Common.Designation.Match(fileName);
             if (!designationMatch.Success)
                 throw new Exception("Ошибка при получении обозначения документа");
             this.Designation = designationMatch.Value;
 
             // Получаем тип объекта
-            Match typeMatch = AdditionalRegexPatterns["type of document"].Match(fileName);
+            Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
             if (!designationMatch.Success)
                 throw new Exception("Ошибка при получении типа документа");
             
@@ -201,10 +207,16 @@ public class Macro : MacroProvider {
 
     public class DocumentRepository {
 
+        // Данные, получаемые от пользователя
         public string Dir { get; private set; }
-        public string[] Files { get; private set; }
         private string SearchPattern { get; set; }
+        private TypeOfDocument SearchType { get; set; } = TypeOfDocument.Неизвестно;
+
+        // Данные, получаемые при инициализации нового объекта
         private MacroProvider Provider { get; set; }
+        
+        // Данные, получаемые в процессе работы конструктора
+        public string[] Files { get; private set; }
         private List<RegulatoryDocument> Documents { get; set; }
         private Dictionary<FileInfo, Exception> Errors { get; set; }
         public string ErrorMessage { get; private set; }
@@ -232,10 +244,35 @@ public class Macro : MacroProvider {
 
         private void GetInputDataFromUser() {
             // Запросить у пользователя директорию, в которой производить поиск
+            // TODO: После тестирования убрать введенный по умолчанию путь (или установить его на рабочий стол пользователя)
             this.Dir = @"D:\ГОСТы";
+            //this.Dir = Environment.GetFolderName(Environment.SpecialFolder.Desktop);
             this.SearchPattern = "*.pdf";
 
-            // TODO: Предусмотреть указание типа заранее
+            string directory = "Директория";
+            string type = "Тип";
+            string browse = "Обзор";
+            string pattern = "Поисковый запрос";
+
+            InputDialog dialog = new InputDialog(this.Provider.Context, "Укажите директорию");
+            dialog.AddString(directory, this.Dir);
+            string[] types = Enum.GetNames(typeof(TypeOfDocument));
+            dialog.AddButton(
+                    browse,
+                    (name) => {
+                        OpenFolderDialog folderDialog = new OpenFolderDialog(this.Provider.Context, "Выберите директорию");
+                        if (folderDialog.Show())
+                            dialog[directory] = folderDialog.DirectoryName;
+                        },
+                    false);
+            dialog.AddString(pattern, this.SearchPattern);
+            dialog.AddSelectFromList(type, types[0], true, types);
+            if (dialog.Show()) {
+                this.Dir = (string)dialog[directory];
+                this.SearchPattern = (string)dialog[pattern];
+                this.SearchType = (TypeOfDocument)Enum.Parse(typeof(TypeOfDocument), (string)dialog[type]);
+            }
+
             this.Files = Directory.GetFiles(this.Dir, this.SearchPattern, SearchOption.AllDirectories);
         }
         
@@ -243,7 +280,7 @@ public class Macro : MacroProvider {
             // TODO: Предусмотреть указание типа заранее
             foreach (string file in this.Files) {
                 try {
-                    RegulatoryDocument newDoc = new RegulatoryDocument(file);
+                    RegulatoryDocument newDoc = new RegulatoryDocument(file, this.SearchType);
                     this.Documents.Add(newDoc);
                 }
                 catch (Exception exception) {
