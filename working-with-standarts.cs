@@ -18,6 +18,18 @@ public class Macro : MacroProvider {
         : base (context) {
         }
 
+    private static class Guids {
+        public static class References {
+            public static Guid ФайловыйСправочник = new Guid("a0fcd27d-e0f2-4c5a-bba3-8a452508e6b3");
+            public static Guid НормативныеДокументы = new Guid("221ea415-75fc-458a-aa52-2144225fca43");
+        }
+        public static class Types {
+            public static Guid НормативныйДокумент = new Guid("37ef8098-14a7-4787-8814-14c2eb1b5b6a");
+        }
+        public static class Objects {
+            public static Guid АрхивНД = new Guid("3d33548b-3366-4fb6-8126-bce53b0a7d68");
+        }
+    }
 
     public override void Run() {
         ЗагрузитьГосты();
