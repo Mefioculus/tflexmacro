@@ -20,14 +20,14 @@ public class Macro : MacroProvider {
 
     private static class Guids {
         public static class References {
-            public static Guid ФайловыйСправочник = new Guid("a0fcd27d-e0f2-4c5a-bba3-8a452508e6b3");
+            public static Guid Файлы = new Guid("a0fcd27d-e0f2-4c5a-bba3-8a452508e6b3");
             public static Guid НормативныеДокументы = new Guid("221ea415-75fc-458a-aa52-2144225fca43");
         }
         public static class Types {
             public static Guid НормативныйДокумент = new Guid("37ef8098-14a7-4787-8814-14c2eb1b5b6a");
         }
         public static class Objects {
-            public static Guid АрхивНД = new Guid("3d33548b-3366-4fb6-8126-bce53b0a7d68");
+            public static Guid ПапкаАрхивНД = new Guid("3d33548b-3366-4fb6-8126-bce53b0a7d68");
         }
     }
 
@@ -40,7 +40,10 @@ public class Macro : MacroProvider {
         // Данный метод предназначен для добавления кнопки, которая будет производить импорт pdf из выбранной директории
 
         DocumentRepository repo = new DocumentRepository(this);
+        // Запрашиваем у пользователя исправления найденных ошибок
         repo.AskUserAboutFixingErrors();
+        // Производим процедуру загрузки документов в DOCs
+        repo.UploadDocumentsInDocs();
 
     }
 
@@ -215,7 +218,7 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void CreateInDocs(Reference nomenclatureReference, FileReference fileReference, FolderObject folder) {
+        public void CreateInDocs(Reference normDocumentReference, FileReference fileReference, FolderObject folder) {
             // TODO: Реализовать метод создания документа в DOCs
         }
 
@@ -230,7 +233,7 @@ public class Macro : MacroProvider {
             return null;
         }
 
-        private ReferenceObject CreateRecordInReference(Reference nomenclatureReference) {
+        private ReferenceObject CreateRecordInReference(Reference normDocumentReference) {
             // TODO: Реализовать метод создания записи в справочнике нормативных документов
             return null;
         }
@@ -260,6 +263,11 @@ public class Macro : MacroProvider {
         private Dictionary<FileInfo, Exception> Errors { get; set; }
         public string ErrorMessage { get; private set; }
 
+        // Для работы с DOCs
+        private Reference NDReference { get; set; }
+        private FileReference FReference { get; set; }
+        private FolderObject NDFolder { get; set; }
+
         public DocumentRepository(MacroProvider provider) {
 
             // Проверяем, был ли передан MacroProvider.
@@ -279,6 +287,18 @@ public class Macro : MacroProvider {
             ReadDocuments();
 
             this.ErrorMessage = GetErrorMessage();
+
+            // Получаем основные объекты, необходимые для загрузки объектов в DOCs
+            this.NDReference = this.Provider.Context.Connection.ReferenceCatalog.Find(Guids.References.НормативныеДокументы).CreateReference();
+            this.FReference = new FileReference(this.Provider.Context.Connection);
+            this.NDFolder = this.FReference.Find(Guids.Objects.ПапкаАрхивНД) as FolderObject;
+
+            if (this.NDReference == null)
+                throw new Exception("Не удалось получить справочник 'Нормативные документы'");
+            if (this.FReference == null)
+                throw new Exception("Не удалось получить справочник 'Файлы'");
+            if (this.NDReference == null)
+                throw new Exception("Не удалось найти папку 'Архив НД'");
         }
 
         private void GetInputDataFromUser() {
@@ -383,7 +403,7 @@ public class Macro : MacroProvider {
                 this.Provider.Message(string.Empty, string.Join("\n", files));
                 // Запускаем корректировку файлов
 
-                List<FileInfo> correctedFiles = FixErrors(
+                List<RegulatoryDocument> correctedFiles = FixErrors(
                         this.Errors
                             .Select(kvp => kvp.Key)
                             .Where(fileInfo => files.Contains(fileInfo.Name))
@@ -394,11 +414,43 @@ public class Macro : MacroProvider {
             }
         }
 
-        private List<FileInfo> FixErrors(List<FileInfo> files, int quantityOnPage) {
-            // TODO: Реализовать метод, который будет постранично запрашивать у пользователя исправления файлов
-            // Будет создавать в временной папке данные файлы, и возвращать для них список объектов FileInfo
-            List<FileInfo> result = new List<FileInfo>();
-            return result;
+        private List<RegulatoryDocument> FixErrors(List<FileInfo> files, int quantityOnPage) {
+            // Ограничиваем пользовательский ввод на количество максимально отображаемых записей на корректировку
+            if (quantityOnPage < 1)
+                quantityOnPage = 1;
+            if (quantityOnPage > 8)
+                quantityOnPage = 8;
+
+            int count = 0;
+            int limit;
+            InputDialog dialog;
+            while (true) {
+                dialog = new InputDialog(this.Provider.Context, "Произведите корректировку названий файлов");
+                dialog.AddText(string.Format("Произведите корректировку следующих файлов ({0}/{1}):", count + 1, files.Count));
+
+                limit = (count + quantityOnPage) < files.Count ? (count + quantityOnPage) : files.Count;
+                for (int i = count; i < limit; i++) {
+                    count++;
+                    dialog.AddString(string.Format("Файл {0}. ", count), files[i].Name);
+                    dialog.AddComment(string.Format("Файл {0}. ", count), string.Format("В процессе разбора данного файла возникла следующая ошибка:\n{0}", this.Errors[files[i]].Message)); 
+                }
+
+                dialog.AddButton("Проверить", (name) => {}, false);
+
+                dialog.Show();
+
+                // Условие выхода из бесконечного цикла
+                if (files.Count <= count)
+                    break;
+                
+            }
+
+
+            return null;
+        }
+
+        public void UploadDocumentsInDocs() {
+
         }
     }
 
