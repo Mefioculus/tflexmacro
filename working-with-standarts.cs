@@ -27,11 +27,7 @@ public class Macro : MacroProvider {
         // Данный метод предназначен для добавления кнопки, которая будет производить импорт pdf из выбранной директории
 
         DocumentRepository repo = new DocumentRepository(this);
-        Message("Информация", repo.ToString());
-        if (repo.ErrorMessage != string.Empty)
-            if (Question(string.Format("{0}\n\nПерейти к исправлению?", repo.ErrorMessage))) {
-                repo.FixErrors();
-            }
+        repo.AskUserAboutFixingErrors();
 
     }
 
@@ -74,19 +70,26 @@ public class Macro : MacroProvider {
         public string Designation { get; private set; }
         public Dictionary<string, string> AdditionalField { get; private set; }
         public FileInfo LinkedFile { get; private set; }
+        public string FileName { get; private set; }
         public TypeOfDocument Type { get; private set; } = TypeOfDocument.Неизвестно;
         public string TypeString => this.GetStringRepresentationOfType(this.Type);
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
 
-        public RegulatoryDocument(string pathToFile, TypeOfDocument type = TypeOfDocument.Неизвестно) : this(new FileInfo(pathToFile), type) {
+        public RegulatoryDocument(string pathToFile, string fileName = null, TypeOfDocument type = TypeOfDocument.Неизвестно) : this(new FileInfo(pathToFile), fileName, type) {
         }
 
-        public RegulatoryDocument(FileInfo file, TypeOfDocument type = TypeOfDocument.Неизвестно) {
+        public RegulatoryDocument(FileInfo file, string fileName = null, TypeOfDocument type = TypeOfDocument.Неизвестно) {
 
             this.AdditionalField = new Dictionary<string, string>();
 
             this.LinkedFile = file;
             this.Type = type;
+            
+            // Если в конструкторе задано имя, отличное от имени файла, тогда присваиваем его
+            if (fileName != null)
+                this.FileName = fileName;
+            else
+                this.FileName = this.LinkedFile.Name;
 
             // Определение и проверка типа документа
             if (this.Type == TypeOfDocument.Неизвестно)
@@ -105,7 +108,7 @@ public class Macro : MacroProvider {
             if (!TypeRegexPatterns.ContainsKey(type))
                 return false;
 
-            return TypeRegexPatterns[type].IsMatch(this.LinkedFile.Name);
+            return TypeRegexPatterns[type].IsMatch(this.FileName);
         }
 
         private TypeOfDocument TryToDetermineTypeOfDocument() {
@@ -142,7 +145,7 @@ public class Macro : MacroProvider {
         }
 
         private void FillFieldsDataForGost() {
-            string fileName = Regex.Replace(LinkedFile.Name, @"\.[pP][dD][fF]$", string.Empty);
+            string fileName = Regex.Replace(this.FileName, @"\.[pP][dD][fF]$", string.Empty);
             
             // Для начала получаем из названия файла тип документа плюс его обозначение
             Match typeAndDesignationOfDocMatch = RegexPatterns.Common.TypeAndDesignation.Match(fileName);
@@ -280,7 +283,7 @@ public class Macro : MacroProvider {
             // TODO: Предусмотреть указание типа заранее
             foreach (string file in this.Files) {
                 try {
-                    RegulatoryDocument newDoc = new RegulatoryDocument(file, this.SearchType);
+                    RegulatoryDocument newDoc = new RegulatoryDocument(file, null, this.SearchType);
                     this.Documents.Add(newDoc);
                 }
                 catch (Exception exception) {
@@ -298,10 +301,6 @@ public class Macro : MacroProvider {
             return string.Format(template, this.Files.Length, this.Documents.Count, this.Errors.Count);
         }
 
-        public void FixErrors() {
-            // TODO: Реализовать метод по корректировке неправильных названий файлов
-        }
-
         private string GetErrorMessage() {
             if (this.Errors.Count == 0)
                 return string.Empty;
@@ -313,6 +312,57 @@ public class Macro : MacroProvider {
 
         public void RefreshErrorMessage() {
             this.ErrorMessage = GetErrorMessage();
+        }
+
+        public void AskUserAboutFixingErrors() {
+            // TODO: Реализовать запрос у пользователя исправления ошибочных названий документов
+            if (this.Errors.Count == 0)
+                return;
+            string template =
+                "В директории '{0}' было обнаружено {1} файлов, подходящих под условия поиска. Среди них:\n" +
+                "Успешно обработано: {2}\n" +
+                "Обработано с ошибкой: {3}\n\n" +
+                "Если хотите произвести корректировку сразу, выберите файлы, которые хотите исправить и нажмите 'ОК'\n" +
+                "Если вы не хотите производить корректировку названий документов - нажмите 'Отмена'\n" +
+                "Тогда будут загружены только те документы, который прошли проверку, остальные документы будут проигнорированы\n";
+            string errors = "Файлы c ошибками";
+            string quantityOfErrorsOnPage = "Количество одновременно корректируемых записей";
+            
+            InputDialog dialog = new InputDialog(this.Provider.Context, "Исправление названий файлов");
+            dialog.AddText(string.Format(template, this.Dir, this.Files.Length, this.Documents.Count, this.Errors.Count));
+            dialog.AddMultiselectFromList(errors, this.Errors.Select(kvp => kvp.Key.Name), true);
+            dialog.AddInteger(quantityOfErrorsOnPage, 5);
+
+            // Отображаем диалог
+            if (dialog.Show()) {
+                // Получаем список файлов на обработку
+
+                // Так как список, получаемый из диалога является динамическим, для того, чтобы произвести
+                // все необходимые преобразования, для начала нужно привести его к динамическому списку
+                // (иначе не получится воспользоваться Linq методами
+                List<string> files = ((IEnumerable<dynamic>)dialog[errors]).Cast<string>().ToList<string>();
+
+                
+
+                this.Provider.Message(string.Empty, string.Join("\n", files));
+                // Запускаем корректировку файлов
+
+                List<FileInfo> correctedFiles = FixErrors(
+                        this.Errors
+                            .Select(kvp => kvp.Key)
+                            .Where(fileInfo => files.Contains(fileInfo.Name))
+                            .ToList<FileInfo>(),
+                        (int)dialog[quantityOfErrorsOnPage]
+                        );
+                // TODO: Реализовать повторную попытку инициализации документов для исправленных файлов
+            }
+        }
+
+        private List<FileInfo> FixErrors(List<FileInfo> files, int quantityOnPage) {
+            // TODO: Реализовать метод, который будет постранично запрашивать у пользователя исправления файлов
+            // Будет создавать в временной папке данные файлы, и возвращать для них список объектов FileInfo
+            List<FileInfo> result = new List<FileInfo>();
+            return result;
         }
     }
 
