@@ -11,6 +11,7 @@ using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
 using TFlex.DOCs.Model.References;
+using TFlex.DOCs.Model.References.Files;
 
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
@@ -101,6 +102,9 @@ public class Macro : MacroProvider {
                 throw new Exception("Не удалось определить тип документа по названию файла");
 
             FillFieldsData(this.Type);
+
+            // TODO: Производим смену файла в соответствии с извлеченными из файла мета-данными
+            //RenameDocumentFile();
         }
         
         private bool IsTypeFit(TypeOfDocument type) {
@@ -197,6 +201,26 @@ public class Macro : MacroProvider {
                 default:
                     throw new Exception(string.Format("Переданный в функцию GetStringRepresentationOfType тип - {0} является неизвестным", type.ToString()));
             }
+        }
+
+        public void CreateInDocs(Reference nomenclatureReference, FileReference fileReference, FolderObject folder) {
+            // TODO: Реализовать метод создания документа в DOCs
+        }
+
+        private FileObject UploadFile(FileReference fileReference, FolderObject folder) {
+            // TODO: Реализовать метод загрузки файла в файловый справочник DOCs
+            //
+            // Для начала проверяем, нет ли данного файла в файловом справочнике. Если есть - выводим ошибку
+            //
+            // Производим загрузку файла
+            //
+            // Производим переименование файла в соответствии с именем файла, которое указано в поле FileName
+            return null;
+        }
+
+        private ReferenceObject CreateRecordInReference(Reference nomenclatureReference) {
+            // TODO: Реализовать метод создания записи в справочнике нормативных документов
+            return null;
         }
 
         public override string ToString() {
