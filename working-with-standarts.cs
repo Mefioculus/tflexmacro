@@ -80,46 +80,87 @@ public class Macro : MacroProvider {
             [TypeOfDocument.Метрология] = RegexPatterns.Types.Метрология
         };
 
-
-
+        // Поля, относящиеся к стандарту
         public string Name { get; private set; }
         public string Designation { get; private set; }
         public Dictionary<string, string> AdditionalField { get; private set; }
+
+        // Поля, относящиеся к файлам (source file и destination file)
         public FileInfo LinkedFile { get; private set; }
         public string FileName { get; private set; }
+
+        // Служебные поля: Тип
         public TypeOfDocument Type { get; private set; } = TypeOfDocument.Неизвестно;
         public string TypeString => this.GetStringRepresentationOfType(this.Type);
+
+        // Служебные поля: Статус
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
+        
+        // Служебные поля: Перехваченная ошибка
+        public Exception Error { get; private set; }
+        public bool HasError => this.Error != null;
+        public string ErrorMessage => this.HasError ? this.Error.Message : "Ошибка отсутствует";
 
-        public RegulatoryDocument(string pathToFile, string fileName = null, TypeOfDocument type = TypeOfDocument.Неизвестно) : this(new FileInfo(pathToFile), fileName, type) {
-        }
-
-        public RegulatoryDocument(FileInfo file, string fileName = null, TypeOfDocument type = TypeOfDocument.Неизвестно) {
-
+        public RegulatoryDocument(string file, TypeOfDocument type = TypeOfDocument.Неизвестно) {
+            // Инициализируем пустой словарь
             this.AdditionalField = new Dictionary<string, string>();
 
-            this.LinkedFile = file;
+            // Пытаемся получить доступ к файлу
+            this.LinkedFile = new FileInfo(file);
             this.Type = type;
-            
-            // Если в конструкторе задано имя, отличное от имени файла, тогда присваиваем его
-            if (fileName != null)
-                this.FileName = fileName;
-            else
-                this.FileName = this.LinkedFile.Name;
 
-            // Определение и проверка типа документа
+            try {
+                InitializeObject();
+            }
+            catch (Exception e) {
+                this.SetError(e);
+            }
+        }
+
+        private void SetError(Exception exception) {
+            this.Error = exception;
+        }
+
+        private void ClearError() {
+            this.Error = null;
+        }
+
+        private void InitializeObject(string newFileName = null) {
+            // Определяем, под каким именем в T-Flex DOCs будет сохранен файл
+            this.FileName = newFileName != null ? newFileName : this.LinkedFile.Name;
+
+            // Производим проверку типа
             if (this.Type == TypeOfDocument.Неизвестно)
                 this.Type = this.TryToDetermineTypeOfDocument();
             else
-                CheckType();
+                this.CheckType();
 
             if (this.Type == TypeOfDocument.Неизвестно)
-                throw new Exception("Не удалось определить тип документа по названию файла");
-
-            FillFieldsData(this.Type);
+                throw new Exception("Неизвестный тип");
+            
+            // Пробуем распрарсить название файла и заполнить полученными данными поля объекта
+            this.FillFieldsData(this.Type);
 
             // TODO: Производим смену файла в соответствии с извлеченными из файла мета-данными
-            //RenameDocumentFile();
+            // this.RenameDocumentFile();
+        }
+
+        public void ReinitializeObject(string newFileName) {
+            // Если пользователем предпринимается попытка присвоить старое старое или нулевое обозначение, сразу выдавать ошибку
+            if ((newFileName == this.LinkedFile.Name) || (string.IsNullOrWhiteSpace(newFileName)))
+                throw new Exception("Ошибка в процессе реинициализации документа. Новое название отсутствует или совпадает с старым названием");
+            
+            // Пробуем произвести повторную инициализацию объекта
+            try {
+                this.InitializeObject(newFileName);
+            }
+            catch (Exception exception) {
+                this.SetError(exception);
+                return;
+            }
+
+            // Очищаем ошибку, если инициализация прошла без проблем
+            this.ClearError();
         }
         
         private bool IsTypeFit(TypeOfDocument type) {
@@ -169,23 +210,23 @@ public class Macro : MacroProvider {
             // Для начала получаем из названия файла тип документа плюс его обозначение
             Match typeAndDesignationOfDocMatch = RegexPatterns.Common.TypeAndDesignation.Match(fileName);
             if (!typeAndDesignationOfDocMatch.Success)
-                throw new Exception("Ошибка при получении типа документа и его обозначения");
+                throw new Exception("Некорректный тип и обозначение");
             this.Name = fileName
                 .Replace(typeAndDesignationOfDocMatch.Value, string.Empty)
                 .Trim();
             if (string.IsNullOrWhiteSpace(this.Name))
-                throw new Exception("Отсутствует название ГОСТ");
+                throw new Exception("Отсутствует наименование");
 
             // Получаем обозначение документа
             Match designationMatch = RegexPatterns.Common.Designation.Match(fileName);
             if (!designationMatch.Success)
-                throw new Exception("Ошибка при получении обозначения документа");
+                throw new Exception("Отсутствует обозначение");
             this.Designation = designationMatch.Value;
 
             // Получаем тип объекта
             Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
             if (!designationMatch.Success)
-                throw new Exception("Ошибка при получении типа документа");
+                throw new Exception("Некорректный тип");
             
             // Проверяем, есть ли у данного ГОСТа дополнительный тип
             string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -259,9 +300,9 @@ public class Macro : MacroProvider {
         
         // Данные, получаемые в процессе работы конструктора
         public string[] Files { get; private set; }
-        private List<RegulatoryDocument> Documents { get; set; }
-        private Dictionary<FileInfo, Exception> Errors { get; set; }
-        public string ErrorMessage { get; private set; }
+        private List<RegulatoryDocument> SuccessDocuments { get; set; }
+        private List<RegulatoryDocument> ErrorDocuments { get; set; }
+        private string ErrorMessage { get; set; }
 
         // Для работы с DOCs
         private Reference NDReference { get; set; }
@@ -277,14 +318,14 @@ public class Macro : MacroProvider {
             this.Provider = provider;
 
             // Инициируем основные коллекции класса
-            this.Documents = new List<RegulatoryDocument>();
-            this.Errors = new Dictionary<FileInfo, Exception>();
+            this.SuccessDocuments = new List<RegulatoryDocument>();
+            this.ErrorDocuments = new List<RegulatoryDocument>();
 
             // Запрашиваем файлы у пользователя
-            GetInputDataFromUser();
+            this.GetInputDataFromUser();
             
             // Производим чтение документов и при возникновении ошибок регистрацию их
-            ReadDocuments();
+            this.ReadDocuments();
 
             this.ErrorMessage = GetErrorMessage();
 
@@ -336,34 +377,30 @@ public class Macro : MacroProvider {
         }
         
         private void ReadDocuments() {
-            // TODO: Предусмотреть указание типа заранее
             foreach (string file in this.Files) {
-                try {
-                    RegulatoryDocument newDoc = new RegulatoryDocument(file, null, this.SearchType);
-                    this.Documents.Add(newDoc);
-                }
-                catch (Exception exception) {
-                    FileInfo fileInfo = new FileInfo(file);
-                    this.Errors[fileInfo] = exception;
-                }
+                RegulatoryDocument newDoc = new RegulatoryDocument(file, this.SearchType);
+                if (!newDoc.HasError)
+                    this.SuccessDocuments.Add(newDoc);
+                else
+                    this.ErrorDocuments.Add(newDoc);
             }
         }
 
         public override string ToString() {
             string template =
                 "Всего файлов: {0}\n" +
-                "Инициализировано документов: {1}\n" +
-                "Ошибок в процессе обработки документов: {2}\n";
-            return string.Format(template, this.Files.Length, this.Documents.Count, this.Errors.Count);
+                "- успешно инициализировано: {1}\n" +
+                "- инициализировано с ошибками: {2}\n";
+            return string.Format(template, this.Files.Length, this.SuccessDocuments.Count, this.ErrorDocuments.Count);
         }
 
         private string GetErrorMessage() {
-            if (this.Errors.Count == 0)
+            if (this.ErrorDocuments.Count == 0)
                 return string.Empty;
 
             string template = "В процессе обработки файлов в директории '{0}' возникли следующие ошибки:\n\n{1}";
             string innerTemplate = "файл '{0}': {1}\n";
-            return string.Format(template, this.Dir, string.Join("\n", this.Errors.Select(kvp => string.Format(innerTemplate, kvp.Key.Name, kvp.Value.Message))));
+            return string.Format(template, this.Dir, string.Join("\n", this.ErrorDocuments.Select(doc => string.Format(innerTemplate, doc.LinkedFile.Name, doc.ErrorMessage))));
         }
 
         public void RefreshErrorMessage() {
@@ -372,7 +409,7 @@ public class Macro : MacroProvider {
 
         public void AskUserAboutFixingErrors() {
             // TODO: Реализовать запрос у пользователя исправления ошибочных названий документов
-            if (this.Errors.Count == 0)
+            if (this.ErrorDocuments.Count == 0)
                 return;
             string template =
                 "В директории '{0}' было обнаружено {1} файлов, подходящих под условия поиска. Среди них:\n" +
@@ -385,8 +422,8 @@ public class Macro : MacroProvider {
             string quantityOfErrorsOnPage = "Количество одновременно корректируемых записей";
             
             InputDialog dialog = new InputDialog(this.Provider.Context, "Исправление названий файлов");
-            dialog.AddText(string.Format(template, this.Dir, this.Files.Length, this.Documents.Count, this.Errors.Count));
-            dialog.AddMultiselectFromList(errors, this.Errors.Select(kvp => kvp.Key.Name), true);
+            dialog.AddText(string.Format(template, this.Dir, this.Files.Length, this.SuccessDocuments.Count, this.ErrorDocuments.Count));
+            dialog.AddMultiselectFromList(errors, this.ErrorDocuments.Select(doc => doc.LinkedFile.Name), true);
             dialog.AddInteger(quantityOfErrorsOnPage, 5);
 
             // Отображаем диалог
@@ -396,25 +433,20 @@ public class Macro : MacroProvider {
                 // Так как список, получаемый из диалога является динамическим, для того, чтобы произвести
                 // все необходимые преобразования, для начала нужно привести его к динамическому списку
                 // (иначе не получится воспользоваться Linq методами
-                List<string> files = ((IEnumerable<dynamic>)dialog[errors]).Cast<string>().ToList<string>();
+                List<string> documents = ((IEnumerable<dynamic>)dialog[errors]).Cast<string>().ToList<string>();
 
-                
-
-                this.Provider.Message(string.Empty, string.Join("\n", files));
                 // Запускаем корректировку файлов
-
                 List<RegulatoryDocument> correctedFiles = FixErrors(
-                        this.Errors
-                            .Select(kvp => kvp.Key)
-                            .Where(fileInfo => files.Contains(fileInfo.Name))
-                            .ToList<FileInfo>(),
+                        this.ErrorDocuments
+                            .Where(doc => documents.Contains(doc.LinkedFile.Name))
+                            .ToList<RegulatoryDocument>(),
                         (int)dialog[quantityOfErrorsOnPage]
                         );
                 // TODO: Реализовать повторную попытку инициализации документов для исправленных файлов
             }
         }
 
-        private List<RegulatoryDocument> FixErrors(List<FileInfo> files, int quantityOnPage) {
+        private List<RegulatoryDocument> FixErrors(List<RegulatoryDocument> documents, int quantityOnPage) {
             // Ограничиваем пользовательский ввод на количество максимально отображаемых записей на корректировку
             if (quantityOnPage < 1)
                 quantityOnPage = 1;
@@ -426,13 +458,13 @@ public class Macro : MacroProvider {
             InputDialog dialog;
             while (true) {
                 dialog = new InputDialog(this.Provider.Context, "Произведите корректировку названий файлов");
-                dialog.AddText(string.Format("Произведите корректировку следующих файлов ({0}/{1}):", count + 1, files.Count));
+                dialog.AddText(string.Format("Произведите корректировку следующих файлов ({0}/{1}):", count + 1, documents.Count));
 
-                limit = (count + quantityOnPage) < files.Count ? (count + quantityOnPage) : files.Count;
+                limit = (count + quantityOnPage) < documents.Count ? (count + quantityOnPage) : documents.Count;
                 for (int i = count; i < limit; i++) {
                     count++;
-                    dialog.AddString(string.Format("Файл {0}. ", count), files[i].Name);
-                    dialog.AddComment(string.Format("Файл {0}. ", count), string.Format("В процессе разбора данного файла возникла следующая ошибка:\n{0}", this.Errors[files[i]].Message)); 
+                    dialog.AddString(string.Format("Файл {0}. ", count), documents[i].LinkedFile.Name);
+                    dialog.AddComment(string.Format("Файл {0}. ", count), documents[i].ErrorMessage); 
                 }
 
                 dialog.AddButton("Проверить", (name) => {}, false);
@@ -440,7 +472,7 @@ public class Macro : MacroProvider {
                 dialog.Show();
 
                 // Условие выхода из бесконечного цикла
-                if (files.Count <= count)
+                if (documents.Count <= count)
                     break;
                 
             }
