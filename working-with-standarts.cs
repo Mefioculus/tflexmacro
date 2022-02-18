@@ -147,8 +147,8 @@ public class Macro : MacroProvider {
 
         public void ReinitializeObject(string newFileName) {
             // Если пользователем предпринимается попытка присвоить старое старое или нулевое обозначение, сразу выдавать ошибку
-            if ((newFileName == this.LinkedFile.Name) || (string.IsNullOrWhiteSpace(newFileName)))
-                throw new Exception("Ошибка в процессе реинициализации документа. Новое название отсутствует или совпадает с старым названием");
+            if (string.IsNullOrWhiteSpace(newFileName))
+                throw new Exception("Название документа не может отсутствовать или состоять из пустых символов");
             
             // Пробуем произвести повторную инициализацию объекта
             try {
@@ -456,18 +456,34 @@ public class Macro : MacroProvider {
             int count = 0;
             int limit;
             InputDialog dialog;
+            Dictionary<int, string> errorFilesDict = new Dictionary<int, string>();
             while (true) {
+
+                errorFilesDict.Clear();
+
                 dialog = new InputDialog(this.Provider.Context, "Произведите корректировку названий файлов");
                 dialog.AddText(string.Format("Произведите корректировку следующих файлов ({0}/{1}):", count + 1, documents.Count));
 
                 limit = (count + quantityOnPage) < documents.Count ? (count + quantityOnPage) : documents.Count;
                 for (int i = count; i < limit; i++) {
                     count++;
-                    dialog.AddString(string.Format("Файл {0}. ", count), documents[i].LinkedFile.Name);
-                    dialog.AddComment(string.Format("Файл {0}. ", count), documents[i].ErrorMessage); 
+                    errorFilesDict[i] = string.Format("Файл {0}", count.ToString());
+                    dialog.AddString(errorFilesDict[i], documents[i].LinkedFile.Name);
+                    dialog.AddComment(errorFilesDict[i], documents[i].ErrorMessage); 
                 }
 
-                dialog.AddButton("Проверить", (name) => {}, false);
+                dialog.AddButton(
+                        "Проверить",
+                        (name) => {
+                            foreach (KeyValuePair<int, string> kvp in errorFilesDict) {
+                                documents[kvp.Key].ReinitializeObject((string)dialog[kvp.Value]);
+                                dialog.AddComment(kvp.Value, documents[kvp.Key].ErrorMessage);
+                                // Код ниже добавлен для принудительного пересчитывания диалога
+                                dialog[kvp.Value] = string.Empty;
+                                dialog[kvp.Value] = documents[kvp.Key].FileName;
+                            }
+                        },
+                        false);
 
                 dialog.Show();
 
