@@ -88,6 +88,7 @@ public class Macro : MacroProvider {
         // Поля, относящиеся к файлам (source file и destination file)
         public FileInfo LinkedFile { get; private set; }
         public string FileName { get; private set; }
+        public string FileExtension { get; private set; }
 
         // Служебные поля: Тип
         public TypeOfDocument Type { get; private set; } = TypeOfDocument.Неизвестно;
@@ -109,6 +110,10 @@ public class Macro : MacroProvider {
             this.LinkedFile = new FileInfo(file);
             this.Type = type;
 
+            // Получаем название документа и его расширение
+            this.FileExtension = this.LinkedFile.Extension;
+            this.FileName = this.LinkedFile.Name.Replace(this.FileExtension, string.Empty);
+
             try {
                 InitializeObject();
             }
@@ -127,7 +132,8 @@ public class Macro : MacroProvider {
 
         private void InitializeObject(string newFileName = null) {
             // Определяем, под каким именем в T-Flex DOCs будет сохранен файл
-            this.FileName = newFileName != null ? newFileName : this.LinkedFile.Name;
+            if (newFileName != null)
+                this.FileName = newFileName;
 
             // Производим проверку типа
             if (this.Type == TypeOfDocument.Неизвестно)
@@ -423,7 +429,7 @@ public class Macro : MacroProvider {
             
             InputDialog dialog = new InputDialog(this.Provider.Context, "Исправление названий файлов");
             dialog.AddText(string.Format(template, this.Dir, this.Files.Length, this.SuccessDocuments.Count, this.ErrorDocuments.Count));
-            dialog.AddMultiselectFromList(errors, this.ErrorDocuments.Select(doc => doc.LinkedFile.Name), true);
+            dialog.AddMultiselectFromList(errors, this.ErrorDocuments.Select(doc => doc.FileName), true);
             dialog.AddInteger(quantityOfErrorsOnPage, 5);
 
             // Отображаем диалог
@@ -438,7 +444,7 @@ public class Macro : MacroProvider {
                 // Запускаем корректировку файлов
                 List<RegulatoryDocument> correctedFiles = FixErrors(
                         this.ErrorDocuments
-                            .Where(doc => documents.Contains(doc.LinkedFile.Name))
+                            .Where(doc => documents.Contains(doc.FileName))
                             .ToList<RegulatoryDocument>(),
                         (int)dialog[quantityOfErrorsOnPage]
                         );
@@ -468,7 +474,7 @@ public class Macro : MacroProvider {
                 for (int i = count; i < limit; i++) {
                     count++;
                     errorFilesDict[i] = string.Format("Файл {0}", count.ToString());
-                    dialog.AddString(errorFilesDict[i], documents[i].LinkedFile.Name);
+                    dialog.AddString(errorFilesDict[i], documents[i].FileName);
                     dialog.AddComment(errorFilesDict[i], documents[i].ErrorMessage); 
                 }
 
