@@ -146,15 +146,19 @@ public class Macro : MacroProvider {
             
             // Пробуем распрарсить название файла и заполнить полученными данными поля объекта
             this.FillFieldsData(this.Type);
-
-            // TODO: Производим смену файла в соответствии с извлеченными из файла мета-данными
-            // this.RenameDocumentFile();
         }
 
         public void ReinitializeObject(string newFileName) {
+            // Если пользователь передал такое же название, реинициализация объекта производиться не будет, так как в этом нет смысла
+            if (newFileName == this.FileName)
+                return;
+
             // Если пользователем предпринимается попытка присвоить старое старое или нулевое обозначение, сразу выдавать ошибку
             if (string.IsNullOrWhiteSpace(newFileName))
                 throw new Exception("Название документа не может отсутствовать или состоять из пустых символов");
+
+            // Убираем ошибку в начале реинициализации
+            this.ClearError();
             
             // Пробуем произвести повторную инициализацию объекта
             try {
@@ -164,9 +168,6 @@ public class Macro : MacroProvider {
                 this.SetError(exception);
                 return;
             }
-
-            // Очищаем ошибку, если инициализация прошла без проблем
-            this.ClearError();
         }
         
         private bool IsTypeFit(TypeOfDocument type) {
@@ -442,27 +443,32 @@ public class Macro : MacroProvider {
                 List<string> documents = ((IEnumerable<dynamic>)dialog[errors]).Cast<string>().ToList<string>();
 
                 // Запускаем корректировку файлов
-                List<RegulatoryDocument> correctedFiles = FixErrors(
+                FixErrors(
                         this.ErrorDocuments
                             .Where(doc => documents.Contains(doc.FileName))
                             .ToList<RegulatoryDocument>(),
                         (int)dialog[quantityOfErrorsOnPage]
                         );
-                // TODO: Реализовать повторную попытку инициализации документов для исправленных файлов
+
+                // После произведенной корректировке переносим исправленные документы из ErrorDocuments в SuccessDocuments
+                this.SuccessDocuments.AddRange(this.ErrorDocuments.Where(doc => !doc.HasError));
+                this.ErrorDocuments = this.ErrorDocuments.Where(doc => doc.HasError).ToList<RegulatoryDocument>();
             }
         }
 
-        private List<RegulatoryDocument> FixErrors(List<RegulatoryDocument> documents, int quantityOnPage) {
+        private void FixErrors(List<RegulatoryDocument> documents, int quantityOnPage) {
             // Ограничиваем пользовательский ввод на количество максимально отображаемых записей на корректировку
             if (quantityOnPage < 1)
                 quantityOnPage = 1;
             if (quantityOnPage > 8)
                 quantityOnPage = 8;
 
+            // Объявление переменных, которые будут использоваться в цикле;
             int count = 0;
             int limit;
             InputDialog dialog;
             Dictionary<int, string> errorFilesDict = new Dictionary<int, string>();
+
             while (true) {
 
                 errorFilesDict.Clear();
@@ -491,16 +497,17 @@ public class Macro : MacroProvider {
                         },
                         false);
 
-                dialog.Show();
+                if (dialog.Show()) {
+                    foreach (KeyValuePair<int, string> kvp in errorFilesDict) {
+                        documents[kvp.Key].ReinitializeObject((string)dialog[kvp.Value]);
+                    }
+                }
 
                 // Условие выхода из бесконечного цикла
                 if (documents.Count <= count)
                     break;
                 
             }
-
-
-            return null;
         }
 
         public void UploadDocumentsInDocs() {
