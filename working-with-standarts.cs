@@ -52,7 +52,7 @@ public class Macro : MacroProvider {
 
         private static class RegexPatterns {
             public static class Types {
-                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт]");
+                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт]\s[а-яА-Яa-zA-Z]{0,10}");
                 public static Regex ОСТ = new Regex(@"^[Оо][Сс][Тт]");
                 public static Regex ТУ = new Regex(@"^[Тт][Уу]");
                 public static Regex ПИ = new Regex(@"^[Пп][Ии]");
@@ -63,9 +63,8 @@ public class Macro : MacroProvider {
             }
 
             public static class Common {
-                public static Regex Designation = new Regex(@"(\d{1,5}[\.\-]){1,3}\d{2,4}");
-                public static Regex TypeOfDocument = new Regex(@"^([\w]{1,10}\s){1,2}");
-                public static Regex TypeAndDesignation = new Regex(@"^([\w]{1,10}\s){1,2}(\d{1,5}[\.\-]){1,3}\d{2,4}");
+                public static Regex TypeOfDocument = new Regex(@"^([а-яА-Яa-zA-Z]{1,10}\s){1,2}");
+                public static Regex Designation = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}");
             }
         }
 
@@ -212,33 +211,35 @@ public class Macro : MacroProvider {
         }
 
         private void FillFieldsDataForGost() {
-            string fileName = Regex.Replace(this.FileName, @"\.[pP][dD][fF]$", string.Empty);
-            
-            // Для начала получаем из названия файла тип документа плюс его обозначение
-            Match typeAndDesignationOfDocMatch = RegexPatterns.Common.TypeAndDesignation.Match(fileName);
-            if (!typeAndDesignationOfDocMatch.Success)
-                throw new Exception("Некорректный тип и обозначение");
-            this.Name = fileName
-                .Replace(typeAndDesignationOfDocMatch.Value, string.Empty)
-                .Trim();
-            if (string.IsNullOrWhiteSpace(this.Name))
-                throw new Exception("Отсутствует наименование");
+            string fileName = this.FileName;
 
-            // Получаем обозначение документа
+            // Для начала пытаемся получить тип документа из названия файла
+            Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
+            if (!typeMatch.Success)
+                throw new Exception("Отсутствует тип");
+            
+            // Заполняем необходимые поля
+            string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            this.AdditionalField["Тип ГОСТа"] = wordsInType.Length != 1 ? wordsInType[1] : string.Empty;
+
+            fileName = RegexPatterns.Common.TypeOfDocument.Replace(fileName, string.Empty).Trim();
+
+            // Пытаемся получить обозначение документа из названия файла
+
             Match designationMatch = RegexPatterns.Common.Designation.Match(fileName);
             if (!designationMatch.Success)
                 throw new Exception("Отсутствует обозначение");
             this.Designation = designationMatch.Value;
+            fileName = RegexPatterns.Common.Designation.Replace(fileName, string.Empty).Trim();
 
-            // Получаем тип объекта
-            Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
-            if (!designationMatch.Success)
-                throw new Exception("Некорректный тип");
-            
-            // Проверяем, есть ли у данного ГОСТа дополнительный тип
-            string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            this.AdditionalField["Тип ГОСТа"] = wordsInType.Length == 2 ? wordsInType[1] : string.Empty;
-            
+            // Пробуем получить название документа
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new Exception("Отсутствует наименование");
+            // Производим очистку от возможных лишних пробелов в наименовании
+            this.Name = string.Join(" ", fileName.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+
+            // Обновляем имя файла из произведенного разбора
+            this.FileName = $"{typeMatch.Value} {this.Designation} {this.Name}";
         }
 
         private string GetStringRepresentationOfType(TypeOfDocument type) {
