@@ -19,15 +19,25 @@ public class Macro : MacroProvider {
         }
 
     private static class Guids {
+
         public static class References {
             public static Guid Файлы = new Guid("a0fcd27d-e0f2-4c5a-bba3-8a452508e6b3");
             public static Guid НормативныеДокументы = new Guid("221ea415-75fc-458a-aa52-2144225fca43");
         }
+
         public static class Types {
             public static Guid НормативныйДокумент = new Guid("37ef8098-14a7-4787-8814-14c2eb1b5b6a");
         }
+
         public static class Objects {
             public static Guid ПапкаАрхивНД = new Guid("3d33548b-3366-4fb6-8126-bce53b0a7d68");
+        }
+
+        public static class Parameters {
+            public static Guid ОбозначениеДокумента = new Guid("be6cbd27-113a-4e88-aab1-0b8540480603");
+            public static Guid НаименованиеДокумента = new Guid("efb1bd41-3cf9-434c-a2b9-a814376da604");
+            public static Guid ТипДокумента = new Guid("37d4ad41-424c-4a09-b17d-65356216f59b");
+            public static Guid ТипГоста = new Guid("3f43523e-0ef1-46ad-97bb-6b1ce3e053a4");
         }
     }
 
@@ -82,16 +92,28 @@ public class Macro : MacroProvider {
         // Поля, относящиеся к стандарту
         public string Name { get; private set; }
         public string Designation { get; private set; }
-        public Dictionary<string, string> AdditionalField { get; private set; }
+        public string TflexDesignation => !string.IsNullOrWhiteSpace(this.AdditionalType) ?
+            $"{this.GetStringRepresentationOfType(this.Type)} {this.AdditionalType} {this.Designation}" :
+            $"{this.GetStringRepresentationOfType(this.Type)} {this.Designation}";
+        public string AdditionalType { get; private set; }
 
         // Поля, относящиеся к файлам (source file и destination file)
         public FileInfo LinkedFile { get; private set; }
         public string FileName { get; private set; }
         public string FileExtension { get; private set; }
+        public string FullFileName => this.FileName + this.FileExtension;
+
+        // Поля, относящиеся к объектам T-Flex DOCs
+        public ReferenceObject NormativeReferenceObject { get; private set; }
+        public FileObject FileReferenceObject { get; private set; }
 
         // Служебные поля: Тип
         public TypeOfDocument Type { get; private set; } = TypeOfDocument.Неизвестно;
         public string TypeString => this.GetStringRepresentationOfType(this.Type);
+
+        // Флаги:
+        public bool IsDocumentSearched { get; private set; } = false;
+        public bool IsFileSearched { get; private set; } = false;
 
         // Служебные поля: Статус
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
@@ -103,7 +125,6 @@ public class Macro : MacroProvider {
 
         public RegulatoryDocument(string file, TypeOfDocument type = TypeOfDocument.Неизвестно) {
             // Инициализируем пустой словарь
-            this.AdditionalField = new Dictionary<string, string>();
 
             // Пытаемся получить доступ к файлу
             this.LinkedFile = new FileInfo(file);
@@ -211,7 +232,7 @@ public class Macro : MacroProvider {
         }
 
         private void FillFieldsDataForGost() {
-            string fileName = this.FileName;
+            string fileName = this.FileName.TrimEnd(new char[] { '.' });
 
             // Для начала пытаемся получить тип документа из названия файла
             Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
@@ -220,7 +241,7 @@ public class Macro : MacroProvider {
             
             // Заполняем необходимые поля
             string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            this.AdditionalField["Тип ГОСТа"] = wordsInType.Length != 1 ? wordsInType[1] : string.Empty;
+            this.AdditionalType = wordsInType.Length != 1 ? wordsInType[1] : string.Empty;
 
             fileName = RegexPatterns.Common.TypeOfDocument.Replace(fileName, string.Empty).Trim();
 
@@ -267,11 +288,61 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void CreateInDocs(Reference normDocumentReference, FileReference fileReference, FolderObject folder) {
+        public void CreateInDocs(Reference normDocumentReference, FileReference fileReference, FolderObject folder, MacroProvider provider) {
             // TODO: Реализовать метод создания документа в DOCs
+
+            // Производим поиск документа в TFlex (или создание нового документа, если найти ничего не удалось)
+
+            this.NormativeReferenceObject = FindOrCreateNormRecordInDocs(normDocumentReference, provider);
+
+            // Производим поиск файла в T-Flex (или создание файла, если найти ничего не удалось)
+
+            // Производим создание документа при необходимости
+
+
         }
 
-        private FileObject UploadFile(FileReference fileReference, FolderObject folder) {
+        private ReferenceObject FindOrCreateNormRecordInDocs(Reference normDocumentReference, MacroProvider provider) {
+            // Производим поиск по обозначению
+            ParameterInfo designation = normDocumentReference.ParameterGroup[Guids.Parameters.ОбозначениеДокумента];
+            if (designation == null)
+                throw new Exception("Ошибка при проведении поиска в справочнике Нормативных докумнетов");
+
+            List<ReferenceObject> findedObjects = normDocumentReference.Find(designation, this.TflexDesignation);
+            this.IsDocumentSearched = true;
+
+            switch (findedObjects.Count) {
+                case 0:
+                    // TODO: Прописать создание нового объекта и его возврат в функции
+                    // Создаем новый объект и возвращаем его
+                    return null;
+                case 1: 
+                    return findedObjects[0];
+                default:
+                    // Запрашиваем у пользователя, какой из найденных объектов использовать
+                    return AskUserSelectFindedObject(findedObjects, provider);
+
+            }
+        }
+
+        private ReferenceObject AskUserSelectFindedObject(List<ReferenceObject> resultOfSearch, MacroProvider provider) {
+            if (resultOfSearch.Count == 0)
+                throw new Exception("Количество объектов для выбора не может быть нулевым");
+            InputDialog dialog = new InputDialog(provider.Context, "Произведите выбор объекта");
+            string selectField = "Документ";
+            string message =
+                $"При обработке записи {this.TflexDesignation} было обнаружено несколько совпадений\n" +
+                "Произведите выбор необходимого соответствия";
+            dialog.AddText(message);
+            // TODO: Сделать выбор более информативным
+            dialog.AddSelectFromList(selectField, resultOfSearch[0], true, resultOfSearch);
+
+            return dialog.Show() ? (ReferenceObject)dialog[selectField] : null;
+        }
+
+        private FileObject FindOrUploadFileObjectInDocs(FileReference fileReference, FolderObject folder) {
+            if (this.IsDocumentSearched == false)
+                throw new Exception($"Метод {nameof(this.FindOrUploadFileObjectInDocs)} не может вызываться до метода {nameof(this.FindOrCreateNormRecordInDocs)}");
             // TODO: Реализовать метод загрузки файла в файловый справочник DOCs
             //
             // Для начала проверяем, нет ли данного файла в файловом справочнике. Если есть - выводим ошибку
@@ -279,11 +350,6 @@ public class Macro : MacroProvider {
             // Производим загрузку файла
             //
             // Производим переименование файла в соответствии с именем файла, которое указано в поле FileName
-            return null;
-        }
-
-        private ReferenceObject CreateRecordInReference(Reference normDocumentReference) {
-            // TODO: Реализовать метод создания записи в справочнике нормативных документов
             return null;
         }
 
@@ -512,6 +578,10 @@ public class Macro : MacroProvider {
         }
 
         public void UploadDocumentsInDocs() {
+
+            foreach (RegulatoryDocument doc in this.SuccessDocuments) {
+                doc.CreateInDocs(this.NDReference, this.FReference, this.NDFolder, this.Provider);
+            }
 
         }
     }
