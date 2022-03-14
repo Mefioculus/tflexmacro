@@ -38,6 +38,11 @@ public class Macro : MacroProvider {
             public static Guid НаименованиеДокумента = new Guid("efb1bd41-3cf9-434c-a2b9-a814376da604");
             public static Guid ТипДокумента = new Guid("37d4ad41-424c-4a09-b17d-65356216f59b");
             public static Guid ТипГоста = new Guid("3f43523e-0ef1-46ad-97bb-6b1ce3e053a4");
+            public static Guid НаименованиеФайла = new Guid("63aa0058-4a37-4754-8973-ffbc1b88f576");
+        }
+
+        public static class Links {
+            public static Guid ФайлНормативногоДокумента = new Guid("04f51b77-d2f8-448d-8778-df3bb97ea625");
         }
     }
 
@@ -49,7 +54,12 @@ public class Macro : MacroProvider {
     public void ЗагрузитьГосты() {
         // Данный метод предназначен для добавления кнопки, которая будет производить импорт pdf из выбранной директории
 
-        DocumentRepository repo = new DocumentRepository(this);
+        try {
+            DocumentRepository repo = new DocumentRepository(this);
+        }
+        catch {
+            return;
+        }
         // Запрашиваем у пользователя исправления найденных ошибок
         repo.AskUserAboutFixingErrors();
         // Производим процедуру загрузки документов в DOCs
@@ -107,6 +117,8 @@ public class Macro : MacroProvider {
         public ReferenceObject NormativeReferenceObject { get; private set; }
         public FileObject FileReferenceObject { get; private set; }
 
+        public DocumentRepository ParentRepository { get; private set; }
+
         // Служебные поля: Тип
         public TypeOfDocument Type { get; private set; } = TypeOfDocument.Неизвестно;
         public string TypeString => this.GetStringRepresentationOfType(this.Type);
@@ -114,6 +126,9 @@ public class Macro : MacroProvider {
         // Флаги:
         public bool IsDocumentSearched { get; private set; } = false;
         public bool IsFileSearched { get; private set; } = false;
+        public bool IsExcluded { get; private set; } = false;
+        public bool? IsDocumentExist { get; private set; }
+        public bool? IsFileExist { get; private set; }
 
         // Служебные поля: Статус
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
@@ -123,12 +138,13 @@ public class Macro : MacroProvider {
         public bool HasError => this.Error != null;
         public string ErrorMessage => this.HasError ? this.Error.Message : "Ошибка отсутствует";
 
-        public RegulatoryDocument(string file, TypeOfDocument type = TypeOfDocument.Неизвестно) {
-            // Инициализируем пустой словарь
-
+        public RegulatoryDocument(string file, DocumentRepository repository, TypeOfDocument type = TypeOfDocument.Неизвестно) {
+            // Заполняем ссылку на родительский репозиторий
+            this.ParentRepository = repository;
+            
             // Пытаемся получить доступ к файлу
             this.LinkedFile = new FileInfo(file);
-            this.Type = type;
+            this.Type = repository.SearchType;
 
             // Получаем название документа и его расширение
             this.FileExtension = this.LinkedFile.Extension;
@@ -288,77 +304,135 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void CreateInDocs(Reference normDocumentReference, FileReference fileReference, FolderObject folder, MacroProvider provider) {
+        public void ProcessDocument(bool processExistingDocuments) {
             // TODO: Реализовать метод создания документа в DOCs
 
             // Производим поиск документа в TFlex (или создание нового документа, если найти ничего не удалось)
-
-            this.NormativeReferenceObject = FindOrCreateNormRecordInDocs(normDocumentReference, provider);
+            this.NormativeReferenceObject = FindOrCreateNormRecordInDocs(processExistingDocuments);
+            if (this.NormativeReferenceObject == null)
+                return;
 
             // Производим поиск файла в T-Flex (или создание файла, если найти ничего не удалось)
-
-            // Производим создание документа при необходимости
-
+            this.FileReferenceObject = FindOrUploadFileObjectInDocs();
 
         }
 
-        private ReferenceObject FindOrCreateNormRecordInDocs(Reference normDocumentReference, MacroProvider provider) {
+        private ReferenceObject FindOrCreateNormRecordInDocs(bool processExistingDocuments) {
             // Производим поиск по обозначению
-            ParameterInfo designation = normDocumentReference.ParameterGroup[Guids.Parameters.ОбозначениеДокумента];
+            ParameterInfo designation = ParentRepository.NDReference.ParameterGroup[Guids.Parameters.ОбозначениеДокумента];
             if (designation == null)
                 throw new Exception("Ошибка при проведении поиска в справочнике Нормативных докумнетов");
 
-            List<ReferenceObject> findedObjects = normDocumentReference.Find(designation, this.TflexDesignation);
+            List<ReferenceObject> findedObjects = ParentRepository.NDReference.Find(designation, this.TflexDesignation);
             this.IsDocumentSearched = true;
 
             switch (findedObjects.Count) {
                 case 0:
-                    // TODO: Прописать создание нового объекта и его возврат в функции
-                    // Создаем новый объект и возвращаем его
-                    return null;
+                    this.IsDocumentExist = false;
+                    return CreateNormRecordInDocs();
                 case 1: 
-                    return findedObjects[0];
+                    this.IsDocumentExist = true;
+                    this.IsExcluded = true;
+                    return processExistingDocuments ? findedObjects[0] : null;
                 default:
-                    // Запрашиваем у пользователя, какой из найденных объектов использовать
-                    return AskUserSelectFindedObject(findedObjects, provider);
-
+                    this.IsDocumentExist = true;
+                    this.IsExcluded = true;
+                    return processExistingDocuments ? AskUserSelectFindedObject(findedObjects) : null;
             }
         }
 
-        private ReferenceObject AskUserSelectFindedObject(List<ReferenceObject> resultOfSearch, MacroProvider provider) {
-            if (resultOfSearch.Count == 0)
-                throw new Exception("Количество объектов для выбора не может быть нулевым");
-            InputDialog dialog = new InputDialog(provider.Context, "Произведите выбор объекта");
-            string selectField = "Документ";
-            string message =
-                $"При обработке записи {this.TflexDesignation} было обнаружено несколько совпадений\n" +
-                "Произведите выбор необходимого соответствия";
-            dialog.AddText(message);
-            // TODO: Сделать выбор более информативным
-            dialog.AddSelectFromList(selectField, resultOfSearch[0], true, resultOfSearch);
-
-            return dialog.Show() ? (ReferenceObject)dialog[selectField] : null;
+        private ReferenceObject CreateNormRecordInDocs() {
+            ReferenceObject newObject = ParentRepository.NDReference.CreateReferenceObject();
+            newObject[Guids.Parameters.ОбозначениеДокумента].Value = this.TflexDesignation;
+            newObject[Guids.Parameters.НаименованиеДокумента].Value = this.Name;
+            newObject.EndChanges();
+            newObject.CheckIn("Создание нового нормативного документа на основании файла");
+            return newObject;
         }
 
-        private FileObject FindOrUploadFileObjectInDocs(FileReference fileReference, FolderObject folder) {
+        private ReferenceObject AskUserSelectFindedObject(List<ReferenceObject> resultOfSearch) {
+            if (resultOfSearch.Count == 0)
+                throw new Exception("Количество объектов для выбора не может быть нулевым");
+
+            string message = $"При обработке записи {this.TflexDesignation} было обнаружено несколько совпадений:\n\n";
+
+            foreach (ReferenceObject findedRecord in resultOfSearch) {
+                ReferenceObject file = findedRecord.GetObject(Guids.Links.ФайлНормативногоДокумента);
+                string fileString = file != null ? file.ToString() : "отсутствует";
+                message +=
+                    $"ID: {findedRecord.Id.ToString()}\nОбозначение: {findedRecord[Guids.Parameters.ОбозначениеДокумента].Value.ToString()}\n" +
+                    $"Дата создания: {findedRecord.SystemFields.CreationDate.ToString("dd.MM.yyyy")}\n" +
+                    $"Связанный файл: {fileString}\n" +
+                    "\n";
+            }
+
+            message += "Произведите выбор объекта по его ID, или отмените выбор";
+
+            InputDialog dialog = new InputDialog(ParentRepository.Provider.Context, "Произведите выбор объекта");
+            string selectField = "ID:";
+            dialog.AddText(message);
+            List<int> IDs = resultOfSearch.Select(rec => rec.Id).ToList<int>();
+            dialog.AddSelectFromList(selectField, IDs[0], true, IDs);
+
+            return dialog.Show() ? resultOfSearch.FirstOrDefault(rec => rec.Id == (int)dialog[selectField]) : null;
+        }
+
+        private FileObject FindOrUploadFileObjectInDocs() {
             if (this.IsDocumentSearched == false)
                 throw new Exception($"Метод {nameof(this.FindOrUploadFileObjectInDocs)} не может вызываться до метода {nameof(this.FindOrCreateNormRecordInDocs)}");
             // TODO: Реализовать метод загрузки файла в файловый справочник DOCs
+
+            // Если для данного госта уже есть запись в нормативном справочнике, проверяем, есть ли у него привязанный файл
+            FileObject resultFile = (FileObject)this.NormativeReferenceObject.GetObject(Guids.Links.ФайлНормативногоДокумента);
+
+            if (resultFile != null) {
+                // Файл существует. Нужно сравнить его с загружаемым и произвести выбор, если есть различия
+                resultFile = CompareAndPick(resultFile);
+            }
+            else {
+                // Создаем новый файл на основе загружаемой pdf
+                resultFile = CreateFile();
+            }
+            return resultFile;
+        }
+
+        private FileObject CreateFile(bool setLink = true) {
+            // TODO: Реализовать функцию создания файла
+            // Создаем файл
+            FileObject newFile = ParentRepository.FReference.AddFile(this.LinkedFile.FullName, ParentRepository.NDFolder);
+            
+            // Переименовываем файл (this.FullFileName)
+            newFile[Guids.Parameters.НаименованиеФайла].Value = this.FullFileName;
+            newFile.EndChanges();
+            //newFile.CheckIn();
+            
+            // Производим привязывание файла к нормативному документу
+            if (setLink == true) {
+                this.NormativeReferenceObject.SetLinkedObject(Guids.Links.ФайлНормативногоДокумента, (ReferenceObject)newFile);
+            }
+
+            return newFile;
+        }
+
+        private FileObject CompareAndPick(FileObject linkedFileObject) {
+            FileObject result = null;
+            // TODO Реализовать проверку файлов
             //
-            // Для начала проверяем, нет ли данного файла в файловом справочнике. Если есть - выводим ошибку
-            //
-            // Производим загрузку файла
-            //
-            // Производим переименование файла в соответствии с именем файла, которое указано в поле FileName
-            return null;
+            // Проверить файлы на разницу между ними, если разница обнаружена, спросить у пользователя, какой файл выбрать
+            return result;
         }
 
         public override string ToString() {
-            string template = 
-                "Тип документа: {0}\n" +
-                "Обозначение документа: {1}\n" +
-                "Наименование документа: {2}\n\n";
-            return string.Format(template, this.TypeString, this.Designation, this.Name);
+            string template = "{0}:\nДокумент: {1}\nСтатус: {3}\nФайл: {2}\nСтатус: {4}\n";
+
+            return string.Format(
+                    template,
+                    this.Designation,
+                    this.NormativeReferenceObject != null ? this.NormativeReferenceObject.ToString() : "отсутствует",
+                    this.FileReferenceObject != null ? this.FileReferenceObject.ToString() : "отсутствует",
+                    this.IsDocumentExist == null ? "поиск не производился" : (bool)this.IsDocumentExist ? "был найден" : "был создан",
+                    this.IsFileExist == null ? "поиск не производился" : (bool)this.IsFileExist ? "был найден" : "был загружен"
+                    );
         }
     }
 
@@ -367,10 +441,10 @@ public class Macro : MacroProvider {
         // Данные, получаемые от пользователя
         public string Dir { get; private set; }
         private string SearchPattern { get; set; }
-        private TypeOfDocument SearchType { get; set; } = TypeOfDocument.Неизвестно;
+        public TypeOfDocument SearchType { get; private set; } = TypeOfDocument.Неизвестно;
 
         // Данные, получаемые при инициализации нового объекта
-        private MacroProvider Provider { get; set; }
+        public MacroProvider Provider { get; private set; }
         
         // Данные, получаемые в процессе работы конструктора
         public string[] Files { get; private set; }
@@ -379,9 +453,9 @@ public class Macro : MacroProvider {
         private string ErrorMessage { get; set; }
 
         // Для работы с DOCs
-        private Reference NDReference { get; set; }
-        private FileReference FReference { get; set; }
-        private FolderObject NDFolder { get; set; }
+        public Reference NDReference { get; private set; }
+        public FileReference FReference { get; private set; }
+        public FolderObject NDFolder { get; private set; }
 
         public DocumentRepository(MacroProvider provider) {
 
@@ -396,7 +470,9 @@ public class Macro : MacroProvider {
             this.ErrorDocuments = new List<RegulatoryDocument>();
 
             // Запрашиваем файлы у пользователя
-            this.GetInputDataFromUser();
+            this.Files = GetInputDataFromUser();
+            if (this.Files == null)
+                throw new Exception("Отмена обработки нормативных документов");
             
             // Производим чтение документов и при возникновении ошибок регистрацию их
             this.ReadDocuments();
@@ -416,7 +492,7 @@ public class Macro : MacroProvider {
                 throw new Exception("Не удалось найти папку 'Архив НД'");
         }
 
-        private void GetInputDataFromUser() {
+        private string[] GetInputDataFromUser() {
             // Запросить у пользователя директорию, в которой производить поиск
             // TODO: После тестирования убрать введенный по умолчанию путь (или установить его на рабочий стол пользователя)
             this.Dir = @"D:\ГОСТы";
@@ -446,13 +522,16 @@ public class Macro : MacroProvider {
                 this.SearchPattern = (string)dialog[pattern];
                 this.SearchType = (TypeOfDocument)Enum.Parse(typeof(TypeOfDocument), (string)dialog[type]);
             }
+            else {
+                return null;
+            }
 
-            this.Files = Directory.GetFiles(this.Dir, this.SearchPattern, SearchOption.AllDirectories);
+            return Directory.GetFiles(this.Dir, this.SearchPattern, SearchOption.AllDirectories);
         }
         
         private void ReadDocuments() {
             foreach (string file in this.Files) {
-                RegulatoryDocument newDoc = new RegulatoryDocument(file, this.SearchType);
+                RegulatoryDocument newDoc = new RegulatoryDocument(file, this);
                 if (!newDoc.HasError)
                     this.SuccessDocuments.Add(newDoc);
                 else
@@ -482,7 +561,6 @@ public class Macro : MacroProvider {
         }
 
         public void AskUserAboutFixingErrors() {
-            // TODO: Реализовать запрос у пользователя исправления ошибочных названий документов
             if (this.ErrorDocuments.Count == 0)
                 return;
             string template =
@@ -579,10 +657,15 @@ public class Macro : MacroProvider {
 
         public void UploadDocumentsInDocs() {
 
+            // Спрашиваем у пользователя, производить ли обработку позиций, которые уже существуют в справочнике
+            bool processExistingDocuments = this.Provider.Question("Производить обработку позиций, по которым уже есть нормативные документы?");
+
             foreach (RegulatoryDocument doc in this.SuccessDocuments) {
-                doc.CreateInDocs(this.NDReference, this.FReference, this.NDFolder, this.Provider);
+                doc.ProcessDocument(processExistingDocuments);
             }
 
+            string processedDocuments = string.Join("\n", this.SuccessDocuments.Where(doc => !doc.IsExcluded).Select(doc => doc.ToString()));
+            this.Provider.Message("Результат работы макроса", string.IsNullOrWhiteSpace(processedDocuments) ? "Все документы уже существовали" : processedDocuments);
         }
     }
 
