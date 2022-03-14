@@ -74,7 +74,7 @@ public class Macro : MacroProvider {
 
         private static class RegexPatterns {
             public static class Types {
-                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт]\s[а-яА-Яa-zA-Z]{0,10}");
+                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт](\s[а-яА-Яa-zA-Z]{0,10})?");
                 public static Regex ОСТ = new Regex(@"^[Оо][Сс][Тт]");
                 public static Regex ТУ = new Regex(@"^[Тт][Уу]");
                 public static Regex ПИ = new Regex(@"^[Пп][Ии]");
@@ -388,7 +388,7 @@ public class Macro : MacroProvider {
 
             if (resultFile != null) {
                 // Файл существует. Нужно сравнить его с загружаемым и произвести выбор, если есть различия
-                resultFile = CompareAndPick(resultFile);
+                CompareAndPick(resultFile);
             }
             else {
                 // Создаем новый файл на основе загружаемой pdf
@@ -419,12 +419,69 @@ public class Macro : MacroProvider {
             return newFile;
         }
 
-        private FileObject CompareAndPick(FileObject linkedFileObject) {
-            FileObject result = null;
-            // TODO Реализовать проверку файлов
-            //
-            // Проверить файлы на разницу между ними, если разница обнаружена, спросить у пользователя, какой файл выбрать
-            return result;
+        private void CompareAndPick(FileObject linkedFileObject) {
+            linkedFileObject.GetHeadRevision();
+            FileInfo oldFile = new FileInfo(linkedFileObject.LocalPath);
+
+            int oldFileByte;
+            int newFileByte;
+            bool isFilesEqual = true;
+            
+            // Производим сравнение файлов
+            if (this.LinkedFile.Length == oldFile.Length) {
+                // Если размер файлов одинаковый, сравниваем файлы побайтово
+                FileStream fsOld = new FileStream(oldFile.FullName, FileMode.Open);
+                FileStream fsNew = new FileStream(this.LinkedFile.FullName, FileMode.Open);
+
+                while (true) {
+                    oldFileByte = fsOld.ReadByte();
+                    newFileByte = fsNew.ReadByte();
+
+                    // Если мы достигли конца файла, разрываем цикл
+                    if (oldFileByte == -1)
+                        break;
+                    
+                    // Если байты не равны, прерываем цикл
+                    if (oldFileByte != newFileByte) {
+                        isFilesEqual = false;
+                        break;
+                    }
+
+                }
+                fsOld.Close();
+                fsNew.Close();
+            }
+            else {
+                isFilesEqual = false;
+            }
+
+            if (isFilesEqual)
+                return;
+
+            // Спрашиваем у пользователя, какой файл использовать
+            string message =
+                $"У документа {this.TflexDesignation} уже есть прикрепленный файл, который отличается от загружаемого файла.\n" +
+                $"Прикрепленный файл: \n{GetInformationAboutFile(oldFile)}\n\n" +
+                $"Загружаемый файл: \n{GetInformationAboutFile(this.LinkedFile)}\n\n" +
+                "Нажмите 'Ок' если хотите произвести замену прикрепленного файла загружаемым, или нажмите 'Отмена' чтобы не производить загрузку";
+
+            if (ParentRepository.Provider.Question(message)) {
+                linkedFileObject.BeginChanges();
+                File.Copy(LinkedFile.FullName, linkedFileObject.LocalPath, true);
+                linkedFileObject.EndChanges();
+            }
+
+            return;
+        }
+
+        private string GetInformationAboutFile(FileInfo file) {
+            string info =
+                $"Название файла {file.Name}\n" +
+                $"Размер файла {file.Length}\n" +
+                $"Дата создания {file.CreationTime.ToString("dd.MM.yyyy hh:mm")}\n" +
+                $"Дата изменения {file.LastWriteTime.ToString("dd.MM.yyyy hh:mm")}\n";
+
+            return info;
         }
 
         public override string ToString() {
