@@ -54,8 +54,10 @@ public class Macro : MacroProvider {
     public void ЗагрузитьГосты() {
         // Данный метод предназначен для добавления кнопки, которая будет производить импорт pdf из выбранной директории
 
+        DocumentRepository repo;
+
         try {
-            DocumentRepository repo = new DocumentRepository(this);
+            repo = new DocumentRepository(this);
         }
         catch {
             return;
@@ -304,11 +306,11 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void ProcessDocument(bool processExistingDocuments) {
+        public void ProcessDocument() {
             // TODO: Реализовать метод создания документа в DOCs
 
             // Производим поиск документа в TFlex (или создание нового документа, если найти ничего не удалось)
-            this.NormativeReferenceObject = FindOrCreateNormRecordInDocs(processExistingDocuments);
+            this.NormativeReferenceObject = FindOrCreateNormRecordInDocs();
             if (this.NormativeReferenceObject == null)
                 return;
 
@@ -317,7 +319,7 @@ public class Macro : MacroProvider {
 
         }
 
-        private ReferenceObject FindOrCreateNormRecordInDocs(bool processExistingDocuments) {
+        private ReferenceObject FindOrCreateNormRecordInDocs() {
             // Производим поиск по обозначению
             ParameterInfo designation = ParentRepository.NDReference.ParameterGroup[Guids.Parameters.ОбозначениеДокумента];
             if (designation == null)
@@ -333,11 +335,11 @@ public class Macro : MacroProvider {
                 case 1: 
                     this.IsDocumentExist = true;
                     this.IsExcluded = true;
-                    return processExistingDocuments ? findedObjects[0] : null;
+                    return this.ParentRepository.ProcessExistingDocuments ? findedObjects[0] : null;
                 default:
                     this.IsDocumentExist = true;
                     this.IsExcluded = true;
-                    return processExistingDocuments ? AskUserSelectFindedObject(findedObjects) : null;
+                    return this.ParentRepository.ProcessExistingDocuments ? AskUserSelectFindedObject(findedObjects) : null;
             }
         }
 
@@ -346,7 +348,6 @@ public class Macro : MacroProvider {
             newObject[Guids.Parameters.ОбозначениеДокумента].Value = this.TflexDesignation;
             newObject[Guids.Parameters.НаименованиеДокумента].Value = this.Name;
             newObject.EndChanges();
-            newObject.CheckIn("Создание нового нормативного документа на основании файла");
             return newObject;
         }
 
@@ -401,15 +402,19 @@ public class Macro : MacroProvider {
             // Создаем файл
             FileObject newFile = ParentRepository.FReference.AddFile(this.LinkedFile.FullName, ParentRepository.NDFolder);
             
+            newFile.BeginChanges();
             // Переименовываем файл (this.FullFileName)
             newFile[Guids.Parameters.НаименованиеФайла].Value = this.FullFileName;
-            newFile.EndChanges();
-            //newFile.CheckIn();
             
             // Производим привязывание файла к нормативному документу
             if (setLink == true) {
+                this.NormativeReferenceObject.BeginChanges();
                 this.NormativeReferenceObject.SetLinkedObject(Guids.Links.ФайлНормативногоДокумента, (ReferenceObject)newFile);
+                this.NormativeReferenceObject.EndChanges();
             }
+
+            newFile.EndChanges();
+            //newFile.CheckIn();
 
             return newFile;
         }
@@ -457,6 +462,9 @@ public class Macro : MacroProvider {
         public FileReference FReference { get; private set; }
         public FolderObject NDFolder { get; private set; }
 
+        // Флаги
+        public bool ProcessExistingDocuments { get; private set; }
+
         public DocumentRepository(MacroProvider provider) {
 
             // Проверяем, был ли передан MacroProvider.
@@ -495,7 +503,7 @@ public class Macro : MacroProvider {
         private string[] GetInputDataFromUser() {
             // Запросить у пользователя директорию, в которой производить поиск
             // TODO: После тестирования убрать введенный по умолчанию путь (или установить его на рабочий стол пользователя)
-            this.Dir = @"D:\ГОСТы";
+            this.Dir = @"D:\ГОСТы (тест)";
             //this.Dir = Environment.GetFolderName(Environment.SpecialFolder.Desktop);
             this.SearchPattern = "*.pdf";
 
@@ -503,6 +511,7 @@ public class Macro : MacroProvider {
             string type = "Тип";
             string browse = "Обзор";
             string pattern = "Поисковый запрос";
+            string flag = "Обрабатывать существующие записи";
 
             InputDialog dialog = new InputDialog(this.Provider.Context, "Укажите директорию");
             dialog.AddString(directory, this.Dir);
@@ -517,10 +526,14 @@ public class Macro : MacroProvider {
                     false);
             dialog.AddString(pattern, this.SearchPattern);
             dialog.AddSelectFromList(type, types[0], true, types);
+            dialog.AddFlag(flag, false);
+
+            // Отображаем диалог
             if (dialog.Show()) {
                 this.Dir = (string)dialog[directory];
                 this.SearchPattern = (string)dialog[pattern];
                 this.SearchType = (TypeOfDocument)Enum.Parse(typeof(TypeOfDocument), (string)dialog[type]);
+                this.ProcessExistingDocuments = dialog[flag];
             }
             else {
                 return null;
@@ -657,11 +670,8 @@ public class Macro : MacroProvider {
 
         public void UploadDocumentsInDocs() {
 
-            // Спрашиваем у пользователя, производить ли обработку позиций, которые уже существуют в справочнике
-            bool processExistingDocuments = this.Provider.Question("Производить обработку позиций, по которым уже есть нормативные документы?");
-
             foreach (RegulatoryDocument doc in this.SuccessDocuments) {
-                doc.ProcessDocument(processExistingDocuments);
+                doc.ProcessDocument();
             }
 
             string processedDocuments = string.Join("\n", this.SuccessDocuments.Where(doc => !doc.IsExcluded).Select(doc => doc.ToString()));
