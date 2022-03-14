@@ -334,11 +334,13 @@ public class Macro : MacroProvider {
                     return CreateNormRecordInDocs();
                 case 1: 
                     this.IsDocumentExist = true;
-                    this.IsExcluded = true;
+                    if (!this.ParentRepository.ProcessExistingDocuments)
+                        this.IsExcluded = true;
                     return this.ParentRepository.ProcessExistingDocuments ? findedObjects[0] : null;
                 default:
                     this.IsDocumentExist = true;
-                    this.IsExcluded = true;
+                    if (!this.ParentRepository.ProcessExistingDocuments)
+                        this.IsExcluded = true;
                     return this.ParentRepository.ProcessExistingDocuments ? AskUserSelectFindedObject(findedObjects) : null;
             }
         }
@@ -430,8 +432,8 @@ public class Macro : MacroProvider {
             // Производим сравнение файлов
             if (this.LinkedFile.Length == oldFile.Length) {
                 // Если размер файлов одинаковый, сравниваем файлы побайтово
-                FileStream fsOld = new FileStream(oldFile.FullName, FileMode.Open);
-                FileStream fsNew = new FileStream(this.LinkedFile.FullName, FileMode.Open);
+                FileStream fsOld = new FileStream(oldFile.FullName, FileMode.Open, FileAccess.Read);
+                FileStream fsNew = new FileStream(this.LinkedFile.FullName, FileMode.Open, FileAccess.Read);
 
                 while (true) {
                     oldFileByte = fsOld.ReadByte();
@@ -466,6 +468,8 @@ public class Macro : MacroProvider {
                 "Нажмите 'Ок' если хотите произвести замену прикрепленного файла загружаемым, или нажмите 'Отмена' чтобы не производить загрузку";
 
             if (ParentRepository.Provider.Question(message)) {
+                if (!linkedFileObject.IsCheckedOut)
+                    linkedFileObject.CheckOut();
                 linkedFileObject.BeginChanges();
                 File.Copy(LinkedFile.FullName, linkedFileObject.LocalPath, true);
                 linkedFileObject.EndChanges();
