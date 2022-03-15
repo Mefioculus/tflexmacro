@@ -320,8 +320,37 @@ public class Macro : MacroProvider {
             newObject[Guids.Parameters.ОбозначениеДокумента].Value = this.TflexDesignation;
             newObject[Guids.Parameters.НаименованиеДокумента].Value = this.Name;
             newObject[Guids.Parameters.ТипДокумента].Value = this.ParentRepository.TypesToIntDict[this.Type];
+            if (this.Type == TypeOfDocument.ГОСТ) {
+                newObject[Guids.Parameters.ТипГоста].Value = this.GetTypeOfGost();
+            }
             newObject.EndChanges();
             return newObject;
+        }
+
+        private int? GetTypeOfGost() {
+            if (this.Type != TypeOfDocument.ГОСТ)
+                throw new Exception($"Метод {nameof(GetTypeOfGost)} можно использовать только для типа документа 'ГОСТ'");
+
+            switch (this.AdditionalType) {
+                case "EN":
+                    return 0;
+                case "ISO":
+                    return 1;
+                case "Р":
+                    return 2;
+                case "Р ЕН":
+                    return 3;
+                case "Р ИСО":
+                    return 4;
+                case "Р МЭК":
+                    return 5;
+                case "РВ":
+                    return 6;
+                case "В":
+                    return 7;
+                default:
+                    return null;
+            }
         }
 
         private ReferenceObject AskUserSelectFindedObject(List<ReferenceObject> resultOfSearch) {
@@ -522,7 +551,7 @@ public class Macro : MacroProvider {
                 [TypeOfDocument.Нормали] = 5,
                 [TypeOfDocument.Метрология] = 6,
                 [TypeOfDocument.ПИ] = 7
-            }
+            };
 
             // Инициируем основные коллекции класса
             this.SuccessDocuments = new List<RegulatoryDocument>();
