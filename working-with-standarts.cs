@@ -70,36 +70,6 @@ public class Macro : MacroProvider {
     }
 
     public class RegulatoryDocument {
-        // Регулярные выражения
-
-        private static class RegexPatterns {
-            public static class Types {
-                public static Regex ГОСТ = new Regex(@"^[Гг][Оо][Сс][Тт](\s[а-яА-Яa-zA-Z]{0,10})?");
-                public static Regex ОСТ = new Regex(@"^[Оо][Сс][Тт]");
-                public static Regex ТУ = new Regex(@"^[Тт][Уу]");
-                public static Regex ПИ = new Regex(@"^[Пп][Ии]");
-                public static Regex СТО = new Regex(@"^[Сс][Тт][Оо]");
-                public static Regex СТП = new Regex(@"^[Сс][Тт][Пп]");
-                public static Regex Нормали = new Regex(@"^[Нн][Оо][Рр][Мм][Аа][Лл]");
-                public static Regex Метрология = new Regex(@"^[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]");
-            }
-
-            public static class Common {
-                public static Regex TypeOfDocument = new Regex(@"^([а-яА-Яa-zA-Z]{1,10}\s){1,2}");
-                public static Regex Designation = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}");
-            }
-        }
-
-        private static Dictionary<TypeOfDocument, Regex> TypeRegexPatterns = new Dictionary<TypeOfDocument, Regex> () {
-            [TypeOfDocument.ГОСТ] = RegexPatterns.Types.ГОСТ,
-            [TypeOfDocument.ОСТ] = RegexPatterns.Types.ОСТ,
-            [TypeOfDocument.ТУ] = RegexPatterns.Types.ТУ,
-            [TypeOfDocument.ПИ] = RegexPatterns.Types.ПИ,
-            [TypeOfDocument.СТО] = RegexPatterns.Types.СТО,
-            [TypeOfDocument.СТП] = RegexPatterns.Types.СТП,
-            [TypeOfDocument.Нормали] = RegexPatterns.Types.Нормали,
-            [TypeOfDocument.Метрология] = RegexPatterns.Types.Метрология
-        };
 
         // Поля, относящиеся к стандарту
         public string Name { get; private set; }
@@ -147,7 +117,7 @@ public class Macro : MacroProvider {
             
             // Пытаемся получить доступ к файлу
             this.LinkedFile = new FileInfo(file);
-            this.Type = repository.SearchType;
+            this.Type = type;
 
             // Получаем название документа и его расширение
             this.FileExtension = this.LinkedFile.Extension;
@@ -211,10 +181,10 @@ public class Macro : MacroProvider {
         
         private bool IsTypeFit(TypeOfDocument type) {
             // Проверка на то, что для данного типа есть регулярное выражение
-            if (!TypeRegexPatterns.ContainsKey(type))
+            if (!ParentRepository.TypeRegexPatterns.ContainsKey(type))
                 return false;
 
-            return TypeRegexPatterns[type].IsMatch(this.FileName);
+            return ParentRepository.TypeRegexPatterns[type].IsMatch(this.FileName);
         }
 
         private TypeOfDocument TryToDetermineTypeOfDocument() {
@@ -254,7 +224,7 @@ public class Macro : MacroProvider {
             string fileName = this.FileName.TrimEnd(new char[] { '.' });
 
             // Для начала пытаемся получить тип документа из названия файла
-            Match typeMatch = RegexPatterns.Common.TypeOfDocument.Match(fileName);
+            Match typeMatch = ParentRepository.Patterns.Common["TypeOfDocument"].Match(fileName);
             if (!typeMatch.Success)
                 throw new Exception("Отсутствует тип");
             
@@ -262,15 +232,15 @@ public class Macro : MacroProvider {
             string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             this.AdditionalType = wordsInType.Length != 1 ? wordsInType[1] : string.Empty;
 
-            fileName = RegexPatterns.Common.TypeOfDocument.Replace(fileName, string.Empty).Trim();
+            fileName = ParentRepository.Patterns.Common["TypeOfDocument"].Replace(fileName, string.Empty).Trim();
 
             // Пытаемся получить обозначение документа из названия файла
 
-            Match designationMatch = RegexPatterns.Common.Designation.Match(fileName);
+            Match designationMatch = ParentRepository.Patterns.Common["Designation"].Match(fileName);
             if (!designationMatch.Success)
                 throw new Exception("Отсутствует обозначение");
             this.Designation = designationMatch.Value;
-            fileName = RegexPatterns.Common.Designation.Replace(fileName, string.Empty).Trim();
+            fileName = ParentRepository.Patterns.Common["Designation"].Replace(fileName, string.Empty).Trim();
 
             // Пробуем получить название документа
             if (string.IsNullOrWhiteSpace(fileName))
@@ -505,10 +475,13 @@ public class Macro : MacroProvider {
 
     public class DocumentRepository {
 
+        // Контейнеры для регулярных выражений
+        public RegexPatterns Patterns { get; private set; }
+        public Dictionary<TypeOfDocument, Regex> TypeRegexPatterns { get; private set; }
+
         // Данные, получаемые от пользователя
         public string Dir { get; private set; }
         private string SearchPattern { get; set; }
-        public TypeOfDocument SearchType { get; private set; } = TypeOfDocument.Неизвестно;
 
         // Данные, получаемые при инициализации нового объекта
         public MacroProvider Provider { get; private set; }
@@ -534,6 +507,20 @@ public class Macro : MacroProvider {
             if (provider == null)
                 throw new Exception("Для корректной работы макроса в класс DocumentRepository необходимо передать экземпляр класса макроса");
             this.Provider = provider;
+
+            // Инициализируем контейнеры с регулярными выражениями
+            this.Patterns = new RegexPatterns();
+
+            this.TypeRegexPatterns = new Dictionary<TypeOfDocument, Regex>() {
+                [TypeOfDocument.ГОСТ] = Patterns.Types["ГОСТ"],
+                [TypeOfDocument.ОСТ] = Patterns.Types["ОСТ"],
+                [TypeOfDocument.ТУ] = Patterns.Types["ТУ"],
+                [TypeOfDocument.ПИ] = Patterns.Types["ПИ"],
+                [TypeOfDocument.СТО] = Patterns.Types["СТО"],
+                [TypeOfDocument.СТП] = Patterns.Types["СТП"],
+                [TypeOfDocument.Нормали] = Patterns.Types["Нормали"],
+                [TypeOfDocument.Метрология] = Patterns.Types["Метрология"]
+            };
 
             // Инициируем основные коллекции класса
             this.SuccessDocuments = new List<RegulatoryDocument>();
@@ -570,7 +557,6 @@ public class Macro : MacroProvider {
             this.SearchPattern = "*.pdf";
 
             string directory = "Директория";
-            string type = "Тип";
             string browse = "Обзор";
             string pattern = "Поисковый запрос";
             string flag = "Обрабатывать существующие записи";
@@ -587,14 +573,12 @@ public class Macro : MacroProvider {
                         },
                     false);
             dialog.AddString(pattern, this.SearchPattern);
-            dialog.AddSelectFromList(type, types[0], true, types);
             dialog.AddFlag(flag, false);
 
             // Отображаем диалог
             if (dialog.Show()) {
                 this.Dir = (string)dialog[directory];
                 this.SearchPattern = (string)dialog[pattern];
-                this.SearchType = (TypeOfDocument)Enum.Parse(typeof(TypeOfDocument), (string)dialog[type]);
                 this.ProcessExistingDocuments = dialog[flag];
             }
             else {
@@ -738,6 +722,30 @@ public class Macro : MacroProvider {
 
             string processedDocuments = string.Join("\n", this.SuccessDocuments.Where(doc => !doc.IsExcluded).Select(doc => doc.ToString()));
             this.Provider.Message("Результат работы макроса", string.IsNullOrWhiteSpace(processedDocuments) ? "Все документы уже существовали" : processedDocuments);
+        }
+    }
+
+    public class RegexPatterns {
+        // Словари для хранения регулярных выражений
+        public Dictionary<string, Regex> Types;
+        public Dictionary<string, Regex> Common;
+
+        public RegexPatterns() {
+            this.Types = new Dictionary<string, Regex>() {
+                ["ГОСТ"] = new Regex(@"^[Гг][Оо][Сс][Тт](\s[а-яА-Яa-zA-Z]{0,10})?"),
+                ["ОСТ"] = new Regex(@"^[Оо][Сс][Тт]"),
+                ["ТУ"] = new Regex(@"^[Тт][Уу]"),
+                ["ПИ"] = new Regex(@"^[Пп][Ии]"),
+                ["СТО"] = new Regex(@"^[Сс][Тт][Оо]"),
+                ["СТП"] = new Regex(@"^[Сс][Тт][Пп]"),
+                ["Нормали"] = new Regex(@"^[Нн][Оо][Рр][Мм][Аа][Лл]"),
+                ["Метрология"] = new Regex(@"^[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]")
+            };
+
+            this.Common = new Dictionary<string, Regex>() {
+                ["TypeOfDocument"] = new Regex(@"^([а-яА-Яa-zA-Z]{1,10}\s){1,2}"),
+                ["Designation"] = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}")
+            };
         }
     }
 
