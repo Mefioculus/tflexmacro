@@ -36,8 +36,8 @@ public class Macro : MacroProvider {
         public static class Parameters {
             public static Guid ОбозначениеДокумента = new Guid("be6cbd27-113a-4e88-aab1-0b8540480603");
             public static Guid НаименованиеДокумента = new Guid("efb1bd41-3cf9-434c-a2b9-a814376da604");
-            public static Guid ТипДокумента = new Guid("37d4ad41-424c-4a09-b17d-65356216f59b");
-            public static Guid ТипГоста = new Guid("3f43523e-0ef1-46ad-97bb-6b1ce3e053a4");
+            public static Guid ТипДокумента = new Guid("37d4ad41-424c-4a09-b17d-65356216f59b"); // Общий параметр для всех документов
+            public static Guid ТипГоста = new Guid("3f43523e-0ef1-46ad-97bb-6b1ce3e053a4"); // Данный параметр есть только для ГОСТов
             public static Guid НаименованиеФайла = new Guid("63aa0058-4a37-4754-8973-ffbc1b88f576");
         }
 
@@ -47,11 +47,11 @@ public class Macro : MacroProvider {
     }
 
     public override void Run() {
-        ЗагрузитьГосты();
+        ЗагрузитьДокументы();
         Message("Информация", "Работа макроса завершена");
     }
 
-    public void ЗагрузитьГосты() {
+    public void ЗагрузитьДокументы() {
         // Данный метод предназначен для добавления кнопки, которая будет производить импорт pdf из выбранной директории
 
         DocumentRepository repo;
@@ -80,8 +80,8 @@ public class Macro : MacroProvider {
                 public static Regex ПИ = new Regex(@"^[Пп][Ии]");
                 public static Regex СТО = new Regex(@"^[Сс][Тт][Оо]");
                 public static Regex СТП = new Regex(@"^[Сс][Тт][Пп]");
-                public static Regex Нормали = new Regex(@"[Нн][Оо][Рр][Мм][Аа][Лл]");
-                public static Regex Метрология = new Regex(@"[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]");
+                public static Regex Нормали = new Regex(@"^[Нн][Оо][Рр][Мм][Аа][Лл]");
+                public static Regex Метрология = new Regex(@"^[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]");
             }
 
             public static class Common {
@@ -133,6 +133,7 @@ public class Macro : MacroProvider {
         public bool? IsFileExist { get; private set; }
 
         // Служебные поля: Статус
+        // TODO: Решить, нужно ли это поле
         public StatusOfDocument Status { get; private set; } = StatusOfDocument.НеОбработан;
         
         // Служебные поля: Перехваченная ошибка
