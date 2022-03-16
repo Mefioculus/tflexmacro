@@ -179,11 +179,7 @@ public class Macro : MacroProvider {
         }
         
         private bool IsTypeFit(TypeOfDocument type) {
-            // Проверка на то, что для данного типа есть регулярное выражение
-            if (!ParentRepository.Patterns.Types.ContainsKey(type))
-                return false;
-
-            return ParentRepository.Patterns.Types[type].IsMatch(this.FileName);
+            return ParentRepository.Patterns.IsTypeRegexExist(type) ? ParentRepository.Patterns.GetTypeRegex(type).IsMatch(this.FileName) : false;
         }
 
         private TypeOfDocument TryToDetermineTypeOfDocument() {
@@ -215,7 +211,7 @@ public class Macro : MacroProvider {
                     FillFieldsDataForGost();
                     break;
                 default:
-                    throw new Exception(string.Format("Для типа {0} еще не написана обработка заполнения параметров", type.ToString()));
+                    throw new Exception(string.Format("Тип {0} пока не поддерживается", type.ToString()));
             }
         }
 
@@ -235,11 +231,11 @@ public class Macro : MacroProvider {
 
             // Пытаемся получить обозначение документа из названия файла
 
-            Match designationMatch = ParentRepository.Patterns.Common["Designation"].Match(fileName);
+            Match designationMatch = ParentRepository.Patterns.GetDesignationRegex(this.Type).Match(fileName);
             if (!designationMatch.Success)
                 throw new Exception("Отсутствует обозначение");
             this.Designation = designationMatch.Value;
-            fileName = ParentRepository.Patterns.Common["Designation"].Replace(fileName, string.Empty).Trim();
+            fileName = ParentRepository.Patterns.GetDesignationRegex(this.Type).Replace(fileName, string.Empty).Trim();
 
             // Пробуем получить название документа
             if (string.IsNullOrWhiteSpace(fileName))
@@ -758,7 +754,8 @@ public class Macro : MacroProvider {
 
     public class RegexPatterns {
         // Словари для хранения регулярных выражений
-        public Dictionary<TypeOfDocument, Regex> Types;
+        private Dictionary<TypeOfDocument, Regex> Types { get; set; }
+        private Dictionary<TypeOfDocument, Regex> Designations { get; set; }
         public Dictionary<string, Regex> Common;
 
         public RegexPatterns() {
@@ -768,18 +765,39 @@ public class Macro : MacroProvider {
                 [TypeOfDocument.ОСТ] = new Regex(@"^[Оо][Сс][Тт]"),
                 [TypeOfDocument.ТУ] = new Regex(@"^[Тт][Уу]"),
                 [TypeOfDocument.ПИ] = new Regex(@"^[Пп][Ии]"),
-                // // Стоить учесть, что данные регулярные выражения помимо самого типа стандарта так же должны ключать возможные уточнения
-                // Стоить учесть, что данные регулярные выражения помимо самого типа стандарта так же должны ключать возможные уточнения
                 [TypeOfDocument.СТО] = new Regex(@"^[Сс][Тт][Оо]"),
                 [TypeOfDocument.СТП] = new Regex(@"^[Сс][Тт][Пп]"),
                 [TypeOfDocument.Нормали] = new Regex(@"^[Нн][Оо][Рр][Мм][Аа][Лл]"),
                 [TypeOfDocument.Метрология] = new Regex(@"^[Мм][Ее][Тт][Рр][Оо][Лл][Оо][Гг]")
             };
 
-            this.Common = new Dictionary<string, Regex>() {
-                ["TypeOfDocument"] = new Regex(@"^([а-яА-Яa-zA-Z]{1,10}\s){1,3}"),
-                ["Designation"] = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}")
+            this.Designations = new Dictionary<TypeOfDocument, Regex>() {
+                [TypeOfDocument.ГОСТ] = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}")
             };
+
+            this.Common = new Dictionary<string, Regex>() {
+                ["TypeOfDocument"] = new Regex(@"^[а-яА-Яa-zA-Z]{1,10}(\s[а-яА-Яa-zA-Z]{1,10}){0,2}"),
+            };
+        }
+
+        public Regex GetTypeRegex(TypeOfDocument type) {
+            if (!this.Types.ContainsKey(type))
+                throw new Exception($"Тип {type.ToString()} пока не поддерживается (GetTypeRegex)");
+            return this.Types[type];
+        }
+
+        public Regex GetDesignationRegex(TypeOfDocument type) {
+            if (!this.Designations.ContainsKey(type))
+                throw new Exception($"Тип {type.ToString()} пока не поддерживается (GetDesignationRexex)");
+            return this.Designations[type];
+        }
+
+        public bool IsTypeRegexExist(TypeOfDocument type) {
+            return this.Types.ContainsKey(type);
+        }
+
+        public bool IsDesignationRegexExist(TypeOfDocument type) {
+            return this.Designations.ContainsKey(type);
         }
     }
 
