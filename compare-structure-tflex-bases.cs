@@ -14,6 +14,10 @@ using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.References.Files;
 
+/*
+ * Для работы макроса так же потребуется подключение в качестве ссылки библиотеки TFlex.DOCs.Common.dll
+*/
+
 public class Macro : MacroProvider {
     public Macro(MacroContext context)
         : base (context) {
@@ -35,13 +39,10 @@ public class Macro : MacroProvider {
         StructureDataBase resultStructure = null;
 
         using (ServerConnection serverConnection = ServerConnection.Open(userName, "123", serverAddress)) {
-            if (!serverConnection.IsConnected) {
+            if (!serverConnection.IsConnected)
                 Message("Ошибка", $"Не удалось подключиться к серверу '{serverAddress}' под пользователем '{userName}'");
-            }
-            else {
-                Message("Информация", "Подключение успешное");
+            else
                 resultStructure = new StructureDataBase(serverConnection);
-            }
         }
 
         return resultStructure;
@@ -64,7 +65,7 @@ public class Macro : MacroProvider {
 
         public string ToString(int currPadding, int deltaPadding) {
             string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.References.Select(kvp => $" {kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)}"))}";
+            return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.References.Select(kvp => $" {kvp.Value.ToString(currPadding, deltaPadding)}"))}";
         }
     }
 
@@ -88,7 +89,7 @@ public class Macro : MacroProvider {
 
         public string ToString(int currPadding, int deltaPadding) {
             string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}{this.Name}\n{string.Join("\n", this.Classes.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
+            return $"{stringPadding}(справочник) {this.Name}\n{string.Join("\n", this.Classes.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
         }
     }
 
@@ -97,7 +98,7 @@ public class Macro : MacroProvider {
         public int ID { get; set; }
         public string Name { get; set; }
         
-        public Dictionary<Guid, StructureParameter> Parameters { get; set; }
+        public Dictionary<Guid, StructureParameterGroups> ParameterGroups { get; set; }
         public Dictionary<Guid, StructureLink> Links { get; set; }
 
         public StructureClass(ClassObject classObject) {
@@ -105,15 +106,39 @@ public class Macro : MacroProvider {
             this.ID = classObject.Id;
             this.Name = classObject.Name;
 
-            this.Parameters = new Dictionary<Guid, StructureParameter>();
+            this.ParameterGroups = new Dictionary<Guid, StructureParameterGroups>();
             this.Links = new Dictionary<Guid, StructureLink>();
+
+            // Производим поиск групп параметров справочника
+            foreach (ParameterGroup group in classObject.GetAllGroups()) {
+                this.ParameterGroups.Add(group.Guid, new StructureParameterGroups(group));
+            }
         }
 
         public string ToString(int currPadding, int deltaPadding) {
             string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}{this.Name}";
+            return $"{stringPadding}(тип) {this.Name}\n{string.Join("\n", this.ParameterGroups.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
         }
         
+    }
+
+    public class StructureParameterGroups {
+        public Guid Guid { get; set; }
+        public int ID { get; set; }
+        public string Name { get; set; }
+
+        public Dictionary<Guid, StructureParameter> Parameters { get; set; }
+
+        public StructureParameterGroups(ParameterGroup group) {
+            this.Guid = group.Guid;
+            this.ID = group.Id;
+            this.Name = group.Name;
+        }
+
+        public string ToString(int currPadding, int deltaPadding) {
+            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
+            return $"{stringPadding}(группа) {this.Name}";
+        }
     }
 
     public class StructureParameter {
