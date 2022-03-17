@@ -208,18 +208,24 @@ public class Macro : MacroProvider {
             // В зависимости от типа документа производим различные манипуляции
             switch (type) {
                 case TypeOfDocument.ГОСТ:
-                    FillFieldsDataForGost();
+                    FillFieldsDataForType();
+                    break;
+                case TypeOfDocument.ОСТ:
+                    FillFieldsDataForType();
+                    break;
+                case TypeOfDocument.ТУ:
+                    FillFieldsDataForType();
                     break;
                 default:
                     throw new Exception(string.Format("Тип {0} пока не поддерживается", type.ToString()));
             }
         }
 
-        private void FillFieldsDataForGost() {
+        private void FillFieldsDataForType() {
             string fileName = this.FileName.TrimEnd(new char[] { '.' });
 
             // Для начала пытаемся получить тип документа из названия файла
-            Match typeMatch = ParentRepository.Patterns.Common["TypeOfDocument"].Match(fileName);
+            Match typeMatch = ParentRepository.Patterns.GetTypeRegex(this.Type).Match(fileName);
             if (!typeMatch.Success)
                 throw new Exception("Отсутствует тип");
             
@@ -227,7 +233,7 @@ public class Macro : MacroProvider {
             string[] wordsInType = typeMatch.Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             this.AdditionalType = wordsInType.Length != 1 ? string.Join(" ", wordsInType.Skip(1)) : string.Empty;
 
-            fileName = ParentRepository.Patterns.Common["TypeOfDocument"].Replace(fileName, string.Empty).Trim();
+            fileName = ParentRepository.Patterns.GetTypeRegex(this.Type).Replace(fileName, string.Empty).Trim();
 
             // Пытаемся получить обозначение документа из названия файла
 
@@ -579,8 +585,8 @@ public class Macro : MacroProvider {
         private string[] GetInputDataFromUser() {
             // Запросить у пользователя директорию, в которой производить поиск
             // TODO: После тестирования убрать введенный по умолчанию путь (или установить его на рабочий стол пользователя)
-            this.Dir = @"D:\ГОСТы (тест)";
-            //this.Dir = Environment.GetFolderName(Environment.SpecialFolder.Desktop);
+            //this.Dir = @"D:\ГОСТы (тест)";
+            this.Dir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             this.SearchPattern = "*.pdf";
 
             string directory = "Директория";
@@ -756,13 +762,12 @@ public class Macro : MacroProvider {
         // Словари для хранения регулярных выражений
         private Dictionary<TypeOfDocument, Regex> Types { get; set; }
         private Dictionary<TypeOfDocument, Regex> Designations { get; set; }
-        public Dictionary<string, Regex> Common;
 
         public RegexPatterns() {
             // Стоить учесть, что данные регулярные выражения помимо самого типа стандарта так же должны ключать возможные уточнения
             this.Types = new Dictionary<TypeOfDocument, Regex>() {
                 [TypeOfDocument.ГОСТ] = new Regex(@"^[Гг][Оо][Сс][Тт](\s[а-яА-Яa-zA-Z]{1,10}){0,2}"),
-                [TypeOfDocument.ОСТ] = new Regex(@"^[Оо][Сс][Тт]"),
+                [TypeOfDocument.ОСТ] = new Regex(@"^[Оо][Сс][Тт](\s.{1,2})?"),
                 [TypeOfDocument.ТУ] = new Regex(@"^[Тт][Уу]"),
                 [TypeOfDocument.ПИ] = new Regex(@"^[Пп][Ии]"),
                 [TypeOfDocument.СТО] = new Regex(@"^[Сс][Тт][Оо]"),
@@ -772,11 +777,9 @@ public class Macro : MacroProvider {
             };
 
             this.Designations = new Dictionary<TypeOfDocument, Regex>() {
-                [TypeOfDocument.ГОСТ] = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}")
-            };
-
-            this.Common = new Dictionary<string, Regex>() {
-                ["TypeOfDocument"] = new Regex(@"^[а-яА-Яa-zA-Z]{1,10}(\s[а-яА-Яa-zA-Z]{1,10}){0,2}"),
+                [TypeOfDocument.ГОСТ] = new Regex(@"^(\d{1,5}[\.\-]){1,3}\d{2,4}"),
+                [TypeOfDocument.ОСТ] = new Regex(@"^(.{1,2}\.)?(\d{1,5}[\.\-]){1,3}\d{2,4}"),
+                [TypeOfDocument.ТУ] = new Regex(@"^(\d{1,8}[\.\-]){1,3}\d{2,4}"),
             };
         }
 
