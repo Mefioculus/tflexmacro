@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
 using TFlex.DOCs.Model;
 using TFlex.DOCs.Common.Encryption; // Для осуществления подключения к серверу
@@ -24,17 +25,20 @@ public class Macro : MacroProvider {
         }
 
     public override void Run() {
+        int startPadding = 0;
+        int deltaPadding = 5;
 
-        StructureDataBase structure = new StructureDataBase(Context.Connection);
-        Message("Структура базы данных", structure.ToString(0, 5));
-        StructureDataBase otherStructure = GetStructureFromOtherServer(@"Gukovry", "TFLEX-DOCS:21324");
+        StructureDataBase structure = new StructureDataBase(Context.Connection, "Рабочая база", startPadding, deltaPadding);
+        Message($"Количество объектов {structure.FrendlyName}", structure.AllGuids.Count);
+
+        StructureDataBase otherStructure = GetStructureFromOtherServer(@"Gukovry", "TFLEX-DOCS:21324", "Макет", startPadding, deltaPadding);
         if (otherStructure != null) {
-            Message("Структура базы данных", otherStructure.ToString(0, 5));
+            Message($"Количество объектов {otherStructure.FrendlyName}", otherStructure.AllGuids.Count);
         }
         
     }
 
-    private StructureDataBase GetStructureFromOtherServer(string userName, string serverAddress) {
+    private StructureDataBase GetStructureFromOtherServer(string userName, string serverAddress, string dataBaseFrendlyName, int padding, int delta) {
 
         StructureDataBase resultStructure = null;
 
@@ -42,7 +46,7 @@ public class Macro : MacroProvider {
             if (!serverConnection.IsConnected)
                 Message("Ошибка", $"Не удалось подключиться к серверу '{serverAddress}' под пользователем '{userName}'");
             else
-                resultStructure = new StructureDataBase(serverConnection);
+                resultStructure = new StructureDataBase(serverConnection, dataBaseFrendlyName, padding, delta);
         }
 
         return resultStructure;
@@ -56,28 +60,51 @@ public class Macro : MacroProvider {
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
 
-        public Dictionary<Guid, IStructureNode> GetNodes();
-        public string ToString(int currPadding, int deltaPadding);
+        public string ToString(string type);
     
     }
 
     public class StructureDataBase {
         public string Name { get; set; }
+        public string FrendlyName { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
         public Dictionary<Guid, StructureReference> References { get; set; }
+        public Dictionary<Guid, List<IStructureNode>> AllNodes { get; private set; }
+        public List<Guid> AllGuids { get; private set; }
 
-        public StructureDataBase(ServerConnection connection) {
+        public StructureDataBase(ServerConnection connection, string frendlyName, int padding, int delta) {
             this.Name = connection.ServerName;
+            this.FrendlyName = frendlyName;
+            this.Padding = padding;
+            this.Delta = delta;
+
+            this.AllNodes = new Dictionary<Guid, List<IStructureNode>>();
+            this.AllGuids = new List<Guid>();
 
             this.References = new Dictionary<Guid, StructureReference>();
             foreach (ReferenceInfo refInfo in connection.ReferenceCatalog.GetReferences()) {
-                this.References.Add(refInfo.Guid, new StructureReference(refInfo, this));
+                this.AllGuids.Add(refInfo.Guid);
+                StructureReference reference = new StructureReference(refInfo, this, null, this.Padding, this.Delta);
+                this.References.Add(reference.Guid, reference);
+                if (!this.AllNodes.ContainsKey(reference.Guid))
+                    this.AllNodes.Add(reference.Guid, new List<IStructureNode>() { reference });
+                else
+                    this.AllNodes[reference.Guid].Add(reference);
             }
         }
 
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.References.Select(kvp => $" {kvp.Value.ToString(currPadding, deltaPadding)}"))}";
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.References.Select(kvp => $" {kvp.Value.ToString("all")}"))}";
+                default:
+                    return string.Empty;
+            }
         }
     }
 
@@ -88,31 +115,41 @@ public class Macro : MacroProvider {
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
         
         public Dictionary<Guid, StructureClass> Classes { get; set; }
 
-        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, IStructureNode parent = null) {
+        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, IStructureNode parent, int padding, int delta) {
             this.Guid = referenceInfo.Guid;
             this.ID = referenceInfo.Id;
             this.Name = referenceInfo.Name;
             this.Parent = parent;
             this.Root = root;
             this.Status = CompareResult.НеОбработано;
+            this.Padding = padding;
+            this.Delta = delta;
 
             this.Classes = new Dictionary<Guid, StructureClass>();
             foreach (ClassObject classObject in referenceInfo.Classes.AllClasses.Where(cl => cl is ClassObject)) {
-                this.Classes.Add(classObject.Guid, new StructureClass(classObject, this.Root, this));
+                this.Root.AllGuids.Add(classObject.Guid);
+                StructureClass structureClass = new StructureClass(classObject, this.Root, this, this.Padding + this.Delta, this.Delta);
+                this.Classes.Add(structureClass.Guid, structureClass);
+                if (!this.Root.AllNodes.ContainsKey(structureClass.Guid))
+                    this.Root.AllNodes.Add(structureClass.Guid, new List<IStructureNode>() { structureClass });
+                else
+                    this.Root.AllNodes[structureClass.Guid].Add(structureClass);
             }
         }
 
-        public Dictionary<Guid, IStructureNode> GetNodes() {
-            // TODO: Реализовать метод получения всех дочерних нод
-            return null;
-        }
-
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}(справочник) {this.Name}\n{string.Join("\n", this.Classes.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return $"{stringPadding}(справочник) {this.Name}\n{string.Join("\n", this.Classes.Select(kvp => kvp.Value.ToString("all")))}";
+                default:
+                    return string.Empty;
+            }
         }
     }
 
@@ -123,73 +160,93 @@ public class Macro : MacroProvider {
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
         
-        public Dictionary<Guid, StructureParameterGroups> ParameterGroups { get; set; }
+        public Dictionary<Guid, StructureParameterGroup> ParameterGroups { get; set; }
         public Dictionary<Guid, StructureLink> Links { get; set; }
 
-        public StructureClass(ClassObject classObject, StructureDataBase root, IStructureNode parent = null) {
+        public StructureClass(ClassObject classObject, StructureDataBase root, IStructureNode parent, int padding, int delta) {
             this.Guid = classObject.Guid;
             this.ID = classObject.Id;
             this.Name = classObject.Name;
             this.Parent = parent;
             this.Root = root;
             this.Status = CompareResult.НеОбработано;
+            this.Padding = padding;
+            this.Delta = delta;
 
-            this.ParameterGroups = new Dictionary<Guid, StructureParameterGroups>();
+            this.ParameterGroups = new Dictionary<Guid, StructureParameterGroup>();
             this.Links = new Dictionary<Guid, StructureLink>();
 
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
-                this.ParameterGroups.Add(group.Guid, new StructureParameterGroups(group, this.Root, this));
+                this.Root.AllGuids.Add(group.Guid);
+                StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this, this.Padding + this.Delta, this.Delta);
+                this.ParameterGroups.Add(parameterGroup.Guid, parameterGroup);
+                if (!this.Root.AllNodes.ContainsKey(parameterGroup.Guid))
+                    this.Root.AllNodes.Add(parameterGroup.Guid, new List<IStructureNode>() { parameterGroup });
+                else
+                    this.Root.AllNodes[parameterGroup.Guid].Add(parameterGroup);
             }
         }
 
-        public Dictionary<Guid, IStructureNode> GetNodes() {
-            // TODO: Реализовать метод получения всех дочерних нод
-            return null;
-        }
-
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}(тип) {this.Name}\n{string.Join("\n", this.ParameterGroups.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return $"{stringPadding}(тип) {this.Name}\n{string.Join("\n", this.ParameterGroups.Select(kvp => kvp.Value.ToString("all")))}";
+                default:
+                    return string.Empty;
+            }
         }
         
     }
 
-    public class StructureParameterGroups : IStructureNode {
+    public class StructureParameterGroup : IStructureNode {
         public Guid Guid { get; set; }
         public int ID { get; set; }
         public string Name { get; set; }
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
 
         public Dictionary<Guid, StructureParameter> Parameters { get; set; }
 
-        public StructureParameterGroups(ParameterGroup group, StructureDataBase root, IStructureNode parent = null) {
+        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, IStructureNode parent, int padding, int delta) {
             this.Guid = group.Guid;
             this.ID = group.Id;
             this.Name = group.Name;
             this.Parent = parent;
             this.Root = root;
             this.Status = CompareResult.НеОбработано;
+            this.Padding = padding;
+            this.Delta = delta;
 
             this.Parameters = new Dictionary<Guid, StructureParameter>();
 
             // Получаем параметры из группы параметров
             foreach (ParameterInfo parameterInfo in group.Parameters) {
-                this.Parameters.Add(parameterInfo.Guid, new StructureParameter(parameterInfo, this.Root, this));
+                this.Root.AllGuids.Add(parameterInfo.Guid);
+                StructureParameter parameter = new StructureParameter(parameterInfo, this.Root, this, this.Padding + this.Delta, this.Delta);
+                this.Parameters.Add(parameter.Guid, parameter);
+                if (!this.Root.AllNodes.ContainsKey(parameter.Guid))
+                    this.Root.AllNodes.Add(parameter.Guid, new List<IStructureNode>() { parameter });
+                else
+                    this.Root.AllNodes[parameter.Guid].Add(parameter);
             }
         }
 
-        public Dictionary<Guid, IStructureNode> GetNodes() {
-            // TODO: Реализовать метод получения всех дочерних нод
-            return null;
-        }
-
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}(группа) {this.Name}\n{string.Join("\n", this.Parameters.Select(kvp => kvp.Value.ToString(currPadding + deltaPadding, deltaPadding)))}";
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return $"{stringPadding}(группа) {this.Name}\n{string.Join("\n", this.Parameters.Select(kvp => kvp.Value.ToString("all")))}";
+                default:
+                    return string.Empty;
+            }
         }
     }
 
@@ -200,24 +257,28 @@ public class Macro : MacroProvider {
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
 
-        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, IStructureNode parent = null) {
+        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, IStructureNode parent, int padding, int delta) {
             this.Guid = parameterInfo.Guid;
             this.ID = parameterInfo.Id;
             this.Name = parameterInfo.Name;
             this.Root = root;
             this.Parent = parent;
             this.Status = CompareResult.НеОбработано;
+            this.Padding = padding;
+            this.Delta = delta;
         }
 
-        public Dictionary<Guid, IStructureNode> GetNodes() {
-            // TODO: Реализовать метод получения всех дочерних нод
-            return null;
-        }
-
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return $"{stringPadding}(Параметр) {this.Name}";
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return $"{stringPadding}(Параметр) {this.Name}";
+                default:
+                    return string.Empty;
+            }
         }
     }
 
@@ -228,11 +289,15 @@ public class Macro : MacroProvider {
         public IStructureNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
         public CompareResult Status { get; set; }
+        public int Padding { get; set; }
+        public int Delta { get; set; }
 
-        public StructureLink(int id, Guid guid, string name) {
+        public StructureLink(int id, Guid guid, string name, int padding, int delta) {
             this.Guid = guid;
             this.ID = id;
             this.Name = name;
+            this.Padding = padding;
+            this.Delta = delta;
         }
 
         public Dictionary<Guid, IStructureNode> GetNodes() {
@@ -240,9 +305,14 @@ public class Macro : MacroProvider {
             return null;
         }
 
-        public string ToString(int currPadding, int deltaPadding) {
-            string stringPadding = currPadding == 0 ? string.Empty : new string(' ', currPadding);
-            return string.Empty;
+        public string ToString(string type) {
+            string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
+            switch (type) {
+                case "all":
+                    return string.Empty;
+                default:
+                    return string.Empty;
+            }
         }
     }
 
