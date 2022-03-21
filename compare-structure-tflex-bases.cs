@@ -97,6 +97,17 @@ public class Macro : MacroProvider {
             }
         }
 
+        public void AddGuid(Guid guid) {
+            this.AllGuids.Add(guid);
+        }
+
+        public void AddNode(IStructureNode node) {
+            if (!this.AllNodes.ContainsKey(node.Guid))
+                this.AllNodes.Add(node.Guid, new List<IStructureNode>() { node });
+            else
+                this.AllNodes[node.Guid].Add(node);
+        }
+
         public string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
@@ -132,13 +143,10 @@ public class Macro : MacroProvider {
 
             this.Classes = new Dictionary<Guid, StructureClass>();
             foreach (ClassObject classObject in referenceInfo.Classes.AllClasses.Where(cl => cl is ClassObject)) {
-                this.Root.AllGuids.Add(classObject.Guid);
+                this.Root.AddGuid(classObject.Guid);
                 StructureClass structureClass = new StructureClass(classObject, this.Root, this, this.Padding + this.Delta, this.Delta);
                 this.Classes.Add(structureClass.Guid, structureClass);
-                if (!this.Root.AllNodes.ContainsKey(structureClass.Guid))
-                    this.Root.AllNodes.Add(structureClass.Guid, new List<IStructureNode>() { structureClass });
-                else
-                    this.Root.AllNodes[structureClass.Guid].Add(structureClass);
+                this.Root.AddNode(structureClass);
             }
         }
 
@@ -181,13 +189,10 @@ public class Macro : MacroProvider {
 
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
-                this.Root.AllGuids.Add(group.Guid);
+                this.Root.AddGuid(group.Guid);
                 StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this, this.Padding + this.Delta, this.Delta);
                 this.ParameterGroups.Add(parameterGroup.Guid, parameterGroup);
-                if (!this.Root.AllNodes.ContainsKey(parameterGroup.Guid))
-                    this.Root.AllNodes.Add(parameterGroup.Guid, new List<IStructureNode>() { parameterGroup });
-                else
-                    this.Root.AllNodes[parameterGroup.Guid].Add(parameterGroup);
+                this.Root.AddNode(parameterGroup);
             }
         }
 
@@ -229,13 +234,10 @@ public class Macro : MacroProvider {
 
             // Получаем параметры из группы параметров
             foreach (ParameterInfo parameterInfo in group.Parameters) {
-                this.Root.AllGuids.Add(parameterInfo.Guid);
+                this.Root.AddGuid(parameterInfo.Guid);
                 StructureParameter parameter = new StructureParameter(parameterInfo, this.Root, this, this.Padding + this.Delta, this.Delta);
                 this.Parameters.Add(parameter.Guid, parameter);
-                if (!this.Root.AllNodes.ContainsKey(parameter.Guid))
-                    this.Root.AllNodes.Add(parameter.Guid, new List<IStructureNode>() { parameter });
-                else
-                    this.Root.AllNodes[parameter.Guid].Add(parameter);
+                this.Root.AddNode(parameter);
             }
         }
 
