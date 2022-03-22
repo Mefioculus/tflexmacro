@@ -30,10 +30,12 @@ public class Macro : MacroProvider {
 
         StructureDataBase structure = new StructureDataBase(Context.Connection, "Рабочая база", startPadding, deltaPadding);
         Message($"Количество объектов {structure.FrendlyName}", structure.AllGuids.Count);
+        //Message($"Электронная структура объектов базы: {structure.FrendlyName}", structure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
 
         StructureDataBase otherStructure = GetStructureFromOtherServer(@"Gukovry", "TFLEX-DOCS:21324", "Макет", startPadding, deltaPadding);
         if (otherStructure != null) {
             Message($"Количество объектов {otherStructure.FrendlyName}", otherStructure.AllGuids.Count);
+            //Message($"Электронная структура объектов базы: {otherStructure.FrendlyName}", otherStructure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
         }
         
     }
@@ -53,47 +55,130 @@ public class Macro : MacroProvider {
     }
 
 
-    public interface IStructureNode {
+    public abstract class BaseNode {
+        // Основные параметры
         public Guid Guid { get; set; }
-        public int ID { get; set; }
+        public int Id { get; set; }
         public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
+
+        // Структурные параметры
+        public BaseNode Parent { get; set; }
         public StructureDataBase Root { get; set; }
+        public Dictionary<Guid, BaseNode> ChildNodes { get; set; } = new Dictionary<Guid, BaseNode>();
+
+        // Статус и отображение различия
         public CompareResult Status { get; set; }
+        public TypeOfNode Type { get; set; } = TypeOfNode.неопределено;
+        public List<string> Difference { get; set; } = new List<string>();
+        public string StringDifference => Difference.Count == 0 ? string.Empty : string.Join("; ", this.Difference);
+        public List<string> MissedNodes { get; set; } = new List<string>();
+
+        // Декоративные параметры
         public int Padding { get; set; }
         public int Delta { get; set; }
+        public string StringRepresentation => $"({this.Type.ToString()}) {this.Name} (ID: {this.Id.ToString()}; Guid: {this.Guid.ToString()})";
 
-        public string ToString(string type);
+        public void CompareWith(BaseNode otherNode) {
+            if (this.Guid != otherNode.Guid) {
+                throw new Exception($"Невозможно сравнить объекты с разными Guid: {this.Guid.ToString()} => {otherNode.Guid.ToString()}");
+            }
+
+            if (this.Type != otherNode.Type) {
+                throw new Exception($"Невозможно произвести сравнение объектов с разными типами: {this.Type} => {otherNode.Type}. ({this.Name})");
+            }
+
+            // Производим сравнение
+            bool diffId = this.Id != otherNode.Id;
+            bool diffName = this.Name != otherNode.Name;
+
+            if (diffId || diffName) {
+                if (diffId && diffName)
+                    this.Status = CompareResult.ПолноеРазличие;
+                else
+                    this.Status = diffId ? CompareResult.РазличиеId : CompareResult.РазличиеName;
+            }
+            else {
+                this.Status = CompareResult.ПолноеСоответствие;
+            }
+
+            if (diffId)
+                this.Difference.Add($"Id: '{this.Id}' => '{otherNode.Id}'");
+            if (diffName)
+                this.Difference.Add($"Name: '{this.Name}' => '{otherNode.Name}'");
+
+        }
+
+        public abstract void Compare(BaseNode node);
+        public abstract string ToString(string type);
     
     }
 
-    public class StructureDataBase {
-        public string Name { get; set; }
+    public class StructureDataBase : BaseNode {
+        // Поля, свойственные только корню
         public string FrendlyName { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
-        public Dictionary<Guid, StructureReference> References { get; set; }
-        public Dictionary<Guid, List<IStructureNode>> AllNodes { get; private set; }
-        public List<Guid> AllGuids { get; private set; }
+        public Dictionary<Guid, List<BaseNode>> AllNodes { get; private set; } = new Dictionary<Guid, List<BaseNode>>();
+        public List<Guid> AllGuids { get; private set; } = new List<Guid>();
 
         public StructureDataBase(ServerConnection connection, string frendlyName, int padding, int delta) {
+            this.Id = 0;
+            this.Guid = new Guid("00000000-0000-0000-0000-000000000000");
+            this.Parent = null;
+            this.Root = null;
+            this.Type = TypeOfNode.база;
+
             this.Name = connection.ServerName;
             this.FrendlyName = frendlyName;
             this.Padding = padding;
             this.Delta = delta;
 
-            this.AllNodes = new Dictionary<Guid, List<IStructureNode>>();
-            this.AllGuids = new List<Guid>();
-
-            this.References = new Dictionary<Guid, StructureReference>();
             foreach (ReferenceInfo refInfo in connection.ReferenceCatalog.GetReferences()) {
                 this.AllGuids.Add(refInfo.Guid);
                 StructureReference reference = new StructureReference(refInfo, this, null, this.Padding, this.Delta);
-                this.References.Add(reference.Guid, reference);
+                this.ChildNodes.Add(reference.Guid, reference);
                 if (!this.AllNodes.ContainsKey(reference.Guid))
-                    this.AllNodes.Add(reference.Guid, new List<IStructureNode>() { reference });
+                    this.AllNodes.Add(reference.Guid, new List<BaseNode>() { reference });
                 else
                     this.AllNodes[reference.Guid].Add(reference);
+            }
+        }
+
+        /*
+        public string GetInfoAboutItem(Guid guid, string type = "all") {
+            if (this.AllNodes.ContainsKey(guid)) {
+                return AllNodes[guid][0].ToString(type);
+            }
+            else return $"Не удалось найти Guid: {guid.ToString()}";
+        }
+        
+        public string GetInfoAboutItem(string stringGuid, string type = "all") {
+            return GetInfoAboutItem(new Guid(stringGuid), type);
+        }
+
+        */
+
+        public override void Compare(BaseNode node) {
+            StructureDataBase otherStructure = node as StructureDataBase;
+            if (otherStructure == null)
+                throw new Exception("Ошибка при сравнении объектов");
+            // Сравниваем все справочники
+            List<Guid> allReferenceGuidsInCurrentStructure = this.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
+            List<Guid> allReferenceGuidsInOtherStructure = otherStructure.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
+
+            var missingInCurrent = allReferenceGuidsInCurrentStructure.Except(allReferenceGuidsInOtherStructure);
+            var missingInOther = allReferenceGuidsInOtherStructure.Except(allReferenceGuidsInCurrentStructure);
+            var existInBoth = allReferenceGuidsInCurrentStructure.Intersect(allReferenceGuidsInOtherStructure);
+
+            foreach (Guid guid in missingInCurrent) {
+                this.MissedNodes.Add(otherStructure.ChildNodes[guid].StringRepresentation);
+            }
+
+            foreach (Guid guid in missingInOther) {
+                this.ChildNodes[guid].Status = CompareResult.Новый;
+            }
+
+            // Запускаем сравнение справочников, которые есть и в первой и во второй структуре
+            foreach (Guid guid in existInBoth) {
+                this.ChildNodes[guid].Compare(otherStructure.ChildNodes[guid]);
             }
         }
 
@@ -101,39 +186,30 @@ public class Macro : MacroProvider {
             this.AllGuids.Add(guid);
         }
 
-        public void AddNode(IStructureNode node) {
+        public void AddNode(BaseNode node) {
             if (!this.AllNodes.ContainsKey(node.Guid))
-                this.AllNodes.Add(node.Guid, new List<IStructureNode>() { node });
+                this.AllNodes.Add(node.Guid, new List<BaseNode>() { node });
             else
                 this.AllNodes[node.Guid].Add(node);
         }
 
-        public string ToString(string type) {
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
-                    return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.References.Select(kvp => $" {kvp.Value.ToString("all")}"))}";
+                    return $"Структура справочников сервера {this.Name}:\n\n{stringPadding}{string.Join("\n", this.ChildNodes.Select(kvp => $" {kvp.Value.ToString("all")}"))}";
                 default:
                     return string.Empty;
             }
         }
     }
 
-    public class StructureReference : IStructureNode {
-        public Guid Guid { get; set; }
-        public int ID { get; set; }
-        public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public CompareResult Status { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
-        
-        public Dictionary<Guid, StructureClass> Classes { get; set; }
+    public class StructureReference : BaseNode {
 
-        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, IStructureNode parent, int padding, int delta) {
+        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, BaseNode parent, int padding, int delta) {
+            this.Type = TypeOfNode.справочник;
             this.Guid = referenceInfo.Guid;
-            this.ID = referenceInfo.Id;
+            this.Id = referenceInfo.Id;
             this.Name = referenceInfo.Name;
             this.Parent = parent;
             this.Root = root;
@@ -141,42 +217,45 @@ public class Macro : MacroProvider {
             this.Padding = padding;
             this.Delta = delta;
 
-            this.Classes = new Dictionary<Guid, StructureClass>();
             foreach (ClassObject classObject in referenceInfo.Classes.AllClasses.Where(cl => cl is ClassObject)) {
                 this.Root.AddGuid(classObject.Guid);
                 StructureClass structureClass = new StructureClass(classObject, this.Root, this, this.Padding + this.Delta, this.Delta);
-                this.Classes.Add(structureClass.Guid, structureClass);
+                this.ChildNodes.Add(structureClass.Guid, structureClass);
                 this.Root.AddNode(structureClass);
             }
         }
 
-        public string ToString(string type) {
+        public override void Compare(BaseNode node) {
+
+            // Производим сравнение данной ноды
+            this.CompareWith(node);
+
+            // Запускаем сравнение для всех входящих нод
+
+
+            StructureReference otherReference = node as StructureReference;
+            if (otherReference == null)
+                throw new Exception("При сравнении объекта справочника возникла ошибка");
+
+        }
+
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
-                    return $"{stringPadding}(справочник) {this.Name}\n{string.Join("\n", this.Classes.Select(kvp => kvp.Value.ToString("all")))}";
+                    return $"{stringPadding}(справочник) {this.Name}\n{string.Join("\n", this.ChildNodes.Select(kvp => kvp.Value.ToString("all")))}";
                 default:
                     return string.Empty;
             }
         }
     }
 
-    public class StructureClass : IStructureNode {
-        public Guid Guid { get; set; }
-        public int ID { get; set; }
-        public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public CompareResult Status { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
-        
-        public Dictionary<Guid, StructureParameterGroup> ParameterGroups { get; set; }
-        public Dictionary<Guid, StructureLink> Links { get; set; }
+    public class StructureClass : BaseNode {
 
-        public StructureClass(ClassObject classObject, StructureDataBase root, IStructureNode parent, int padding, int delta) {
+        public StructureClass(ClassObject classObject, StructureDataBase root, BaseNode parent, int padding, int delta) {
+            this.Type = TypeOfNode.тип;
             this.Guid = classObject.Guid;
-            this.ID = classObject.Id;
+            this.Id = classObject.Id;
             this.Name = classObject.Name;
             this.Parent = parent;
             this.Root = root;
@@ -184,23 +263,24 @@ public class Macro : MacroProvider {
             this.Padding = padding;
             this.Delta = delta;
 
-            this.ParameterGroups = new Dictionary<Guid, StructureParameterGroup>();
-            this.Links = new Dictionary<Guid, StructureLink>();
-
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
                 this.Root.AddGuid(group.Guid);
                 StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this, this.Padding + this.Delta, this.Delta);
-                this.ParameterGroups.Add(parameterGroup.Guid, parameterGroup);
+                this.ChildNodes.Add(parameterGroup.Guid, parameterGroup);
                 this.Root.AddNode(parameterGroup);
             }
         }
 
-        public string ToString(string type) {
+        public override void Compare(BaseNode node) {
+            this.CompareWith(node);
+        }
+
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
-                    return $"{stringPadding}(тип) {this.Name}\n{string.Join("\n", this.ParameterGroups.Select(kvp => kvp.Value.ToString("all")))}";
+                    return $"{stringPadding}(тип) {this.Name}\n{string.Join("\n", this.ChildNodes.Select(kvp => kvp.Value.ToString("all")))}";
                 default:
                     return string.Empty;
             }
@@ -208,21 +288,12 @@ public class Macro : MacroProvider {
         
     }
 
-    public class StructureParameterGroup : IStructureNode {
-        public Guid Guid { get; set; }
-        public int ID { get; set; }
-        public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public CompareResult Status { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
+    public class StructureParameterGroup : BaseNode {
 
-        public Dictionary<Guid, StructureParameter> Parameters { get; set; }
-
-        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, IStructureNode parent, int padding, int delta) {
+        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, BaseNode parent, int padding, int delta) {
+            this.Type = TypeOfNode.группа;
             this.Guid = group.Guid;
-            this.ID = group.Id;
+            this.Id = group.Id;
             this.Name = group.Name;
             this.Parent = parent;
             this.Root = root;
@@ -230,41 +301,36 @@ public class Macro : MacroProvider {
             this.Padding = padding;
             this.Delta = delta;
 
-            this.Parameters = new Dictionary<Guid, StructureParameter>();
-
             // Получаем параметры из группы параметров
             foreach (ParameterInfo parameterInfo in group.Parameters) {
                 this.Root.AddGuid(parameterInfo.Guid);
                 StructureParameter parameter = new StructureParameter(parameterInfo, this.Root, this, this.Padding + this.Delta, this.Delta);
-                this.Parameters.Add(parameter.Guid, parameter);
+                this.ChildNodes.Add(parameter.Guid, parameter);
                 this.Root.AddNode(parameter);
             }
         }
 
-        public string ToString(string type) {
+        public override void Compare(BaseNode node) {
+            this.CompareWith(node);
+        }
+
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
-                    return $"{stringPadding}(группа) {this.Name}\n{string.Join("\n", this.Parameters.Select(kvp => kvp.Value.ToString("all")))}";
+                    return $"{stringPadding}(группа) {this.Name}\n{string.Join("\n", this.ChildNodes.Select(kvp => kvp.Value.ToString("all")))}";
                 default:
                     return string.Empty;
             }
         }
     }
 
-    public class StructureParameter : IStructureNode {
-        public Guid Guid { get; set; }
-        public int ID { get; set; }
-        public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public CompareResult Status { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
+    public class StructureParameter : BaseNode {
 
-        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, IStructureNode parent, int padding, int delta) {
+        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, BaseNode parent, int padding, int delta) {
+            this.Type = TypeOfNode.параметр;
             this.Guid = parameterInfo.Guid;
-            this.ID = parameterInfo.Id;
+            this.Id = parameterInfo.Id;
             this.Name = parameterInfo.Name;
             this.Root = root;
             this.Parent = parent;
@@ -273,7 +339,11 @@ public class Macro : MacroProvider {
             this.Delta = delta;
         }
 
-        public string ToString(string type) {
+        public override void Compare(BaseNode node) {
+            this.CompareWith(node);
+        }
+
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
@@ -284,30 +354,22 @@ public class Macro : MacroProvider {
         }
     }
 
-    public class StructureLink : IStructureNode {
-        public Guid Guid { get; set; }
-        public int ID { get; set; }
-        public string Name { get; set; }
-        public IStructureNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public CompareResult Status { get; set; }
-        public int Padding { get; set; }
-        public int Delta { get; set; }
+    public class StructureLink : BaseNode {
 
         public StructureLink(int id, Guid guid, string name, int padding, int delta) {
+            this.Type = TypeOfNode.связь;
             this.Guid = guid;
-            this.ID = id;
+            this.Id = id;
             this.Name = name;
             this.Padding = padding;
             this.Delta = delta;
         }
 
-        public Dictionary<Guid, IStructureNode> GetNodes() {
-            // TODO: Реализовать метод получения всех дочерних нод
-            return null;
+        public override void Compare(BaseNode node) {
+            this.CompareWith(node);
         }
 
-        public string ToString(string type) {
+        public override string ToString(string type) {
             string stringPadding = this.Padding == 0 ? string.Empty : new string(' ', this.Padding);
             switch (type) {
                 case "all":
@@ -323,8 +385,18 @@ public class Macro : MacroProvider {
         ПолноеСоответствие,
         Отсутствует,
         Новый,
-        ОтличаетсяНаименование,
-        ОтличаетсяID,
-        ОтличаетсяНаименованиеИID
+        РазличиеId,
+        РазличиеName,
+        ПолноеРазличие
+    }
+
+    public enum TypeOfNode {
+        неопределено,
+        база,
+        справочник,
+        тип,
+        группа,
+        параметр,
+        связь
     }
 }
