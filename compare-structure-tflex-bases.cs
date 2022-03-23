@@ -28,15 +28,20 @@ public class Macro : MacroProvider {
         int indent = 5;
 
         StructureDataBase structure = new StructureDataBase(Context.Connection, "Рабочая база", indent);
-        Message($"Количество объектов {structure.FrendlyName}", structure.AllGuids.Count);
-        Message($"Объекты {structure.FrendlyName}", structure.ToString("all"));
+        //Message($"Количество объектов {structure.FrendlyName}", structure.AllGuids.Count);
+        //Message($"Объекты {structure.FrendlyName}", structure.ToString("all"));
         //Message($"Электронная структура объектов базы: {structure.FrendlyName}", structure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
 
         StructureDataBase otherStructure = GetStructureFromOtherServer(@"Gukovry", "TFLEX-DOCS:21324", "Макет", indent);
         if (otherStructure != null) {
-            Message($"Количество объектов {otherStructure.FrendlyName}", otherStructure.AllGuids.Count);
+            //Message($"Количество объектов {otherStructure.FrendlyName}", otherStructure.AllGuids.Count);
             //Message($"Электронная структура объектов базы: {otherStructure.FrendlyName}", otherStructure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
         }
+
+        // Производим сравнение структур
+        structure.Compare(otherStructure);
+        Message("Разница", structure.ToString("difference"));
+        Message("Информация", "Работа макроса завершена");
         
     }
 
@@ -100,33 +105,51 @@ public class Macro : MacroProvider {
                 throw new Exception($"Невозможно произвести сравнение объектов с разными типами: {this.Type} => {otherNode.Type}. ({this["name"]})");
             }
 
-            // Производим сравнение
-            bool diffId = this["id"] != otherNode["id"];
-            bool diffName = this["name"] != otherNode["name"];
-
-            if (diffId || diffName) {
-                if (diffId && diffName)
-                    this.Status = CompareResult.ПолноеРазличие;
-                else
-                    this.Status = diffId ? CompareResult.РазличиеId : CompareResult.РазличиеName;
+            foreach (string key in this.Properties.Keys) {
+                if (this[key] != otherNode[key])
+                    this.Difference.Add($"[{key}]: {this[key]} => {otherNode[key]}");
             }
-            else {
+
+            if (this.Difference.Count == 0)
                 this.Status = CompareResult.ПолноеСоответствие;
-            }
-
-            if (diffId)
-                this.Difference.Add($"Id: '{this["id"]}' => '{otherNode["id"]}'");
-            if (diffName)
-                this.Difference.Add($"Name: '{this["name"]}' => '{otherNode["name"]}'");
-
+            else if (this.Difference.Count == this.Properties.Count)
+                this.Status = CompareResult.ПолноеРазличие;
+            else
+                this.Status = CompareResult.ЧастичноеРазличие;
         }
 
-        public abstract void Compare(BaseNode node);
+        public void Compare(BaseNode otherNode) {
+            this.CompareWith(otherNode);
+
+            // Сравниваем все справочники
+            List<Guid> allReferenceGuidsInCurrentStructure = this.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
+            List<Guid> allReferenceGuidsInOtherStructure = otherNode.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
+
+            var missingInOther = allReferenceGuidsInCurrentStructure.Except(allReferenceGuidsInOtherStructure);
+            var missingInCurrent = allReferenceGuidsInOtherStructure.Except(allReferenceGuidsInCurrentStructure);
+            var existInBoth = allReferenceGuidsInCurrentStructure.Intersect(allReferenceGuidsInOtherStructure);
+
+            foreach (Guid guid in missingInCurrent) {
+                this.MissedNodes.Add(otherNode.ChildNodes[guid].StringRepresentation);
+            }
+
+            foreach (Guid guid in missingInOther) {
+                this.ChildNodes[guid].Status = CompareResult.Новый;
+            }
+
+            // Запускаем сравнение справочников, которые есть и в первой и во второй структуре
+            foreach (Guid guid in existInBoth) {
+                this.ChildNodes[guid].Compare(otherNode.ChildNodes[guid]);
+            }
+        }
+
         public string ToString(string type) {
             string indent = (this.Level == 0) || (this.Indent == 0) ? string.Empty : new string(' ', (int)(this.Level * this.Indent));
             switch (type) {
                 case "all":
-                    return $"{indent}({this.Type.ToString()}){this["name"]}\n{string.Join("\n", this.ChildNodes.Select(kvp => kvp.Value.ToString(type)))}";
+                    return $"{indent}({this.Type.ToString()}) {this["name"]}\n{string.Join(string.Empty, this.ChildNodes.Select(kvp => kvp.Value.ToString(type)))}";
+                case "difference":
+                    return $"- {this.StringDifference}\n{string.Join(string.Empty, this.ChildNodes.Select(kvp => kvp.Value.ToString(type)))}";
                 default:
                     return string.Empty;
             }
@@ -164,46 +187,6 @@ public class Macro : MacroProvider {
             }
         }
 
-        /*
-        public string GetInfoAboutItem(Guid guid, string type = "all") {
-            if (this.AllNodes.ContainsKey(guid)) {
-                return AllNodes[guid][0].ToString(type);
-            }
-            else return $"Не удалось найти Guid: {guid.ToString()}";
-        }
-        
-        public string GetInfoAboutItem(string stringGuid, string type = "all") {
-            return GetInfoAboutItem(new Guid(stringGuid), type);
-        }
-
-        */
-
-        public override void Compare(BaseNode node) {
-            StructureDataBase otherStructure = node as StructureDataBase;
-            if (otherStructure == null)
-                throw new Exception("Ошибка при сравнении объектов");
-            // Сравниваем все справочники
-            List<Guid> allReferenceGuidsInCurrentStructure = this.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
-            List<Guid> allReferenceGuidsInOtherStructure = otherStructure.ChildNodes.Select(kvp => kvp.Key).ToList<Guid>();
-
-            var missingInCurrent = allReferenceGuidsInCurrentStructure.Except(allReferenceGuidsInOtherStructure);
-            var missingInOther = allReferenceGuidsInOtherStructure.Except(allReferenceGuidsInCurrentStructure);
-            var existInBoth = allReferenceGuidsInCurrentStructure.Intersect(allReferenceGuidsInOtherStructure);
-
-            foreach (Guid guid in missingInCurrent) {
-                this.MissedNodes.Add(otherStructure.ChildNodes[guid].StringRepresentation);
-            }
-
-            foreach (Guid guid in missingInOther) {
-                this.ChildNodes[guid].Status = CompareResult.Новый;
-            }
-
-            // Запускаем сравнение справочников, которые есть и в первой и во второй структуре
-            foreach (Guid guid in existInBoth) {
-                this.ChildNodes[guid].Compare(otherStructure.ChildNodes[guid]);
-            }
-        }
-
         public void AddGuid(Guid guid) {
             this.AllGuids.Add(guid);
         }
@@ -238,20 +221,6 @@ public class Macro : MacroProvider {
             }
         }
 
-        public override void Compare(BaseNode node) {
-
-            // Производим сравнение данной ноды
-            this.CompareWith(node);
-
-            // Запускаем сравнение для всех входящих нод
-
-
-            StructureReference otherReference = node as StructureReference;
-            if (otherReference == null)
-                throw new Exception("При сравнении объекта справочника возникла ошибка");
-
-        }
-
     }
 
     public class StructureClass : BaseNode {
@@ -274,10 +243,6 @@ public class Macro : MacroProvider {
                 this.ChildNodes.Add(parameterGroup.Guid, parameterGroup);
                 this.Root.AddNode(parameterGroup);
             }
-        }
-
-        public override void Compare(BaseNode node) {
-            this.CompareWith(node);
         }
 
     }
@@ -304,10 +269,6 @@ public class Macro : MacroProvider {
             }
         }
 
-        public override void Compare(BaseNode node) {
-            this.CompareWith(node);
-        }
-
     }
 
     public class StructureParameter : BaseNode {
@@ -324,10 +285,6 @@ public class Macro : MacroProvider {
             this.Level = this.Parent.Level + 1;
         }
 
-        public override void Compare(BaseNode node) {
-            this.CompareWith(node);
-        }
-
     }
 
     public class StructureLink : BaseNode {
@@ -341,20 +298,15 @@ public class Macro : MacroProvider {
             this.Level = this.Parent.Level + 1;
         }
 
-        public override void Compare(BaseNode node) {
-            this.CompareWith(node);
-        }
-
     }
 
     public enum CompareResult {
         НеОбработано,
         ПолноеСоответствие,
+        ПолноеРазличие,
+        ЧастичноеРазличие,
         Отсутствует,
-        Новый,
-        РазличиеId,
-        РазличиеName,
-        ПолноеРазличие
+        Новый
     }
 
     public enum TypeOfNode {
