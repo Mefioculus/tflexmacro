@@ -42,6 +42,7 @@ public class Macro : MacroProvider {
 
         // Производим сравнение структур
         structure.Compare(otherStructure);
+        //Message("Вывод структуры", structure.ToString());
         Message("Разница", structure.PrintDifferences());
         Message("Информация", "Работа макроса завершена");
         
@@ -74,10 +75,10 @@ public class Macro : MacroProvider {
 
         // Статус и отображение различия
         public CompareResult Status { get; set; }
-        public TypeOfNode Type { get; set; } = TypeOfNode.неопределено;
-        public List<string> Difference { get; set; } = new List<string>();
-        public string StringDifference => GetStringRepresentationOfDifference();
+        public TypeOfNode Type { get; set; } = TypeOfNode.UDF;
+        public List<string> Differences { get; set; } = new List<string>();
         public List<string> MissedNodes { get; set; } = new List<string>();
+
         public bool IsVisibleForDiffReport { get; set; } = false;
 
         // Декоративные параметры
@@ -89,10 +90,12 @@ public class Macro : MacroProvider {
         public BaseNode(StructureDataBase root, BaseNode parent, int indent, TypeOfNode type) {
             this.Root = root != null ? root : (StructureDataBase)this;
             this.Parent = parent;
-            this.Indent = this.Root != null ? this.Root.Indent : indent;
+            //this.Indent = this.Root != null ? this.Root.Indent : indent;
+            this.Indent = 5;
             this.Type = type;
             this.Level = this.Parent == null ? 0 : this.Parent.Level + 1;
             this.IndentString = GetIndentString();
+            this.Status = CompareResult.NTP;
         }
 
         public BaseNode(StructureDataBase root, BaseNode parent, TypeOfNode type) : this(root, parent, 5, type) {
@@ -123,15 +126,13 @@ public class Macro : MacroProvider {
 
             foreach (string key in this.Properties.Keys) {
                 if ((this[key] != otherNode[key]) && !this.Root.ExcludedKeys[this.Type].Contains(key))
-                    this.Difference.Add($"[{key}]: {this[key]} => {otherNode[key]}");
+                    this.Differences.Add($"[{key}]: {this[key]} => {otherNode[key]}");
             }
 
-            if (this.Difference.Count == 0)
-                this.Status = CompareResult.ПолноеСоответствие;
-            else if (this.Difference.Count == this.Properties.Count)
-                this.Status = CompareResult.ПолноеРазличие;
+            if (this.Differences.Count == 0)
+                this.Status = CompareResult.EQL;
             else
-                this.Status = CompareResult.ЧастичноеРазличие;
+                this.Status = CompareResult.DIF;
         }
 
         public void Compare(BaseNode otherNode) {
@@ -150,7 +151,10 @@ public class Macro : MacroProvider {
             }
 
             foreach (Guid guid in missingInOther) {
-                this.ChildNodes[guid].Status = CompareResult.Новый;
+                this.ChildNodes[guid].Status = CompareResult.NEW;
+                this.ChildNodes[guid].SetAllChildNodesStatus(CompareResult.NEW);
+                //this.ChildNodes[guid].SetAllChildNodesVisible(); // - Данную строку следует распомментировать, если нужно сделать видимыми все дочерние элементы нового объекта (которые тоже соответственно будут новыми)
+                this.ChildNodes[guid].IsVisibleForDiffReport = true;
             }
 
             // Запускаем сравнение справочников, которые есть и в первой и во второй структуре
@@ -160,6 +164,20 @@ public class Macro : MacroProvider {
 
             if (this.HaveDifference())
                 SetAllParentsToVisible();
+        }
+
+        private void SetAllChildNodesStatus(CompareResult status) {
+            this.Status = status;
+            foreach (BaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
+                node.SetAllChildNodesStatus(status);
+            }
+        }
+
+        private void SetAllChildNodesVisible() {
+            this.IsVisibleForDiffReport = true;
+            foreach (BaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
+                node.SetAllChildNodesVisible();
+            }
         }
 
         private void SetAllParentsToVisible() {
@@ -174,11 +192,11 @@ public class Macro : MacroProvider {
         }
 
         private bool HaveDifference() {
-            if (this.Difference.Count != 0)
+            if (this.Differences.Count != 0)
                 return true;
             if (this.MissedNodes.Count != 0)
                 return true;
-            if (this.Status == CompareResult.Новый)
+            if (this.Status == CompareResult.NEW)
                 return true;
             return false;
         }
@@ -187,30 +205,30 @@ public class Macro : MacroProvider {
             return this.Level != 0 ? new string(' ', (int)(this.Level * this.Indent)) : string.Empty;
         }
 
-        private string GetStringRepresentationOfDifference() {
-            StringBuilder result = new StringBuilder();
-
-            if (this.HaveDifference()) {
-                result.AppendLine(this.StringRepresentation);
-                if (this.Difference.Count != 0) {
-                    result.AppendLine("Обнаруженные отличия:");
-                    result.AppendLine(string.Join("; ", this.Difference));
-                }
-                if (this.MissedNodes.Count != 0) {
-                    result.AppendLine("Отсутствующие объекты:");
-                    result.AppendLine(string.Join("\n", this.MissedNodes));
-                }
-            }
-
-            return result.ToString();
-        }
-
         public string PrintDifferences() {
-            return string.Empty;
+            string tree = $"{this.IndentString}({this.Type.ToString()})"; // Строковое представление входимости объектов и их тип
+            string name = this["name"]; // Имя объекта
+            string stat = this.Status.ToString(); // Статус объекта
+            string diff = this.Differences.Count.ToString(); // Количество отличий
+            string nw = this.ChildNodes.Where(kvp => kvp.Value.Status == CompareResult.NEW).Count().ToString(); // Количество новых
+            string miss = this.MissedNodes.Count.ToString(); // Количество отсутствующих
+            string childElements = string.Join(string.Empty, this.ChildNodes.Where(kvp => kvp.Value.IsVisibleForDiffReport).Select(kvp => kvp.Value.PrintDifferences())); // Информация по входяхим элементам
+
+            // Получаем детальную информацию о позиции
+            StringBuilder details = new StringBuilder();
+            if ((this.Differences.Count != 0) || this.MissedNodes.Count != 0)
+                details.AppendLine();
+            foreach (string difference in this.Differences)
+                details.AppendLine($"{"--DETAILS--  ", 26}- (diff){difference}");
+            foreach (string missed in this.MissedNodes)
+                details.AppendLine($"{"--DETAILS--  ", 26}- (miss){missed}");
+
+
+            return $"{tree, -25} {name,-80} (stat: {stat, 3}, diff: {diff, 2}, new: {nw, 2}, miss: {miss, 2}){details}\n{childElements}";
         }
 
         public override string ToString() {
-            return $"{this.IndentString}({this.Type.ToString()}) {this["name"]}\n{string.Join(string.Empty, this.ChildNodes.Select(kvp => kvp.Value.ToString()))}";
+            return $"{this.IndentString}({this.Type.ToString()}) {this["name"]} ({this.Status})\n{string.Join(string.Empty, this.ChildNodes.Select(kvp => kvp.Value.ToString()))}";
         }
     
     }
@@ -224,7 +242,7 @@ public class Macro : MacroProvider {
         // Словарь с исключениями
         public Dictionary<TypeOfNode, List<string>> ExcludedKeys { get; private set; } = new Dictionary<TypeOfNode, List<string>>();
 
-        public StructureDataBase(ServerConnection connection, string frendlyName, int indent) : base(null, null, indent, TypeOfNode.база) {
+        public StructureDataBase(ServerConnection connection, string frendlyName, int indent) : base(null, null, indent, TypeOfNode.SRV) {
             this.FrendlyName = frendlyName;
 
             this.Guid = new Guid("00000000-0000-0000-0000-000000000000");
@@ -250,7 +268,7 @@ public class Macro : MacroProvider {
         }
 
         public void ExcludeKey(string key, TypeOfNode type) {
-            if (type == TypeOfNode.неопределено)
+            if (type == TypeOfNode.UDF)
                 throw new Exception("При добавлении исключения не поддерживается неопределенный тип объекта");
 
             if (this.ExcludedKeys.ContainsKey(type))
@@ -274,11 +292,10 @@ public class Macro : MacroProvider {
 
     public class StructureReference : BaseNode {
 
-        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.справочник) {
+        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.REF) {
             this.Guid = referenceInfo.Guid;
             this["id"] = referenceInfo.Id.ToString();
             this["name"] = referenceInfo.Name;
-            this.Status = CompareResult.НеОбработано;
 
             foreach (ClassObject classObject in referenceInfo.Classes.AllClasses.Where(cl => cl is ClassObject)) {
                 this.Root.AddGuid(classObject.Guid);
@@ -292,11 +309,10 @@ public class Macro : MacroProvider {
 
     public class StructureClass : BaseNode {
 
-        public StructureClass(ClassObject classObject, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.тип) {
+        public StructureClass(ClassObject classObject, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.TYP) {
             this.Guid = classObject.Guid;
             this["id"] = classObject.Id.ToString();
             this["name"] = classObject.Name;
-            this.Status = CompareResult.НеОбработано;
 
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
@@ -311,11 +327,10 @@ public class Macro : MacroProvider {
 
     public class StructureParameterGroup : BaseNode {
 
-        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.группа) {
+        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.GRP) {
             this.Guid = group.Guid;
             this["id"] = group.Id.ToString();
             this["name"] = group.Name;
-            this.Status = CompareResult.НеОбработано;
 
             // Получаем параметры из группы параметров
             foreach (ParameterInfo parameterInfo in group.Parameters) {
@@ -330,18 +345,17 @@ public class Macro : MacroProvider {
 
     public class StructureParameter : BaseNode {
 
-        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.параметр) {
+        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.PRM) {
             this.Guid = parameterInfo.Guid;
             this["id"] = parameterInfo.Id.ToString();
             this["name"] = parameterInfo.Name;
-            this.Status = CompareResult.НеОбработано;
         }
 
     }
 
     public class StructureLink : BaseNode {
 
-        public StructureLink(StructureDataBase root, BaseNode parent, int id, Guid guid, string name) : base(root, parent, TypeOfNode.связь) {
+        public StructureLink(StructureDataBase root, BaseNode parent, int id, Guid guid, string name) : base(root, parent, TypeOfNode.LNK) {
             this.Guid = guid;
             this["id"] = id.ToString();
             this["name"] = name;
@@ -350,21 +364,19 @@ public class Macro : MacroProvider {
     }
 
     public enum CompareResult {
-        НеОбработано,
-        РазницаВПотомках,
-        ПолноеСоответствие,
-        ПолноеРазличие,
-        ЧастичноеРазличие,
-        Новый
+        NTP, //Не обработано
+        EQL, //Соответствует
+        DIF, //Есть разница 
+        NEW  //Новый (отсутствует в сравниваемом справочнике)
     }
 
     public enum TypeOfNode {
-        неопределено,
-        база,
-        справочник,
-        тип,
-        группа,
-        параметр,
-        связь
+        UDF, //Не определено
+        SRV, //Сервер
+        REF, //Справочник
+        TYP, //Тип
+        GRP, //Группа
+        PRM, //Параметр
+        LNK  //Связь
     }
 }
