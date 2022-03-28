@@ -28,24 +28,56 @@ public class Macro : MacroProvider {
     public override void Run() {
         int indent = 5;
 
-        StructureDataBase structure = new StructureDataBase(Context.Connection, "Рабочая база", indent);
-        structure.ExcludeKey("id");
-        //Message($"Количество объектов {structure.FrendlyName}", structure.AllGuids.Count);
-        //Message($"Объекты {structure.FrendlyName}", structure.ToString("all"));
-        //Message($"Электронная структура объектов базы: {structure.FrendlyName}", structure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
+        // Названия полей
+        string serverNameField = "Имя сервера";
+        string frendlyNameField = "Короткое название базы";
+        string userNameField = "Имя пользователя";
+        string passwordField = "Пароль";
+        string pathToSaveDiffField = "Путь для сохранения отчета";
+        //string directionOfCompare = "Обратное сравнение";
 
-        StructureDataBase otherStructure = GetStructureFromOtherServer(@"Gukovry", "TFLEX-DOCS:21324", "Макет", indent);
-        if (otherStructure != null) {
-            //Message($"Количество объектов {otherStructure.FrendlyName}", otherStructure.AllGuids.Count);
-            //Message($"Электронная структура объектов базы: {otherStructure.FrendlyName}", otherStructure.GetInfoAboutItem("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
+        // Переменные
+
+        string serverName = "TFLEX-DOCS:21324";
+        string userName = "Gukovry";
+        string frendlyName = "Макет";
+        string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "result.txt");
+        string password = "123";
+
+        InputDialog dialog = new InputDialog(this.Context, "Укажите параметры для подключения к базе данных");
+        dialog.AddString(serverNameField, serverName);
+        dialog.AddString(frendlyNameField, frendlyName);
+        dialog.AddString(userNameField, userName);
+        dialog.AddString(passwordField, password);
+        dialog.AddString(pathToSaveDiffField, pathToFile);
+
+        if (dialog.Show()) {
+            serverName = dialog[serverNameField];
+            userName = dialog[userNameField];
+            frendlyName = dialog[frendlyNameField];
+            pathToFile = dialog[pathToSaveDiffField];
+            password = dialog[passwordField];
+
+            // Приступаем к чтению данных
+            StructureDataBase structure = new StructureDataBase(Context.Connection, "Текущая база", indent);
+            structure.ExcludeKey("id");
+            StructureDataBase otherStructure = GetStructureFromOtherServer(userName, serverName, frendlyName, indent);
+
+            // Производим сравнение данных
+            structure.Compare(otherStructure);
+
+            // Производим запись в файл
+            File.WriteAllText(pathToFile, structure.PrintDifferences());
+
+            // Прозводим открытие файла в блокноте
+            System.Diagnostics.Process notepad = new System.Diagnostics.Process();
+            notepad.StartInfo.FileName = "notepad.exe";
+            notepad.StartInfo.Arguments = pathToFile;
+            notepad.Start();
+
         }
-
-        // Производим сравнение структур
-        structure.Compare(otherStructure);
-        //Message("Вывод структуры", structure.ToString());
-        Message("Разница", structure.PrintDifferences());
-        Message("Информация", "Работа макроса завершена");
-        
+        else
+            return;
     }
 
     private StructureDataBase GetStructureFromOtherServer(string userName, string serverAddress, string dataBaseFrendlyName, int indent) {
@@ -277,6 +309,12 @@ public class Macro : MacroProvider {
                 this.ExcludedKeys[type] = new List<string>() { key };
         }
 
+        public BaseNode GetInfoAboutReference(Guid guid) {
+            if (this.AllNodes.ContainsKey(guid))
+                return this.ChildNodes[guid];
+            return null;
+        }
+
         public void AddGuid(Guid guid) {
             this.AllGuids.Add(guid);
         }
@@ -317,9 +355,17 @@ public class Macro : MacroProvider {
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
                 this.Root.AddGuid(group.Guid);
-                StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this);
-                this.ChildNodes.Add(parameterGroup.Guid, parameterGroup);
-                this.Root.AddNode(parameterGroup);
+
+                if (group.IsLinkGroup) {
+                    StructureLink link = new StructureLink(group, this.Root, this);
+                    this.ChildNodes.Add(link.Guid, link);
+                    this.Root.AddNode(link);
+                }
+                else {
+                    StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this);
+                    this.ChildNodes.Add(parameterGroup.Guid, parameterGroup);
+                    this.Root.AddNode(parameterGroup);
+                }
             }
         }
 
@@ -355,10 +401,11 @@ public class Macro : MacroProvider {
 
     public class StructureLink : BaseNode {
 
-        public StructureLink(StructureDataBase root, BaseNode parent, int id, Guid guid, string name) : base(root, parent, TypeOfNode.LNK) {
-            this.Guid = guid;
-            this["id"] = id.ToString();
-            this["name"] = name;
+        public StructureLink(ParameterGroup group, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.LNK) {
+            this.Guid = group.Guid;
+            this["id"] = group.Id.ToString();
+            this["name"] = group.Name;
+            this["type"] = group.LinkType.ToString();
         }
 
     }
