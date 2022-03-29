@@ -8,7 +8,6 @@ using TFlex.DOCs.Model.Desktop;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.References;
-// using TFlex.DOCs.Model.References.Files; // Для работы с файловым справочником
 // using TFlex.DOCs.Model.Classes; // Для работы с классами
 using TFlex.DOCs.Model.Stages; // Для работы со стадиями
 
@@ -17,6 +16,12 @@ using TFlex.DOCs.Model.FilePreview.CADService;
 
 using TFlex.DOCs.Model.References.Reporting;
 using TFlex.DOCs.Common;
+
+// Для отправки уведомлений
+using TFlex.DOCs.Model.Mail;
+using TFlex.DOCs.Model.References.Users;
+using TFlex.DOCs.Model.References.Files;
+
 
 //using TFlex.DOCs.UI.Utils.Helpers;
 
@@ -74,6 +79,7 @@ public class Macro : MacroProvider
             public static Guid НомерПротокола = new Guid("d662eed7-c2a2-41fc-9b35-05e527349cc7");
             public static Guid ДатаПротокола = new Guid("3ba03308-123b-4840-bc78-bc0fdcb1de4f");
             public static Guid СводноеНаименованиеПротокола = new Guid("7b4b4de4-70b0-4a1c-83ce-20d2adf9f4f6");
+            public static Guid Заказчик = new Guid("04deee06-ef48-4538-b82f-5e0e3b463687");
             // Параметры для передачи данных в отчет
             public static Guid ПараметрВидТаблицы = new Guid("5ee7e25b-e56a-4f62-abb0-f092fc0bdb27");
             //
@@ -161,6 +167,7 @@ public class Macro : MacroProvider
 
         public static class Links {
             public static Guid СправочныеМатериалыМагнитнаяЛаборатория = new Guid("c543586f-17ce-4731-9690-bfddd0f10a4b");
+            public static Guid ПодлинникПротокола = new Guid("5545694e-602c-4090-bb9f-1453aa54845b");
         }
 
         public static class Stages {
@@ -235,7 +242,107 @@ public class Macro : MacroProvider
 
             // Автоматическое применение изменений файла отчета
             Desktop.CheckIn(reportContext.ReportFileObject, string.Format("Автоматическое формирование отчета для свидетельства №{0} архива ЦЗЛ", attachment[Guids.Props.СводноеНаименованиеПротокола].Value.ToString()), false);
+            
+            // Отправка уведомлений
+            SendNotification(attachment);
+
         }
+    }
+
+    private void SendNotification(ReferenceObject protocol) {
+        //TODO: Написать код рассылки уведомлений на основе заполненного параметра "Заказчик"
+
+        // Для начала определяем заказчика
+        string client = ((string)protocol[Guids.Props.Заказчик].Value).ToLower().Trim();
+
+        // Перечень людей для оповещения
+        Dictionary<int, List<User>> UsersToNotificate = new Dictionary<int, List<User>>() {
+            [0] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("dcc50bcc-1911-4515-b9f2-0fa778d032fd")) as User, // Гуков Руслан Юрьевич 
+                Context.Connection.References.Users.Find(new Guid("db7abe3d-77dc-4b00-ae76-443724fa20ad")) as User, // Гуков Руслан Юрьевич 
+                Context.Connection.References.Users.Find(new Guid("1c98e8e1-c248-4117-bc39-5b0ed43abd28")) as User // Гуков Руслан Юрьевич 
+            },
+            [1] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("d63fc678-fc69-4fb7-8849-61b6872fd24f")) as User // Першина Галина Анатольевна
+            },
+            [5] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("f2c473de-7409-4011-a0bb-41203d93908f")) as User // Смирнова Марина Анатольевна
+            },
+            [16] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("12c080c7-ac83-4bff-bf55-cfe97cc7c466")) as User // Паршин Александр Николаевич
+            },
+            [17] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("53f4ce42-8bc5-43cb-b72f-9670001cd4d3")) as User // Борисенко Андрей Александрович
+            },
+            [22] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("22c58303-f231-4388-9aeb-9d745d68dad1")) as User // Лыгина Светлана Викторовна 
+            },
+            [23] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("22c58303-f231-4388-9aeb-9d745d68dad1")) as User // Лыгина Светлана Викторовна
+            },
+            [24] = new List<User>() {
+                Context.Connection.References.Users.Find(new Guid("41a58cc1-03f9-4088-bd54-7e5de89ac17d")) as User // Шаприцкий Михаил Львович
+            },
+        };
+
+        switch (client) {
+            case "цех №1":
+                SendMailTo(UsersToNotificate[1], protocol);
+                break;
+            case "цех №5":
+                SendMailTo(UsersToNotificate[5], protocol);
+                break;
+            case "цех №16":
+                SendMailTo(UsersToNotificate[16], protocol);
+                break;
+            case "цех №17":
+                SendMailTo(UsersToNotificate[17], protocol);
+                break;
+            case "цех №22":
+                SendMailTo(UsersToNotificate[22], protocol);
+                break;
+            case "цех №23":
+                SendMailTo(UsersToNotificate[23], protocol);
+                break;
+            case "цех №24":
+                SendMailTo(UsersToNotificate[24], protocol);
+                break;
+            default:
+                SendMailTo(UsersToNotificate[0], protocol);
+                break;
+        }
+    }
+
+    private void SendMailTo(List<User> users, ReferenceObject protocol) {
+        // Получаем название протокола
+        string protocolName = (string)protocol[Guids.Props.СводноеНаименованиеПротокола].Value;
+
+        // Создаем новое сообщение
+        MailMessage message = new MailMessage(Context.Connection.Mail.DOCsAccount) {
+            Subject = $"Протокол {protocolName}",
+            Body = $"Согласование протокола '{protocolName}' завершено"
+        };
+
+        // Добавляем адресатов
+        foreach (User user in users) {
+            MailUser mUser = new MailUser(user);
+            message.To.Add(new EMailAddress(user.Email));
+            message.To.Add(mUser);
+        }
+
+        FileObject fileOfProtocol = protocol.GetObject(Guids.Links.ПодлинникПротокола) as FileObject;
+
+        if (fileOfProtocol != null) {
+            fileOfProtocol.GetHeadRevision();
+            string pathToAttachment = fileOfProtocol.LocalPath;
+
+            // Прикрепляем к письму файл протокола
+            if (File.Exists(pathToAttachment))
+                message.Attachments.Add(new FileAttachment(pathToAttachment));
+        }
+
+        // Отправляем сообщение
+        message.Send();
     }
 
     private void ChangeStage(ReferenceObject refObj, Guid guidOfStage) {
