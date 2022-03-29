@@ -250,17 +250,13 @@ public class Macro : MacroProvider
     }
 
     private void SendNotification(ReferenceObject protocol) {
-        //TODO: Написать код рассылки уведомлений на основе заполненного параметра "Заказчик"
-
         // Для начала определяем заказчика
         string client = ((string)protocol[Guids.Props.Заказчик].Value).ToLower().Trim();
 
         // Перечень людей для оповещения
         Dictionary<int, List<User>> UsersToNotificate = new Dictionary<int, List<User>>() {
             [0] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("dcc50bcc-1911-4515-b9f2-0fa778d032fd")) as User, // Гуков Руслан Юрьевич 
-                Context.Connection.References.Users.Find(new Guid("db7abe3d-77dc-4b00-ae76-443724fa20ad")) as User, // Гуков Руслан Юрьевич 
-                Context.Connection.References.Users.Find(new Guid("1c98e8e1-c248-4117-bc39-5b0ed43abd28")) as User // Гуков Руслан Юрьевич 
+                Context.Connection.References.Users.Find(new Guid("dcc50bcc-1911-4515-b9f2-0fa778d032fd")) as User // Гуков Руслан Юрьевич 
             },
             [1] = new List<User>() {
                 Context.Connection.References.Users.Find(new Guid("d63fc678-fc69-4fb7-8849-61b6872fd24f")) as User // Першина Галина Анатольевна
