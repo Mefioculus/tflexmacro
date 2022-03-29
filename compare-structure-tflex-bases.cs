@@ -34,7 +34,7 @@ public class Macro : MacroProvider {
         string userNameField = "Имя пользователя";
         string passwordField = "Пароль";
         string pathToSaveDiffField = "Путь для сохранения отчета";
-        //string directionOfCompare = "Обратное сравнение";
+        string directionOfCompareField = "Обратное сравнение";
 
         // Переменные
 
@@ -50,6 +50,7 @@ public class Macro : MacroProvider {
         dialog.AddString(userNameField, userName);
         dialog.AddString(passwordField, password);
         dialog.AddString(pathToSaveDiffField, pathToFile);
+        dialog.AddFlag(directionOfCompareField, false);
 
         if (dialog.Show()) {
             serverName = dialog[serverNameField];
@@ -60,14 +61,18 @@ public class Macro : MacroProvider {
 
             // Приступаем к чтению данных
             StructureDataBase structure = new StructureDataBase(Context.Connection, "Текущая база", indent);
-            structure.ExcludeKey("id");
             StructureDataBase otherStructure = GetStructureFromOtherServer(userName, serverName, frendlyName, indent);
+            structure.ExcludeKey("id");
+            otherStructure.ExcludeKey("id");
 
-            // Производим сравнение данных
-            structure.Compare(otherStructure);
-
-            // Производим запись в файл
-            File.WriteAllText(pathToFile, structure.PrintDifferences());
+            if (dialog[directionOfCompareField] == false) {
+                structure.Compare(otherStructure);
+                File.WriteAllText(pathToFile, structure.PrintDifferences());
+            }
+            else {
+                otherStructure.Compare(structure);
+                File.WriteAllText(pathToFile, otherStructure.PrintDifferences());
+            }
 
             // Прозводим открытие файла в блокноте
             System.Diagnostics.Process notepad = new System.Diagnostics.Process();
@@ -395,6 +400,11 @@ public class Macro : MacroProvider {
             this.Guid = parameterInfo.Guid;
             this["id"] = parameterInfo.Id.ToString();
             this["name"] = parameterInfo.Name;
+            this["length"] = parameterInfo.Length.ToString();
+            this["nullable"] = parameterInfo.Nullable.ToString();
+            this["typename"] = parameterInfo.TypeName != null ? parameterInfo.TypeName : "null";
+            this["unit"] = parameterInfo.Unit != null ? parameterInfo.Unit.Name : "null";
+            this["values"] = parameterInfo.ValueList != null ? string.Join("; ", parameterInfo.ValueList.Select(item => $"{item.Name} - {item.Value}")) : "null";
         }
 
     }
