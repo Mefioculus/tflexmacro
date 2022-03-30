@@ -73,6 +73,7 @@ public class Macro : MacroProvider
             public static Guid КонтролируемыеПараметры = new Guid("93b19910-3553-4f36-9dd7-f81e42e2739d");
             public static Guid ФактическиеПоказания = new Guid("a6f224ab-6044-472b-8e32-5780d2148e39");
             public static Guid ОбразцыМагнитнойЛаборатории = new Guid("784e5bb5-8247-4a47-bf78-7fc5033a2a6c");
+            public static Guid КомпонентыЭлектролита = new Guid("fd3ca50d-79c1-4237-91f5-b65ecf706d27");
         }
 
         public static class Props {
@@ -163,11 +164,18 @@ public class Macro : MacroProvider
             public static Guid ТипСтандартаМагнитнаяЛаборатория = new Guid("2c1890c0-e0d4-40dc-b680-94e49130efe9");
             public static Guid СтандартМагнитнаяЛаборатория = new Guid("7892a0b0-9d5a-4e4d-a0c4-ccbbda5d185b");
             public static Guid КоличествоЗамеров = new Guid("6afc0add-c244-43bd-9e48-847695a180ae");
+
+            // Параметры для химической лаборатории
+
+            // Параметры типа Компонент
+            public static Guid НаименованиеКомпонента = new Guid("16da1dd1-71c6-43b9-9c52-58c220c8b4e7");
+            public static Guid ДопустимоеСодержаниеКомпонента = new Guid("7a9a6229-0c85-4acf-ae52-51030bbb6d1a");
         }
 
         public static class Links {
             public static Guid СправочныеМатериалыМагнитнаяЛаборатория = new Guid("c543586f-17ce-4731-9690-bfddd0f10a4b");
             public static Guid ПодлинникПротокола = new Guid("5545694e-602c-4090-bb9f-1453aa54845b");
+            public static Guid СправочныеМатериалыХимическаяЛаборатория = new Guid("56c4a7e2-3007-4c94-a9f0-ad1857064a4f");
         }
 
         public static class Stages {
@@ -249,6 +257,17 @@ public class Macro : MacroProvider
         }
     }
 
+    public void TestSendNotification() {
+        // Получаем объект для тестирования
+        Reference czlReference = Context.Connection.ReferenceCatalog.Find(new Guid("f7f43d73-857c-41f9-b449-38ee72caa221")).CreateReference();
+        ReferenceObject testObject = czlReference.Find(new Guid("84590a8d-3bfb-42f6-b1c1-a4c641003be7"));
+
+        Message("Проверка содержимого аккаунта", Context.Connection.Mail.DOCsAccount.ToString());
+        Message("Аккаунты, которые есть в MailService", string.Join("\n", Context.Connection.Mail.Accounts.Select(acc => acc.ToString())));
+
+        //SendNotification(testObject);
+    }
+
     private void SendNotification(ReferenceObject protocol) {
         // Для начала определяем заказчика
         string client = ((string)protocol[Guids.Props.Заказчик].Value).ToLower().Trim();
@@ -312,11 +331,14 @@ public class Macro : MacroProvider
     private void SendMailTo(List<User> users, ReferenceObject protocol) {
         // Получаем название протокола
         string protocolName = (string)protocol[Guids.Props.СводноеНаименованиеПротокола].Value;
+        String clientName = (string)protocol[Guids.Props.Заказчик].Value;
 
         // Создаем новое сообщение
+        // INFO: Для того, чтобы отправить сообщение с общего аккаунта, нужно будет под ним произвести вход в систему
+        // Открыть новое ServerConnection с учетными данными того пользователя, который требуется
         MailMessage message = new MailMessage(Context.Connection.Mail.DOCsAccount) {
             Subject = $"Протокол {protocolName}",
-            Body = $"Согласование протокола '{protocolName}' завершено"
+            Body = $"Согласование протокола '{protocolName}' для заказчика '{clientName}' завершено"
         };
 
         // Добавляем адресатов
@@ -722,6 +744,34 @@ public class Macro : MacroProvider
     #endregion ОтображениеНапряженностиВОбразце()
 
     #endregion Методы для формирования магнитного протокола
+
+    #region Методы для формирования химического протокола
+
+    public string ОтображениеКомпонентаХимическаяЛаборатория(int index) {
+        ReferenceObject protocol = Context.ReferenceObject;
+        ReferenceObject electrolite = protocol.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
+        if (electrolite == null)
+            return string.Empty;
+        // Получаем компоненты электролита
+        List<ReferenceObject> components = electrolite.GetObjects(Guids.ListsOfObjects.КомпонентыЭлектролита);
+        if (index > components.Count)
+            return string.Empty;
+        return (string)components[index - 1][Guids.Props.НаименованиеКомпонента].Value;
+    }
+
+    public string ОтображениеДопустимогоСодержанияКомпонента(int index) {
+        ReferenceObject protocol = Context.ReferenceObject;
+        ReferenceObject electrolite = protocol.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
+        if (electrolite == null)
+            return string.Empty;
+        // Получаем компоненты электролита
+        List<ReferenceObject> components = electrolite.GetObjects(Guids.ListsOfObjects.КомпонентыЭлектролита);
+        if (index > components.Count)
+            return string.Empty;
+        return ((double)components[index - 1][Guids.Props.ДопустимоеСодержаниеКомпонента].Value).ToString();
+    }
+
+    #endregion Методы для формирования химического протокола
 
     #region Получение данных для отчета
 
