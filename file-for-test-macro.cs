@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using TFlex.DOCs.Model;
@@ -7,13 +8,14 @@ using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
 using TFlex.DOCs.Model.References.Files;
+using TFlex.DOCs.Model.References.Users;
 
 
 // Макрос для тестовых задач
+// Для работы данного макроса так же потребуется добавление ссылки TFlex.Model.Technology.dll
 
 public class Macro : MacroProvider {
-    public Macro (MacroContext context) : base(context)
-    {
+    public Macro (MacroContext context) : base(context) {
     }
 
     public static class Guids {
@@ -67,6 +69,12 @@ public class Macro : MacroProvider {
             Сообщение("Ошибка", "Объект файл не был создан");
         }
 
+    }
+
+    public void ПоискПользователяВГруппахИПользователях() {
+        List<User> users = Context.Connection.References.Users.GetAllUsers();
+        Message("Количество пользователей", users.Count);
+        Message("Найденные пользователи", string.Join("\n", users.Select(user => (string)user[new Guid("42c81c2b-7354-46aa-9547-0f1a93e9d4e1")].Value).OrderBy(login => login)));
     }
 }
 

@@ -43,8 +43,7 @@ public class Macro : MacroProvider
     Report reportMI;
     Report reportFMI;
     
-    #region Guids
-
+    // Guids
     private static class Guids {
         public static class Reports {
             public static Guid Свидетельство = new Guid("a9e67d98-ce6c-4ad4-8c94-328e71089099");
@@ -167,9 +166,20 @@ public class Macro : MacroProvider
 
             // Параметры для химической лаборатории
 
+            // Параметры типа Электролит
+            public static Guid НаименованиеЭлектролита = new Guid("1b4b1aac-1ac6-4b6e-aee6-4f337632dce9");
             // Параметры типа Компонент
             public static Guid НаименованиеКомпонента = new Guid("16da1dd1-71c6-43b9-9c52-58c220c8b4e7");
             public static Guid ДопустимоеСодержаниеКомпонента = new Guid("7a9a6229-0c85-4acf-ae52-51030bbb6d1a");
+            // Параметры результатов замеров
+            public static Guid СодержаниеКомпонента1 = new Guid("12dd0c84-1e58-4302-81ef-f1b8af872f43");
+            public static Guid СодержаниеКомпонента2 = new Guid("4eebf0b0-2471-4ff3-9651-d5f10a5da28d");
+            public static Guid СодержаниеКомпонента3 = new Guid("e41b599d-5296-4828-848c-9fb1e4d44515");
+            public static Guid СодержаниеКомпонента4 = new Guid("fa735a63-9df3-493d-a060-d9a00cdf33cf");
+            public static Guid СодержаниеКомпонента5 = new Guid("80d8b00f-9a4b-4fa0-91d9-3e1c147a4826");
+            public static Guid СодержаниеКомпонента6 = new Guid("3730bbb3-f58e-4566-b162-b127d50b3da8");
+            public static Guid СодержаниеКомпонента7 = new Guid("98a206e5-4cc4-4572-966d-95979fcc7812");
+            public static Guid СодержаниеКомпонента8 = new Guid("c15a0f03-5738-4e48-9fbd-fc57736fe46c");
         }
 
         public static class Links {
@@ -186,10 +196,7 @@ public class Macro : MacroProvider
         }
     }
 
-    #endregion Guids
-
-    #region Properties
-
+    // Properties
     Reference ReportReferenceInstance {
         get {
             if (reportReference == null) {
@@ -208,7 +215,6 @@ public class Macro : MacroProvider
         }
     }
 
-    #endregion Properties
 
     public Macro(MacroContext context)
         : base(context)
@@ -221,8 +227,7 @@ public class Macro : MacroProvider
     
     #region Методы для запуска генерации отчета
 
-    #region Формирование отчета из БП по окончанию согласования
-    
+    // Формирование отчета из БП по окончанию согласования
     public void СформироватьОтчетДляБП(Объекты объекты) {
 
         foreach (Объект вложение in объекты) {
@@ -375,10 +380,7 @@ public class Macro : MacroProvider
         stage.Change(new List<ReferenceObject>() {refObj}); // Охренеть логика. Я думал записимость идет от объекта, а они идет от стадии
     }
 
-    #endregion Формирование отчета из БП по окончанию согласования
-
-    #region Формирование отчета для предварительного просмотра
-
+    //Формирование отчета для предварительного просмотра
     public void СформироватьОтчетДляПредварительногоПросмотра() {
         // Получаем текущий объект
         ReferenceObject currentObject = Context.ReferenceObject;
@@ -400,13 +402,11 @@ public class Macro : MacroProvider
         Desktop.CheckIn(reportContext.ReportFileObject, "Предварительный просмотр", false);
     }
 
-    #endregion Формирование отчета для предварительного просмотра
-
     #endregion Методы для запуска генерации отчета
 
     #region Общие методы для всех протоколов
 
-    #region Генерация сводного наименования протокола
+    //Генерация сводного наименования протокола
 
     // Данный метод используется по событию, при создании объекта в справочнике Архив ЦЗЛ
     public void GenerateSummaryName() {
@@ -454,15 +454,12 @@ public class Macro : MacroProvider
         }
     }
 
-    #endregion Генерация сводного наименования протокола
 
     #endregion Общие методы для всех протоколов
 
     #region Методы для формирования магнитного протокола
 
-    #region Формирование сводного размера образца
-
-    // Данный метод используется по событию (при любом изменении параметров объета образец)
+    //Формирование сводного размера образца
     public void ФормированиеСводногоРазмераОбразца () {
         ReferenceObject sample = Context.ReferenceObject;
         
@@ -530,10 +527,7 @@ public class Macro : MacroProvider
         }
     }
 
-    #endregion Формирование сводного размера образца
-
-    #region Формирование сводного наименования образца магнитной лаборатории
-
+    //Формирование сводного наименования образца магнитной лаборатории
     public string ФормированиеСводногоНаименованияОбразцаМагнитнойЛаборатории() {
 
         // Строка, которая будет содержать сводное наименование
@@ -582,10 +576,7 @@ public class Macro : MacroProvider
             return string.Format("Сводное наименование: {0}", summaryName);
     }
 
-    #endregion Формирование сводного наименования образца магнитной лаборатории
-
-    #region Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
-    
+    //Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
     public string ОтображениеДопустимогоЗначенияОбразцаМагнитнойЛаборатории(string parameter) {
         ReferenceObject sample = Context.ReferenceObject;
         if (sample == null)
@@ -635,12 +626,7 @@ public class Macro : MacroProvider
         return result;
     }
 
-    #endregion Вывод данных о допустимых значениях в диалоге образца магнитой лаборатории
-
-    #region ФормированиеСводногоДопустимогоРазмера
-    
-    // Метод, который будет формировать сводную строку с допустимым значением основываясь на значениях, указанных в поле
-    // для минимального и максимального значения параметра
+    //ФормированиеСводногоДопустимогоРазмера
     public string ПолучитьДиапазонДопустимыхЗначенийПараметра(string nameOfParameter) {
         ReferenceObject material = Context.ReferenceObject;
         string result = string.Empty;
@@ -700,10 +686,7 @@ public class Macro : MacroProvider
         return result;
     }
 
-    #endregion ФормированиеСводногоДопустимогоРазмера
-
-    #region ОтображениеНапряженностиВОбразце()
-
+    //ОтображениеНапряженностиВОбразце()
     public string ОтображениеНапряженностиВОбразце(int number) {
         ReferenceObject sampleObject = Context.ReferenceObject;
         ReferenceObject material = sampleObject.MasterObject.GetObject(Guids.Links.СправочныеМатериалыМагнитнаяЛаборатория);
@@ -741,34 +724,32 @@ public class Macro : MacroProvider
         return result;
     }
 
-    #endregion ОтображениеНапряженностиВОбразце()
-
     #endregion Методы для формирования магнитного протокола
 
     #region Методы для формирования химического протокола
 
     public string ОтображениеКомпонентаХимическаяЛаборатория(int index) {
-        ReferenceObject protocol = Context.ReferenceObject;
-        ReferenceObject electrolite = protocol.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
+        ReferenceObject electrolite = Context.ReferenceObject.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
         if (electrolite == null)
             return string.Empty;
         // Получаем компоненты электролита
         List<ReferenceObject> components = electrolite.GetObjects(Guids.ListsOfObjects.КомпонентыЭлектролита);
         if (index > components.Count)
             return string.Empty;
-        return (string)components[index - 1][Guids.Props.НаименованиеКомпонента].Value;
+        ReferenceObject component = components[index - 1];
+        string name = (string)component[Guids.Props.НаименованиеКомпонента].Value;
+        double value = (double)component[Guids.Props.ДопустимоеСодержаниеКомпонента].Value;
+        return $"{name} (по ТИ: '{value.ToString()}')";
     }
 
-    public string ОтображениеДопустимогоСодержанияКомпонента(int index) {
-        ReferenceObject protocol = Context.ReferenceObject;
-        ReferenceObject electrolite = protocol.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
+    public bool СкрытиеЭлементаХимическаяЛаборатория(int index) {
+        ReferenceObject electrolite = Context.ReferenceObject.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория);
         if (electrolite == null)
-            return string.Empty;
-        // Получаем компоненты электролита
+            return true;
         List<ReferenceObject> components = electrolite.GetObjects(Guids.ListsOfObjects.КомпонентыЭлектролита);
         if (index > components.Count)
-            return string.Empty;
-        return ((double)components[index - 1][Guids.Props.ДопустимоеСодержаниеКомпонента].Value).ToString();
+            return true;
+        return false;
     }
 
     #endregion Методы для формирования химического протокола
@@ -795,6 +776,7 @@ public class Macro : MacroProvider
         else if (protocol.Class.IsInherit(Guids.Types.ПротоколСпектральнойЛаборатории)) {
         }
         else if (protocol.Class.IsInherit(Guids.Types.ПротоколХимическойЛаборатории)) {
+            result = GetDataStringForChemProtocol(protocol);
         }
         else if (protocol.Class.IsInherit(Guids.Types.ПротоколГальваническойЛаборатории)) {
         }
@@ -1023,6 +1005,75 @@ public class Macro : MacroProvider
 
             return resultDataClass.GenerateString();
         }
+    }
+
+    private string GetDataStringForChemProtocol(ReferenceObject protocol) {
+        DataClass resultDataClass = new DataClass();
+
+        // INFO: Данный код я пишу для постоянного количество колонок, которых будет девять (восемь под компоненты)
+        int countOfColumns = 9;
+        ReferenceObject electrolite = protocol.GetObject(Guids.Links.СправочныеМатериалыХимическаяЛаборатория); // Получаем электролит
+        List<ReferenceObject> components = electrolite != null ?
+            electrolite.GetObjects(Guids.ListsOfObjects.КомпонентыЭлектролита) :
+            new List<ReferenceObject>(); // Получаем компоненты
+        int countOfComponents = components.Count; // Получаем количество компонентов (и, следовательно, количество колонок, которые следует заполнять)
+
+
+        // Заполняем первую строку
+        resultDataClass.Add("Электролит");
+        // Заполняем название электролита
+        string nameOfElectrolite = electrolite != null ? (string)electrolite[Guids.Props.НаименованиеЭлектролита].Value : string.Empty;
+        resultDataClass.Add(nameOfElectrolite);
+        // Добавляем объединение строк
+        for (int i = 0; i < countOfColumns - 2; i++)
+            resultDataClass.Add(string.Empty);
+        resultDataClass.EndRow();
+
+        // Заполняем вторую строку
+        resultDataClass.Add("Компоненты");
+        // Получаем названия всех компонентов
+        List<string> componentNames = components.Select(comp => (string)comp[Guids.Props.НаименованиеКомпонента].Value).ToList<string>();
+        for (int i = 0; i < countOfColumns - 1; i++) {
+            if (i < countOfComponents)
+                resultDataClass.Add(componentNames[i]);
+            else
+                resultDataClass.Add("-");
+        }
+        resultDataClass.EndRow();
+
+        // Заполняем третью строку
+        resultDataClass.Add("Содержание г/л");
+        // Получаем результаты замеров
+        List<string> measurements = new List<string>() {
+            ((double)protocol[Guids.Props.СодержаниеКомпонента1].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента2].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента3].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента4].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента5].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента6].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента7].Value).ToString(),
+            ((double)protocol[Guids.Props.СодержаниеКомпонента8].Value).ToString()
+        };
+        for (int i = 0; i < 8; i++) {
+            if (i < countOfComponents)
+                resultDataClass.Add(measurements[i]);
+            else
+                resultDataClass.Add("-");
+        }
+        resultDataClass.EndRow();
+        
+        // Заполняем четвертую строку
+        resultDataClass.Add("Содержание по ТИ");
+        List<string> allowedValues = components.Select(comp => ((double)comp[Guids.Props.ДопустимоеСодержаниеКомпонента]).ToString()).ToList<string>();
+        for (int i = 0; i < countOfColumns - 1; i++) {
+            if (i < countOfComponents)
+                resultDataClass.Add(allowedValues[i]);
+            else
+                resultDataClass.Add("-");
+        }
+        resultDataClass.EndRow();
+
+        return resultDataClass.GenerateString();
     }
 
     private class DataClass {
