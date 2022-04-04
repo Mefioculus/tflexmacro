@@ -60,6 +60,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
         case "Протокол спектральной лаборатории":
             break;
         case "Протокол химической лаборатории":
+            GenerateChemTable(tableString);
             break;
         case "Протокол гальванической лаборатории":
             break;
@@ -365,6 +366,45 @@ private void GenerateMagneteTable(string tableString) {
 }
 
 #endregion Метод для генерации таблицы для протокола магнитной лаборатории
+
+#region Метод для генерации таблицы для протокола химической лаборатории
+
+private void GenerateChemTable(string tableString) {
+    if (tableString == string.Empty)
+        return;
+
+    // Начинаем редактирование таблицы
+    RegularDataTable.BeginInit();
+
+    // Получаем таблицу с данными
+    List<List<string>> rowsOfTable = ParseDataTable(tableString);
+
+    // Приступаем к заполнению таблицы
+    // Заполняем первую строку
+    TableCellInit.Text = rowsOfTable[0][0];
+    TableCellInit.Width = 10;
+    RegularDataTable.Rows[0].Cells.Add(new XRTableCell() { Text = rowsOfTable[0][1], Width = 80 });
+
+    // Заполняем остальные строки таблицы
+    for (int i = 1; i < 4; i++) {
+        RegularDataTable.Rows.Add(new XRTableRow());
+        for (int j = 0; j < rowsOfTable[i].Count; j++) {
+            RegularDataTable.Rows[i].Cells.Add(new XRTableCell() { Text = rowsOfTable[i][j], Width = 10 });
+        }
+    }
+
+    // Завершаем редактирование таблицы
+    RegularDataTable.EndInit();
+
+    // Производим корректировку таблицы с основными параметрами
+    table1.BeginInit();
+    table1.DeleteRow(table1.Rows[4]);
+    table1.DeleteRow(table1.Rows[3]);
+    table1.DeleteRow(table1.Rows[1]);
+    table1.EndInit();
+}
+
+#endregion Метод для генерации таблицы для протокола химической лаборатории
 
 #region ParseDateTable
 private List<List<string>> ParseDataTable (string stringFromInput, bool tableWithHeader = true) {
