@@ -170,7 +170,9 @@ public class Macro : MacroProvider
             public static Guid НаименованиеЭлектролита = new Guid("1b4b1aac-1ac6-4b6e-aee6-4f337632dce9");
             // Параметры типа Компонент
             public static Guid НаименованиеКомпонента = new Guid("16da1dd1-71c6-43b9-9c52-58c220c8b4e7");
-            public static Guid ДопустимоеСодержаниеКомпонента = new Guid("7a9a6229-0c85-4acf-ae52-51030bbb6d1a");
+            public static Guid МинимальноеСодержаниеКомпонента = new Guid("7a9a6229-0c85-4acf-ae52-51030bbb6d1a");
+            public static Guid МаксимальноеСодержаниеКомпонента = new Guid("dc52485d-6c5c-4d5b-bddf-21b4e76f4ec9");
+            public static Guid СводноеСодержаниеКомпонента = new Guid("06e87a6e-902c-4a78-9212-9f021faaae36");
             // Параметры результатов замеров
             public static Guid СодержаниеКомпонента1 = new Guid("12dd0c84-1e58-4302-81ef-f1b8af872f43");
             public static Guid СодержаниеКомпонента2 = new Guid("4eebf0b0-2471-4ff3-9651-d5f10a5da28d");
@@ -527,6 +529,32 @@ public class Macro : MacroProvider
         }
     }
 
+    public void ФормированиеСводногоРазмераКомпонентаХимическойЛаборатории() {
+        //TODO: реализовать метод
+        ReferenceObject component = Context.ReferenceObject;
+        double minValue = (double)component[Guids.Props.МинимальноеСодержаниеКомпонента].Value;
+        double maxValue = (double)component[Guids.Props.МаксимальноеСодержаниеКомпонента].Value;
+
+        if (minValue == maxValue) {
+            component[Guids.Props.СводноеСодержаниеКомпонента].Value = minValue.ToString();
+            return;
+        }
+        if (minValue == 0) {
+            component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"Не более {maxValue.ToString()}";
+            return;
+        }
+        if (maxValue == 0) {
+            component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"Не менее {minValue.ToString()}";
+            return;
+        }
+        if (minValue > maxValue) {
+            component[Guids.Props.СводноеСодержаниеКомпонента].Value = "Ошибка";
+            return;
+        }
+
+        component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"{minValue.ToString()} - {maxValue.ToString()}";
+    }
+
     //Формирование сводного наименования образца магнитной лаборатории
     public string ФормированиеСводногоНаименованияОбразцаМагнитнойЛаборатории() {
 
@@ -738,7 +766,7 @@ public class Macro : MacroProvider
             return string.Empty;
         ReferenceObject component = components[index - 1];
         string name = (string)component[Guids.Props.НаименованиеКомпонента].Value;
-        double value = (double)component[Guids.Props.ДопустимоеСодержаниеКомпонента].Value;
+        double value = (double)component[Guids.Props.СводноеСодержаниеКомпонента].Value;
         return $"{name} (по ТИ: '{value.ToString()}')";
     }
 
@@ -1064,7 +1092,7 @@ public class Macro : MacroProvider
         
         // Заполняем четвертую строку
         resultDataClass.Add("Содержание по ТИ");
-        List<string> allowedValues = components.Select(comp => ((double)comp[Guids.Props.ДопустимоеСодержаниеКомпонента]).ToString()).ToList<string>();
+        List<string> allowedValues = components.Select(comp => ((double)comp[Guids.Props.СводноеСодержаниеКомпонента]).ToString()).ToList<string>();
         for (int i = 0; i < countOfColumns - 1; i++) {
             if (i < countOfComponents)
                 resultDataClass.Add(allowedValues[i]);
@@ -1111,164 +1139,6 @@ public class Macro : MacroProvider
             return result;
         }
     }
-
-    // TODO: Разработать класс для переноса таблиц из макроса в менеджер отчета
-    // - Класс должен позволять объединять ячейки по горизонтали и по вертикали
-    // - Класс должен позволять задавать размеры ячейки (высоту и ширину)
-    // - Класс должен производить верификацию данных при формировании
-    private class DataTableClass {
-        public List<int> WidthOfColumns { get; private set; }
-        public List<DataTableRow> Rows { get; private set; }
-        private DataTableRow CurrentRow { get; set; }
-
-        public DataTableClass(List<int> widthOfColumns) {
-            this.WidthOfColumns = widthOfColumns;
-
-            // Создаем первую строку и устанавливаем на нее курсор
-            DataTableRow initRow = new DataTableRow();
-            this.Rows = new List<DataTableRow>() { initRow };
-            this.CurrentRow = initRow;
-
-        }
-
-        // TODO: Реализовать код завершения редактирования таблицы
-        public void EndEdit() {
-
-        }
-
-        // TODO: Реализовать код проверки корректности строки
-        private void VerifyRow() {
-        }
-
-        // TODO: Реализовать завершение работы со строкой
-        public void EndRow() {
-        }
-
-        // TODO: Реализовать сериализацию объекта в строку
-        public string Serialize() {
-            return string.Empty;
-        }
-
-        // TODO: Реализовать чтение таблицы из сериализованной строки
-        public static DataTableClass Parse(string inputString) {
-            return new DataTableClass();
-        }
-
-    }
-
-    private class DataTableRow {
-        public DataTableClass Table { get; private set; }
-        public int IndexRow {get; private set; }
-        public List<DataTableCell> Cells { get; private set; }
-        public bool IsEnded { get; private set; } = false;
-        public int Height { get; private set; }
-
-        public DataTableRow(DataTableClass table, int index, int Height = 10) {
-            this.Table = table;
-            this.IndexRow = index;
-            this.Height = 10;
-            this.Cells = new List<DataTableCells>();
-        }
-
-        public void AddCell(string text) {
-            this.CheckRowForEdit();
-            DataTableCell cell = new DataTableCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.None, 0, 0);
-            this.Cells.Add(cell);
-        }
-
-        public void AddVerSpanCell(int span, string text) {
-            this.CheckRowForEdit();
-            DataTableCell cell = new DataTableCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.Vertical, 0, span);
-            this.Cells.Add(cell);
-        }
-
-        public void AddHorSpanCell(int span, string text) {
-            this.CheckRowForEdit();
-            DataTableCell cell = new DataTableCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.Horizontal, span, 0);
-            this.Cells.Add(cell);
-        }
-
-        public void AddRecSpanSell(int horSpan, int verSpan, string text) {
-            this.CheckRowForEdit();
-            DataTableCell cell = new DataTableCell(this.Table, this.Cells.Count, text, TypeOfSpan.Rectangular, horSpan, verSpan);
-            this.Cells.Add(cell);
-        }
-
-        private void CheckRowForEdit() {
-            if (this.IsEnded)
-                throw new Exception($"Попытка добавить новую ячейку в строку, редактирование которой завершено (Индекс строки {this.Index})");
-        }
-
-        public void EndEdit() {
-            VerifyRow();
-            this.IsEnded = true;
-        }
-
-        private void VerifyRow() {
-            // Производим проверку на соответствие количества заявленных ячеек с количеством введенных пользователем
-            int cellCount = 0;
-            foreach (DataTableCell cell in this.Cells) {
-                cellCount += 1 + cell.HorizontalSpanValue;
-            }
-
-            if (cellCount != this.Table.WidthOfColumns.Count)
-                throw new Exception($"Количество введенных ячеек не соответствует количеству указанных при инициализации колонок (Есть: {cellCount} => Должно быть: {this.Table.WidthOfColumns.Count})");
-        }
-    }
-
-    private class DataTableCell {
-
-        public DataTableClass Table { get; private set; }
-        public DataTableRow Row { get; private set; }
-        public int IndexCell { get; private set; }
-        public int IndexRow => this.Row.IndexRow;
-
-        public string Text { get; set; }
-
-        // Параметры объединения ячеек
-        public TypeOfSpan SpanType { get; private set; }
-        public int VerticalSpanValue { get; private set; }
-        public int HorizontalSpanValue { get; private set; }
-        public bool HasSpan => this.SpanType == TypeOfSpan.None ? false : true;
-        
-        // Параметры размера ячейки
-        public int Width =>
-            (this.TypeOfSpan != TypeOfSpan.Horizontal) && (this.TypeOfSpan != TypeOfSpan.Rectangular) ?
-                this.Table.WidthOfColumns[this.IndexRow] :
-                this.TableWidthOfColumn
-                    .Skip(this.IndexCell)
-                    .Take(this.SpanValue)
-                    .Sum();
-        public int Height =>
-            (this.TypeOfSpan != TypeOfSpan.Vertical) && (this.TypeOfSpan != TypeOfSpan.Rectangular) ?
-                this.Row.Height :
-                this.Table.Rows
-                    .Skip(this.IndexRow)
-                    .Take(this.SpanValue)
-                    .Select(row => row.Height)
-                    .Sum();
-
-
-
-        public DataTableCell(DataTableClass table, DataTableRow row, int index, string text, TypeOfSpan typeOfSpan, int horizontalSpanValue, int verticalSpanValue) {
-            this.Table = table;
-            this.Row = row;
-            this.IndexCell = index;
-            this.Text = text;
-
-            this.SpanType = typeOfSpan;
-            this.HorizontalSpanValue = horizontalSpanValue;
-            this.HorizontalSpanValue = verticalSpanValue;
-        }
-    }
-
-    private enum TypeOfSpan {
-        None,
-        Vertical,
-        Horizontal,
-        Rectangular
-    }
-
     #endregion Получение данных для отчета
 
     #region Шаблонное заполнение данных
