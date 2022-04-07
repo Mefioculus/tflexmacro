@@ -535,24 +535,29 @@ public class Macro : MacroProvider
         double minValue = (double)component[Guids.Props.МинимальноеСодержаниеКомпонента].Value;
         double maxValue = (double)component[Guids.Props.МаксимальноеСодержаниеКомпонента].Value;
 
+        var rangeParam = component[Guids.Props.СводноеСодержаниеКомпонента];
+
         if (minValue == maxValue) {
-            component[Guids.Props.СводноеСодержаниеКомпонента].Value = minValue.ToString();
+            if (minValue != 0)
+                rangeParam.Value = minValue.ToString();
+            else
+                rangeParam.Value = "-";
             return;
         }
         if (minValue == 0) {
-            component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"Не более {maxValue.ToString()}";
+            rangeParam.Value = $"до {maxValue.ToString()}";
             return;
         }
         if (maxValue == 0) {
-            component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"Не менее {minValue.ToString()}";
+            rangeParam.Value = $"от {minValue.ToString()}";
             return;
         }
         if (minValue > maxValue) {
-            component[Guids.Props.СводноеСодержаниеКомпонента].Value = "Ошибка";
+            rangeParam.Value = "Ошибка";
             return;
         }
 
-        component[Guids.Props.СводноеСодержаниеКомпонента].Value = $"{minValue.ToString()} - {maxValue.ToString()}";
+        rangeParam.Value = $"{minValue.ToString()}-{maxValue.ToString()}";
     }
 
     //Формирование сводного наименования образца магнитной лаборатории
@@ -766,8 +771,8 @@ public class Macro : MacroProvider
             return string.Empty;
         ReferenceObject component = components[index - 1];
         string name = (string)component[Guids.Props.НаименованиеКомпонента].Value;
-        double value = (double)component[Guids.Props.СводноеСодержаниеКомпонента].Value;
-        return $"{name} (по ТИ: '{value.ToString()}')";
+        string value = (string)component[Guids.Props.СводноеСодержаниеКомпонента].Value;
+        return $"{name} (по ТИ: '{value}')";
     }
 
     public bool СкрытиеЭлементаХимическаяЛаборатория(int index) {
@@ -1092,7 +1097,7 @@ public class Macro : MacroProvider
         
         // Заполняем четвертую строку
         resultDataClass.Add("Содержание по ТИ");
-        List<string> allowedValues = components.Select(comp => ((double)comp[Guids.Props.СводноеСодержаниеКомпонента]).ToString()).ToList<string>();
+        List<string> allowedValues = components.Select(comp => ((string)comp[Guids.Props.СводноеСодержаниеКомпонента]).ToString()).ToList<string>();
         for (int i = 0; i < countOfColumns - 1; i++) {
             if (i < countOfComponents)
                 resultDataClass.Add(allowedValues[i]);
