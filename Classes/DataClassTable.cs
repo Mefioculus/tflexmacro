@@ -14,6 +14,7 @@ public class Macro : MacroProvider
         }
 
     public override void Run() {
+        ТестовоеСозданиеПростойТаблицы();
     }
 
     public void ТестированиеСозданияЯчеек() {
@@ -24,11 +25,31 @@ public class Macro : MacroProvider
         Message("Информация", "Тестирование прошло успешно");
     }
 
-    public void ТестированиеСозданияТаблицы() {
+    public void ТестовоеСозданиеПростойТаблицы() {
         // Создание новой таблицы с четырьмя колонками
         DCTable table = new DCTable(new List<int>() { 10, 20, 10, 10 });
-        Message("Информация о созданной таблице", $"Создана таблица: Колонок {table.ColsCount}, Строк {table.RowsCount}");
+        table.StartNewRow();
+        table.AddCell("Первая ячейка");
+        table.AddCell("Вторая ячейка");
+        table.AddCell("Третья ячейка");
+        table.AddCell("Четверная ячейка");
+        table.StartNewRow();
+        table.AddCell("Пятая ячейка");
+        table.AddCell("Шестая ячейка");
+        table.AddCell("Седьмая ячейка");
+        table.AddCell("Восьмая ячейка");
+        table.EndTable();
+
+        Message("Содержимое таблицы", "\n" + table.ToString());
+
+
+        string serializedTable = table.Serialize();
+        
+        
+        Message("Информация о созданной таблице", table.GetInfo());
+
         Message("Информация", "Тестирование прошло успешно");
+
     }
 
     // TODO: Разработать класс для переноса таблиц из макроса в менеджер отчета
@@ -41,45 +62,113 @@ public class Macro : MacroProvider
 
         private DCRow CurrentRow { get; set; }
 
+        public bool IsEnded { get; private set; }
+
         public int RowsCount => this.Rows.Count;
         public int ColsCount => this.WidthOfColumns.Count;
 
         public DCTable(List<int> widthOfColumns) {
+            this.IsEnded = false;
             this.WidthOfColumns = widthOfColumns;
             this.Rows = new List<DCRow>();
         }
 
-        // TODO: Реализовать код завершения редактирования таблицы
-        public void EndEdit() {
-
+        public void EndTable() {
+            // TODO: Реализовать код завершения редактирования таблицы
+            VerifyTable();
+            this.IsEnded = true;
         }
 
-        // TODO: Реализовать код проверки корректности строки
-        private void VerifyRow() {
-        }
+        public void StartNewRow(int height = 10) {
 
-        public void StartRow(int height = 10) {
-            if ((this.CurrentRow != null) && (!this.CurrentRow.IsEnded)) {
-                throw new Exception("Перед началом работы с новой строкой сначала завершите работу с предыдущей");
-            }
+            // Если предыдущая строка не завершена, пытаемся ее завершить
+            if ((this.CurrentRow != null) && (!this.CurrentRow.IsEnded))
+                this.EndRow();
 
             DCRow row = new DCRow(this, this.Rows.Count, height);
             this.Rows.Add(row);
             this.CurrentRow = row;
         }
 
-        // TODO: Реализовать завершение работы со строкой
-        public void EndRow() {
+        public void AddCell(string text) {
+            CheckPossibilityOfAddingCell();
+            this.CurrentRow.AddCell(text);
         }
 
-        // TODO: Реализовать сериализацию объекта в строку
+        public void AddCell(string text, TypeOfSpan span, int spanValue) {
+            CheckPossibilityOfAddingCell();
+            switch (span) {
+                case TypeOfSpan.Horizontal:
+                    this.CurrentRow.AddHorSpanCell(text, spanValue);
+                    break;
+                case TypeOfSpan.Vertical:
+                    this.CurrentRow.AddVerSpanCell(text, spanValue);
+                    break;
+                default:
+                    throw new Exception($"Данный метод добавления ячейки не поддерживает тип объекдинения {span.ToString()}. Воспользуйтесь другой перегрузкой");
+            }
+        }
+
+        public void AddCell(string text, TypeOfSpan span, int horValue, int verValue) {
+            CheckPossibilityOfAddingCell();
+            switch (span) {
+                case TypeOfSpan.Rectangular:
+                    this.CurrentRow.AddRecSpanCell(text, horValue, verValue);
+                    break;
+                default:
+                    throw new Exception($"Данный метод добавления ячейки не поддерживает тип объекдинения {span.ToString()}. Воспользуйтесь другой перегрузкой");
+            }
+        }
+
+        public void AddEmptyCell(int quantity) {
+            // TODO: Реализовать метод добавления пустых строк
+        }
+
+        private void CheckPossibilityOfAddingCell() {
+            if (this.CurrentRow == null)
+                throw new Exception("Перед добавлением ячейки необходимо создать новыю строку. Используйте метод StartNewRow для добавления ячейки");
+
+            if (this.CurrentRow.IsEnded) {
+                throw new Exception("Попытка добавить ячейку в завершенную строку. Используйте метод StartNewRow для добавления ячейки");
+            }
+        }
+
+        private void EndRow() {
+            // TODO: Реализовать завершение работы со строкой
+            VerifyRow();
+            this.CurrentRow = null;
+        }
+
+        private void VerifyRow() {
+            // TODO: Реализовать код проверки корректности строки
+        }
+
+        private void VerifyTable() {
+            //TODO: Реализовать таблицу на корректность перед завершением редактирования
+        }
+
         public string Serialize() {
+            if (!this.IsEnded)
+                throw new Exception("Попытка сериализовать незаконченную таблицу. Перед вызовом метода Serialize вызовите метод EndTable");
+            
+            // TODO: Реализовать сериализацию объекта в строковое представление
             return string.Empty;
         }
 
-        // TODO: Реализовать чтение таблицы из сериализованной строки
         public static DCTable Parse(string inputString) {
+            // TODO: Реализовать чтение таблицы из сериализованной строки
             return null;
+        }
+
+        public string GetInfo() {
+            string result = string.Empty;
+            result += $"Параметры таблицы:\nКоличество колонок: {this.ColsCount}\nРазмеры колонок: {string.Join(" ", this.WidthOfColumns.Select(width => width.ToString()))}\nКоличество строк: {this.RowsCount}\n";
+
+            return result;
+        }
+
+        public override string ToString() {
+            return string.Join("\n", this.Rows.Select(row => row.ToString()));
         }
 
     }
@@ -104,19 +193,19 @@ public class Macro : MacroProvider
             this.Cells.Add(cell);
         }
 
-        public void AddVerSpanCell(int span, string text) {
+        public void AddVerSpanCell(string text, int span) {
             this.CheckRowForEdit();
             DCCell cell = new DCCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.Vertical, 0, span);
             this.Cells.Add(cell);
         }
 
-        public void AddHorSpanCell(int span, string text) {
+        public void AddHorSpanCell(string text, int span) {
             this.CheckRowForEdit();
             DCCell cell = new DCCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.Horizontal, span, 0);
             this.Cells.Add(cell);
         }
 
-        public void AddRecSpanSell(int horSpan, int verSpan, string text) {
+        public void AddRecSpanCell(string text, int horSpan, int verSpan) {
             this.CheckRowForEdit();
             DCCell cell = new DCCell(this.Table, this, this.Cells.Count, text, TypeOfSpan.Rectangular, horSpan, verSpan);
             this.Cells.Add(cell);
@@ -141,6 +230,10 @@ public class Macro : MacroProvider
 
             if (cellCount != this.Table.WidthOfColumns.Count)
                 throw new Exception($"Количество введенных ячеек не соответствует количеству указанных при инициализации колонок (Есть: {cellCount} => Должно быть: {this.Table.WidthOfColumns.Count})");
+        }
+
+        public override string ToString() {
+            return $"|{string.Join("|", this.Cells.Select(cell => cell.ToString()))}|";
         }
     }
 
@@ -188,6 +281,10 @@ public class Macro : MacroProvider
             this.SpanType = typeOfSpan;
             this.HorizontalSpanValue = horizontalSpanValue;
             this.HorizontalSpanValue = verticalSpanValue;
+        }
+
+        public override string ToString() {
+            return $"{this.Text, 20}";
         }
     }
 
