@@ -15,6 +15,7 @@ using TFlex.DOCs.Model.Search;
 using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.References.Files;
+using TFlex.DOCs.Model.References.Events;
 
 /*
  * Для работы макроса так же потребуется подключение в качестве ссылки библиотеки TFlex.DOCs.Common.dll
@@ -35,6 +36,7 @@ public class Macro : MacroProvider {
         string passwordField = "Пароль";
         string pathToSaveDiffField = "Путь для сохранения отчета";
         string directionOfCompareField = "Обратное сравнение";
+        string excludedFromComparingFields = "Исключенные поля";
 
         // Переменные
 
@@ -44,12 +46,28 @@ public class Macro : MacroProvider {
         string pathToFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "result.txt");
         string password = "123";
 
+        // Перечень полей, по которым идет сравнение
+        List<string> allFields = new List<string>() {
+            "id",
+            "name",
+            "frendlyName",
+            "countOfEvents",
+            "eventsNames",
+            "lengthParam",
+            "nullableParam",
+            "typenameParam",
+            "unitParam",
+            "valuesParam",
+            "typeLink"
+        };
+
         InputDialog dialog = new InputDialog(this.Context, "Укажите параметры для подключения к базе данных");
         dialog.AddString(serverNameField, serverName);
         dialog.AddString(frendlyNameField, frendlyName);
         dialog.AddString(userNameField, userName);
         dialog.AddString(passwordField, password);
         dialog.AddString(pathToSaveDiffField, pathToFile);
+        dialog.AddMultiselectFromList(excludedFromComparingFields, allFields);
         dialog.AddFlag(directionOfCompareField, false);
 
         if (dialog.Show()) {
@@ -60,10 +78,12 @@ public class Macro : MacroProvider {
             password = dialog[passwordField];
 
             // Приступаем к чтению данных
-            StructureDataBase structure = new StructureDataBase(Context.Connection, "Текущая база", indent);
-            StructureDataBase otherStructure = GetStructureFromOtherServer(userName, serverName, frendlyName, indent);
-            structure.ExcludeKey("id");
-            otherStructure.ExcludeKey("id");
+            StDataBase structure = new StDataBase(Context.Connection, "Текущая база", indent);
+            StDataBase otherStructure = GetStructureFromOtherServer(userName, serverName, frendlyName, indent);
+            foreach (object obj in dialog[excludedFromComparingFields]) {
+                structure.ExcludeKey((string)obj);
+                otherStructure.ExcludeKey((string)obj);
+            }
 
             if (dialog[directionOfCompareField] == false) {
                 structure.Compare(otherStructure);
@@ -85,29 +105,29 @@ public class Macro : MacroProvider {
             return;
     }
 
-    private StructureDataBase GetStructureFromOtherServer(string userName, string serverAddress, string dataBaseFrendlyName, int indent) {
+    private StDataBase GetStructureFromOtherServer(string userName, string serverAddress, string dataBaseFrendlyName, int indent) {
 
-        StructureDataBase resultStructure = null;
+        StDataBase resultStructure = null;
 
         using (ServerConnection serverConnection = ServerConnection.Open(userName, "123", serverAddress)) {
             if (!serverConnection.IsConnected)
                 Message("Ошибка", $"Не удалось подключиться к серверу '{serverAddress}' под пользователем '{userName}'");
             else
-                resultStructure = new StructureDataBase(serverConnection, dataBaseFrendlyName, indent);
+                resultStructure = new StDataBase(serverConnection, dataBaseFrendlyName, indent);
         }
 
         return resultStructure;
     }
 
 
-    public abstract class BaseNode {
+    public abstract class StBaseNode {
         // Основные параметры
         public Guid Guid { get; set; }
 
         // Структурные параметры
-        public BaseNode Parent { get; set; }
-        public StructureDataBase Root { get; set; }
-        public Dictionary<Guid, BaseNode> ChildNodes { get; set; } = new Dictionary<Guid, BaseNode>();
+        public StBaseNode Parent { get; set; }
+        public StDataBase Root { get; set; }
+        public Dictionary<Guid, StBaseNode> ChildNodes { get; set; } = new Dictionary<Guid, StBaseNode>();
         private Dictionary<string, string> Properties = new Dictionary<string, string>();
 
         // Статус и отображение различия
@@ -124,8 +144,8 @@ public class Macro : MacroProvider {
         public string IndentString { get; set; }
         public string StringRepresentation => $"({this.Type.ToString()}) {this["name"]} (ID: {this["id"]}; Guid: {this.Guid.ToString()})";
 
-        public BaseNode(StructureDataBase root, BaseNode parent, int indent, TypeOfNode type) {
-            this.Root = root != null ? root : (StructureDataBase)this;
+        public StBaseNode(StDataBase root, StBaseNode parent, int indent, TypeOfNode type) {
+            this.Root = root != null ? root : (StDataBase)this;
             this.Parent = parent;
             //this.Indent = this.Root != null ? this.Root.Indent : indent;
             this.Indent = 5;
@@ -135,7 +155,7 @@ public class Macro : MacroProvider {
             this.Status = CompareResult.NTP;
         }
 
-        public BaseNode(StructureDataBase root, BaseNode parent, TypeOfNode type) : this(root, parent, 5, type) {
+        public StBaseNode(StDataBase root, StBaseNode parent, TypeOfNode type) : this(root, parent, 5, type) {
         }
 
         public string this[string key] {
@@ -152,7 +172,7 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void CompareWith(BaseNode otherNode) {
+        public void CompareWith(StBaseNode otherNode) {
             if (this.Guid != otherNode.Guid) {
                 throw new Exception($"Невозможно сравнить объекты с разными Guid: {this.Guid.ToString()} => {otherNode.Guid.ToString()}");
             }
@@ -172,7 +192,7 @@ public class Macro : MacroProvider {
                 this.Status = CompareResult.DIF;
         }
 
-        public void Compare(BaseNode otherNode) {
+        public void Compare(StBaseNode otherNode) {
             this.CompareWith(otherNode);
 
             // Сравниваем все справочники
@@ -205,21 +225,21 @@ public class Macro : MacroProvider {
 
         private void SetAllChildNodesStatus(CompareResult status) {
             this.Status = status;
-            foreach (BaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
+            foreach (StBaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
                 node.SetAllChildNodesStatus(status);
             }
         }
 
         private void SetAllChildNodesVisible() {
             this.IsVisibleForDiffReport = true;
-            foreach (BaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
+            foreach (StBaseNode node in this.ChildNodes.Select(kvp => kvp.Value)) {
                 node.SetAllChildNodesVisible();
             }
         }
 
         private void SetAllParentsToVisible() {
             this.IsVisibleForDiffReport = true;
-            BaseNode currentType = this.Parent;
+            StBaseNode currentType = this.Parent;
 
             while (true) {
                 if ((currentType == null) || (currentType.IsVisibleForDiffReport == true))
@@ -270,16 +290,16 @@ public class Macro : MacroProvider {
     
     }
 
-    public class StructureDataBase : BaseNode {
+    public class StDataBase : StBaseNode {
         // Поля, свойственные только корню
         public string FrendlyName { get; set; }
-        public Dictionary<Guid, List<BaseNode>> AllNodes { get; private set; } = new Dictionary<Guid, List<BaseNode>>();
+        public Dictionary<Guid, List<StBaseNode>> AllNodes { get; private set; } = new Dictionary<Guid, List<StBaseNode>>();
         public List<Guid> AllGuids { get; private set; } = new List<Guid>();
 
         // Словарь с исключениями
         public Dictionary<TypeOfNode, List<string>> ExcludedKeys { get; private set; } = new Dictionary<TypeOfNode, List<string>>();
 
-        public StructureDataBase(ServerConnection connection, string frendlyName, int indent) : base(null, null, indent, TypeOfNode.SRV) {
+        public StDataBase(ServerConnection connection, string frendlyName, int indent) : base(null, null, indent, TypeOfNode.SRV) {
             this.FrendlyName = frendlyName;
 
             this.Guid = new Guid("00000000-0000-0000-0000-000000000000");
@@ -289,10 +309,10 @@ public class Macro : MacroProvider {
 
             foreach (ReferenceInfo refInfo in connection.ReferenceCatalog.GetReferences()) {
                 this.AllGuids.Add(refInfo.Guid);
-                StructureReference reference = new StructureReference(refInfo, this, this);
+                StReference reference = new StReference(refInfo, this, this);
                 this.ChildNodes.Add(reference.Guid, reference);
                 if (!this.AllNodes.ContainsKey(reference.Guid))
-                    this.AllNodes.Add(reference.Guid, new List<BaseNode>() { reference });
+                    this.AllNodes.Add(reference.Guid, new List<StBaseNode>() { reference });
                 else
                     this.AllNodes[reference.Guid].Add(reference);
             }
@@ -314,7 +334,7 @@ public class Macro : MacroProvider {
                 this.ExcludedKeys[type] = new List<string>() { key };
         }
 
-        public BaseNode GetInfoAboutReference(Guid guid) {
+        public StBaseNode GetInfoAboutReference(Guid guid) {
             if (this.AllNodes.ContainsKey(guid))
                 return this.ChildNodes[guid];
             return null;
@@ -324,25 +344,25 @@ public class Macro : MacroProvider {
             this.AllGuids.Add(guid);
         }
 
-        public void AddNode(BaseNode node) {
+        public void AddNode(StBaseNode node) {
             if (!this.AllNodes.ContainsKey(node.Guid))
-                this.AllNodes.Add(node.Guid, new List<BaseNode>() { node });
+                this.AllNodes.Add(node.Guid, new List<StBaseNode>() { node });
             else
                 this.AllNodes[node.Guid].Add(node);
         }
 
     }
 
-    public class StructureReference : BaseNode {
+    public class StReference : StBaseNode {
 
-        public StructureReference(ReferenceInfo referenceInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.REF) {
+        public StReference(ReferenceInfo referenceInfo, StDataBase root, StBaseNode parent) : base(root, parent, TypeOfNode.REF) {
             this.Guid = referenceInfo.Guid;
             this["id"] = referenceInfo.Id.ToString();
             this["name"] = referenceInfo.Name;
 
             foreach (ClassObject classObject in referenceInfo.Classes.AllClasses.Where(cl => cl is ClassObject)) {
                 this.Root.AddGuid(classObject.Guid);
-                StructureClass structureClass = new StructureClass(classObject, this.Root, this);
+                StClass structureClass = new StClass(classObject, this.Root, this);
                 this.ChildNodes.Add(structureClass.Guid, structureClass);
                 this.Root.AddNode(structureClass);
             }
@@ -350,35 +370,38 @@ public class Macro : MacroProvider {
 
     }
 
-    public class StructureClass : BaseNode {
+    public class StClass : StBaseNode {
 
-        public StructureClass(ClassObject classObject, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.TYP) {
+        public StClass(ClassObject classObject, StDataBase root, StBaseNode parent) : base(root, parent, TypeOfNode.TYP) {
             this.Guid = classObject.Guid;
             this["id"] = classObject.Id.ToString();
             this["name"] = classObject.Name;
+            this["countOfEvents"] = classObject.Events.GetUserEvents().Count.ToString();
+            this["eventsNames"] = string.Join("; ", classObject.Events.GetUserEvents().Select(ev => ev.Name).OrderBy(name => name));
 
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
                 this.Root.AddGuid(group.Guid);
 
                 if (group.IsLinkGroup) {
-                    StructureLink link = new StructureLink(group, this.Root, this);
+                    StLink link = new StLink(group, this.Root, this);
                     this.ChildNodes.Add(link.Guid, link);
                     this.Root.AddNode(link);
                 }
                 else {
-                    StructureParameterGroup parameterGroup = new StructureParameterGroup(group, this.Root, this);
+                    StParameterGroup parameterGroup = new StParameterGroup(group, this.Root, this);
                     this.ChildNodes.Add(parameterGroup.Guid, parameterGroup);
                     this.Root.AddNode(parameterGroup);
                 }
             }
+
         }
 
     }
 
-    public class StructureParameterGroup : BaseNode {
+    public class StParameterGroup : StBaseNode {
 
-        public StructureParameterGroup(ParameterGroup group, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.GRP) {
+        public StParameterGroup(ParameterGroup group, StDataBase root, StBaseNode parent) : base(root, parent, TypeOfNode.GRP) {
             this.Guid = group.Guid;
             this["id"] = group.Id.ToString();
             this["name"] = group.Name;
@@ -386,7 +409,7 @@ public class Macro : MacroProvider {
             // Получаем параметры из группы параметров
             foreach (ParameterInfo parameterInfo in group.Parameters) {
                 this.Root.AddGuid(parameterInfo.Guid);
-                StructureParameter parameter = new StructureParameter(parameterInfo, this.Root, this);
+                StParameter parameter = new StParameter(parameterInfo, this.Root, this);
                 this.ChildNodes.Add(parameter.Guid, parameter);
                 this.Root.AddNode(parameter);
             }
@@ -394,28 +417,28 @@ public class Macro : MacroProvider {
 
     }
 
-    public class StructureParameter : BaseNode {
+    public class StParameter : StBaseNode {
 
-        public StructureParameter(ParameterInfo parameterInfo, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.PRM) {
+        public StParameter(ParameterInfo parameterInfo, StDataBase root, StBaseNode parent) : base(root, parent, TypeOfNode.PRM) {
             this.Guid = parameterInfo.Guid;
             this["id"] = parameterInfo.Id.ToString();
             this["name"] = parameterInfo.Name;
-            this["length"] = parameterInfo.Length.ToString();
-            this["nullable"] = parameterInfo.Nullable.ToString();
-            this["typename"] = parameterInfo.TypeName != null ? parameterInfo.TypeName : "null";
-            this["unit"] = parameterInfo.Unit != null ? parameterInfo.Unit.Name : "null";
-            this["values"] = parameterInfo.ValueList != null ? string.Join("; ", parameterInfo.ValueList.Select(item => $"{item.Name} - {item.Value}")) : "null";
+            this["lengthParam"] = parameterInfo.Length.ToString();
+            this["nullableParam"] = parameterInfo.Nullable.ToString();
+            this["typenameParam"] = parameterInfo.TypeName != null ? parameterInfo.TypeName : "null";
+            this["unitParam"] = parameterInfo.Unit != null ? parameterInfo.Unit.Name : "null";
+            this["valuesParam"] = parameterInfo.ValueList != null ? string.Join("; ", parameterInfo.ValueList.Select(item => $"{item.Name} - {item.Value}")) : "null";
         }
 
     }
 
-    public class StructureLink : BaseNode {
+    public class StLink : StBaseNode {
 
-        public StructureLink(ParameterGroup group, StructureDataBase root, BaseNode parent) : base(root, parent, TypeOfNode.LNK) {
+        public StLink(ParameterGroup group, StDataBase root, StBaseNode parent) : base(root, parent, TypeOfNode.LNK) {
             this.Guid = group.Guid;
             this["id"] = group.Id.ToString();
             this["name"] = group.Name;
-            this["type"] = group.LinkType.ToString();
+            this["typeLink"] = group.LinkType.ToString();
         }
 
     }
