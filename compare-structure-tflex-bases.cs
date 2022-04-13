@@ -52,13 +52,16 @@ public class Macro : MacroProvider {
             "name",
             "frendlyName",
             "countOfEvents",
-            "eventsNames",
+            "eventNames",
+            "countOfHandlers",
+            "handlerNames",
             "lengthParam",
             "nullableParam",
             "typenameParam",
             "unitParam",
             "valuesParam",
-            "typeLink"
+            "typeLink",
+            "countOfDialogPages"
         };
 
         InputDialog dialog = new InputDialog(this.Context, "Укажите параметры для подключения к базе данных");
@@ -80,9 +83,12 @@ public class Macro : MacroProvider {
             // Приступаем к чтению данных
             StDataBase structure = new StDataBase(Context.Connection, "Текущая база", indent);
             StDataBase otherStructure = GetStructureFromOtherServer(userName, serverName, frendlyName, indent);
-            foreach (object obj in dialog[excludedFromComparingFields]) {
-                structure.ExcludeKey((string)obj);
-                otherStructure.ExcludeKey((string)obj);
+
+            if (dialog[excludedFromComparingFields] != null) {
+                foreach (object key in dialog[excludedFromComparingFields]) {
+                    structure.ExcludeKey((string)key);
+                    otherStructure.ExcludeKey((string)key);
+                }
             }
 
             if (dialog[directionOfCompareField] == false) {
@@ -129,6 +135,7 @@ public class Macro : MacroProvider {
         public StDataBase Root { get; set; }
         public Dictionary<Guid, StBaseNode> ChildNodes { get; set; } = new Dictionary<Guid, StBaseNode>();
         private Dictionary<string, string> Properties = new Dictionary<string, string>();
+        public Dictionary<string, string>.KeyCollection Keys => this.Properties.Keys;
 
         // Статус и отображение различия
         public CompareResult Status { get; set; }
@@ -181,8 +188,8 @@ public class Macro : MacroProvider {
                 throw new Exception($"Невозможно произвести сравнение объектов с разными типами: {this.Type} => {otherNode.Type}. ({this["name"]})");
             }
 
-            foreach (string key in this.Properties.Keys) {
-                if ((this[key] != otherNode[key]) && !this.Root.ExcludedKeys[this.Type].Contains(key))
+            foreach (string key in this.Keys) {
+                if ((this[key] != otherNode[key]) && (!this.Root.ExcludedKeys.ContainsKey(this.Type) || !this.Root.ExcludedKeys[this.Type].Contains(key)))
                     this.Differences.Add($"[{key}]: {this[key]} => {otherNode[key]}");
             }
 
@@ -377,7 +384,13 @@ public class Macro : MacroProvider {
             this["id"] = classObject.Id.ToString();
             this["name"] = classObject.Name;
             this["countOfEvents"] = classObject.Events.GetUserEvents().Count.ToString();
-            this["eventsNames"] = string.Join("; ", classObject.Events.GetUserEvents().Select(ev => ev.Name).OrderBy(name => name));
+            this["eventNames"] = string.Join("; ", classObject.Events.GetUserEvents().Select(ev => ev.Name).OrderBy(name => name));
+            this["countOfHandlers"] = classObject.Events.Handlers.Count.ToString();
+            this["handlerNames"] = string.Join("; ", classObject.Events.Handlers.Select(handler => handler.HandlerName).OrderBy(name => name));
+            this["countOfDialogPages"] = classObject.Dialog != null ?
+                classObject.Dialog.Groups.Select(group => group.Pages != null ? group.Pages.Count : 0).Sum().ToString() :
+                "Отсутствует";
+
 
             // Производим поиск групп параметров справочника
             foreach (ParameterGroup group in classObject.GetAllGroups()) {
