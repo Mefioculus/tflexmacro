@@ -38,6 +38,7 @@ public class Macro : MacroProvider {
         string directionOfCompareField = "Обратное сравнение";
         string excludedFromComparingFields = "Исключенные поля";
         string excludeReferences = "Исключить справочники из ограничительного списка";
+        string displayOnlyNewDifference = "Отображать позиции, содержащие только 'NEW'";
 
         // Переменные
 
@@ -299,6 +300,7 @@ public class Macro : MacroProvider {
         dialog.AddString(pathToSaveDiffField, pathToFile);
         dialog.AddMultiselectFromList(excludedFromComparingFields, allFields);
         dialog.AddFlag(directionOfCompareField, false);
+        dialog.AddFlag(displayOnlyNewDifference, false);
         dialog.AddFlag(excludeReferences, true);
 
         if (dialog.Show()) {
@@ -311,6 +313,8 @@ public class Macro : MacroProvider {
             // Приступаем к чтению данных
             StDataBase structure = new StDataBase(Context.Connection, "Текущая база", indent, dialog[excludeReferences] ? excludedReferences : new List<Guid>());
             StDataBase otherStructure = StDataBase.CreateFromRemote(userName, serverName, frendlyName, indent, dialog[excludeReferences] ? excludedReferences : new List<Guid>());
+            structure.DisplayNew = dialog[displayOnlyNewDifference];
+            otherStructure.DisplayNew = dialog[displayOnlyNewDifference];
 
             if (dialog[excludedFromComparingFields] != null) {
                 foreach (object key in dialog[excludedFromComparingFields]) {
@@ -444,7 +448,7 @@ public class Macro : MacroProvider {
                 this.ChildNodes[guid].Status = CompareResult.NEW;
                 this.ChildNodes[guid].SetAllChildNodesStatus(CompareResult.NEW);
                 //this.ChildNodes[guid].SetAllChildNodesVisible(); // - Данную строку следует распомментировать, если нужно сделать видимыми все дочерние элементы нового объекта (которые тоже соответственно будут новыми)
-                this.ChildNodes[guid].SetAllParentsToVisible();
+                this.ChildNodes[guid].SetAllParentsToVisibleIfDifference();
             }
 
             // Обрабатываем одинаковые позиции
@@ -453,8 +457,7 @@ public class Macro : MacroProvider {
                 this.ChildNodes[guid].Compare(otherNode.ChildNodes[guid]);
             }
 
-            if (this.HaveDifference())
-                this.SetAllParentsToVisible();
+            this.SetAllParentsToVisibleIfDifference();
         }
 
         private void SetAllChildNodesStatus(CompareResult status) {
@@ -471,7 +474,7 @@ public class Macro : MacroProvider {
             }
         }
 
-        public void SetAllParentsToVisible() {
+        private void SetAllParentsToVisible() {
             this.IsVisibleForDiffReport = true;
             StBaseNode currentType = this.Parent;
 
@@ -488,9 +491,14 @@ public class Macro : MacroProvider {
                 return true;
             if (this.MissedNodes.Count != 0)
                 return true;
-            if (this.Status == CompareResult.NEW)
+            if ((this.Status == CompareResult.NEW) && (this.Root.DisplayNew == true))
                 return true;
             return false;
+        }
+
+        public void SetAllParentsToVisibleIfDifference() {
+            if (this.HaveDifference())
+                this.SetAllParentsToVisible();
         }
 
         public string GetIndentString() {
@@ -534,6 +542,9 @@ public class Macro : MacroProvider {
         // Словарь с исключениями
         public Dictionary<TypeOfNode, List<string>> ExcludedKeys { get; private set; } = new Dictionary<TypeOfNode, List<string>>();
         public List<Guid> ExcludedReferences { get; private set; }
+
+        // Флаги
+        public bool DisplayNew = false;
 
         public StDataBase(ServerConnection connection, string frendlyName, int indent, List<Guid> excludedReferences = null) : base(null, null, indent, TypeOfNode.SRV) {
             this.FrendlyName = frendlyName;
