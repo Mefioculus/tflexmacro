@@ -434,24 +434,27 @@ public class Macro : MacroProvider {
             var missingInCurrent = allReferenceGuidsInOtherStructure.Except(allReferenceGuidsInCurrentStructure);
             var existInBoth = allReferenceGuidsInCurrentStructure.Intersect(allReferenceGuidsInOtherStructure);
 
+            // Обрабатываем "Отсутствующие" позиции
             foreach (Guid guid in missingInCurrent) {
                 this.MissedNodes.Add(otherNode.ChildNodes[guid].StringRepresentation);
             }
 
+            // Обрабатываем "Новые" позиции
             foreach (Guid guid in missingInOther) {
                 this.ChildNodes[guid].Status = CompareResult.NEW;
                 this.ChildNodes[guid].SetAllChildNodesStatus(CompareResult.NEW);
                 //this.ChildNodes[guid].SetAllChildNodesVisible(); // - Данную строку следует распомментировать, если нужно сделать видимыми все дочерние элементы нового объекта (которые тоже соответственно будут новыми)
-                this.ChildNodes[guid].IsVisibleForDiffReport = true;
+                this.ChildNodes[guid].SetAllParentsToVisible();
             }
 
+            // Обрабатываем одинаковые позиции
             // Запускаем сравнение справочников, которые есть и в первой и во второй структуре
             foreach (Guid guid in existInBoth) {
                 this.ChildNodes[guid].Compare(otherNode.ChildNodes[guid]);
             }
 
             if (this.HaveDifference())
-                SetAllParentsToVisible();
+                this.SetAllParentsToVisible();
         }
 
         private void SetAllChildNodesStatus(CompareResult status) {
@@ -468,7 +471,7 @@ public class Macro : MacroProvider {
             }
         }
 
-        private void SetAllParentsToVisible() {
+        public void SetAllParentsToVisible() {
             this.IsVisibleForDiffReport = true;
             StBaseNode currentType = this.Parent;
 
