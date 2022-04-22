@@ -78,6 +78,7 @@ public class Macro : MacroProvider
         public static class Props {
             public static Guid НомерПротокола = new Guid("d662eed7-c2a2-41fc-9b35-05e527349cc7");
             public static Guid ДатаПротокола = new Guid("3ba03308-123b-4840-bc78-bc0fdcb1de4f");
+            public static Guid АвторПротокола = new Guid("799ce8dc-6936-4d0f-b837-acf5525fef40");
             public static Guid СводноеНаименованиеПротокола = new Guid("7b4b4de4-70b0-4a1c-83ce-20d2adf9f4f6");
             public static Guid Заказчик = new Guid("04deee06-ef48-4538-b82f-5e0e3b463687");
             // Параметры для передачи данных в отчет
@@ -1183,6 +1184,11 @@ public class Macro : MacroProvider
         else {
             Error(string.Format("Не получилось определить вариант таблицы для объекта '{0}'", currentObject.ToString()));
         }
+    }
+
+    public void ЗаполнитьПолеАвторПротокола() {
+        ReferenceObject currentObject = Context.ReferenceObject;
+        currentObject[Guids.Props.АвторПротокола].Value = CurrentUser.ToString();
     }
 
     #endregion Присвоение дефолтного вида таблицы в зависимости от типа протокола
