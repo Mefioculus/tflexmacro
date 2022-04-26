@@ -16,7 +16,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
 
     #region Подготовительные работы
     // Получаем данные, которые содержатся в списке полей
-    DataSet ds = (DataSet)DetailRegularPart.DataSource;
+    DataSet ds = (DataSet)Tables.DataSource;
     if (ds == null) {
         MessageBox.Show("ds is null");
         return;
@@ -237,7 +237,7 @@ private void GenerateMagneteTable(string tableString) {
     // Получаем выбранный пользлователем тип исследвоания магнитной лаборатории.
     // Может быть магнитная индукция - 0
     // Может быть удельные потери - 1
-    DataSet ds = (DataSet)DetailRegularPart.DataSource;
+    DataSet ds = (DataSet)Tables.DataSource;
     var index = ds.Tables.IndexOf("Табличные данные (Табличные данные)");
     var tableWithData = ds.Tables[index];
     int typeOfMeasure = Convert.ToInt32(tableWithData.Rows[0]["TypeMeasure"]);
