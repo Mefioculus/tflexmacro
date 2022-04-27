@@ -52,6 +52,8 @@ public class Macro : MacroProvider {
         savedSettings.Load();
 
         Backuper backuper = new Backuper(sourcePath, backupPath, this, savedSettings);
+        if (backuper.IsExit == true)
+            return;
 
         // Получаем словарь с доступными dbf таблицами
         TablesHandler handler = new TablesHandler(backuper.GetPathDbfFiles(), this, savedSettings);
@@ -78,6 +80,8 @@ public class Macro : MacroProvider {
         private Macro MacroProvider { get; set; }
         private Settings Settings { get; set; }
 
+        public bool IsExit { get; set; } = false;
+
         public Backuper (string sourcePath, string backupPath, Macro provider, Settings settings) {
             // Инициализируем репозитории
             this.MacroProvider = provider;
@@ -86,6 +90,11 @@ public class Macro : MacroProvider {
 
             // Запрашиваем параметры у пользователя
             GetParametersFromUser(ref sourcePath, ref backupPath, ref showInfo);
+
+            // Завершаем обработку, если пользлователь нажал отмену в диалоге, который вызывается
+            // в методе GetParametersFromUser
+            if (this.IsExit == true)
+                return;
 
             try {
                 this.SourceRepository = new DbRepository(sourcePath);
@@ -153,6 +162,8 @@ public class Macro : MacroProvider {
                     this.Settings.Save();
                 }
             }
+            else
+                this.IsExit = true;
         }
 
         public List<KeyValuePair<string, string>> GetPathDbfFiles() {
