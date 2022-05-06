@@ -29,9 +29,9 @@ namespace LocalStorage {
         // Конструкторы
         private Storage(string directory, string name) {
             if (name.Contains(".json") || name.Contains("LocalStorageFile-"))
-                throw new Exception("Название настроек не может содержать подстроку '.json' или 'LocalStorageFile-'");
+                throw new Exception("Название хранилища не может содержать подстроку '.json' или 'LocalStorageFile-'");
             if (name.Any(x => Char.IsWhiteSpace(x)))
-                throw new Exception("Название файла должно состоять из одного слова");
+                throw new Exception("Название хранилища должно состоять из одного слова");
             this.Dir = directory;
 
             // Создаем директорию, если она отсутствовала
@@ -86,7 +86,7 @@ namespace LocalStorage {
                 Instances.Remove(nameOfSettings);
             }
             else
-                throw new Exception($"Файл настроек с названием {nameOfSettings} отсутствует в системе");
+                throw new Exception($"Файл хранилища с названием {nameOfSettings} отсутствует в системе");
         }
 
         public static void RemoveSettingsFile(string nameOfSettings) =>
