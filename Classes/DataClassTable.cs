@@ -7,8 +7,8 @@ using System.Windows.Forms;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 
-public class Macro : MacroProvider
-{
+public class Macro : MacroProvider {
+
     public Macro(MacroContext context)
         : base(context) {
         }
@@ -60,7 +60,11 @@ public class Macro : MacroProvider
         public List<int> WidthOfColumns { get; private set; }
         public List<DCRow> Rows { get; private set; }
 
-        private DCRow CurrentRow { get; set; }
+        private int CurrentRowIndex { get; set; }
+        private int CurrentCellIndex { get; set; }
+        public DCRow CurrentRow => this.Rows[this.CurrentRowIndex];
+        public DCCell CurrentCell => this.CurrentRow.Cells[this.CurrentCellIndex];
+
 
         public bool IsEnded { get; private set; }
 
@@ -68,6 +72,9 @@ public class Macro : MacroProvider
         public int ColsCount => this.WidthOfColumns.Count;
 
         public DCTable(List<int> widthOfColumns) {
+            // Выставляем курсоры на дефолтное значение
+            this.CurrentRowIndex = -1;
+            this.CurrentCellIndex = -1;
             this.IsEnded = false;
             this.WidthOfColumns = widthOfColumns;
             this.Rows = new List<DCRow>();
@@ -185,6 +192,10 @@ public class Macro : MacroProvider
             this.IndexRow = index;
             this.Height = height;
             this.Cells = new List<DCCell>();
+
+            // Создаем пустые ячейки
+            for (int i = 0; i < this.Table.WidthOfColumns.Count; i++)
+                this.Cells(new DCCell(this.Table, this, i));
         }
 
         public void AddCell(string text) {
@@ -244,47 +255,40 @@ public class Macro : MacroProvider
         public int IndexCell { get; private set; }
         public int IndexRow => this.Row.IndexRow;
 
-        public string Text { get; set; }
+        public string Text { get; private set; }
+        public TypeOfCell Type { get; private set; }
+
 
         // Параметры объединения ячеек
+        public DCCell MasterCell { get; private set; } = null;
         public TypeOfSpan SpanType { get; private set; }
-        public int VerticalSpanValue { get; private set; }
-        public int HorizontalSpanValue { get; private set; }
-        public bool HasSpan => this.SpanType == TypeOfSpan.None ? false : true;
-        public bool HasSpanned { get; private set; }
-        
-        // Параметры размера ячейки
-        public int Width =>
-            (this.SpanType != TypeOfSpan.Horizontal) && (this.SpanType != TypeOfSpan.Rectangular) ?
-                this.Table.WidthOfColumns[this.IndexRow] :
-                this.Table.WidthOfColumns
-                    .Skip(this.IndexCell)
-                    .Take(this.HorizontalSpanValue)
-                    .Sum();
-        public int Height =>
-            (this.SpanType != TypeOfSpan.Vertical) && (this.SpanType != TypeOfSpan.Rectangular) ?
-                this.Row.Height :
-                this.Table.Rows
-                    .Skip(this.IndexRow)
-                    .Take(this.VerticalSpanValue)
-                    .Select(row => row.Height)
-                    .Sum();
 
+        public int Width { get; private set; } = 0;
+        public int Height { get; private set; } = 0;
 
-
-        public DCCell(DCTable table, DCRow row, int index, string text, TypeOfSpan typeOfSpan, int horizontalSpanValue, int verticalSpanValue) {
+        public DCCell(DCTable table, DCRow row, int index) {
             this.Table = table;
             this.Row = row;
             this.IndexCell = index;
-            this.Text = text;
+            this.Type = TypeOfCell.Empty;
+            this.SpanType = TypeOfSpan.None;
+        }
 
-            this.SpanType = typeOfSpan;
-            this.HorizontalSpanValue = horizontalSpanValue;
-            this.HorizontalSpanValue = verticalSpanValue;
+        public void SetSize(int height, int width) {
+            this.Height = height;
+            this.Width = width;
+        }
+
+        public void SetText(string text) {
+            this.Text = text;
+        }
+
+        public void SetSpan(TypeOfSpan type, int mainValue, int additionalValue = 0) {
+            // TODO: Реализовать метод установки слияния ячеек
         }
 
         public override string ToString() {
-            return $"{this.Text, 20}";
+            return this.Text != null ? $"{this.Text, 20}" : new string(' ', 20);
         }
     }
 
@@ -294,6 +298,16 @@ public class Macro : MacroProvider
         Horizontal,
         Rectangular
     }
+
+    private enum TypeOfCell {
+        Empty,
+        Simple,
+        MergedMaster,
+        MergedSlaveUnderMaster,
+        MergedSlaveNotUnderMaster
+    }
+
+
 
  
 }

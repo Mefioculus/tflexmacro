@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30114.105
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalSettings", "LocalSettings\LocalSettings.csproj", "{26F5E71D-4A91-4B14-8D4A-9CDAB54FE471}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalStorageTests", "LocalStorageTests\LocalStorageTests.csproj", "{7C72CEE3-8B1F-4482-AD0B-9EC7BBF24AEE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalStorage", "LocalStorage\LocalStorage.csproj", "{9E4A03C2-55DF-4EAF-A8D3-EC4B528DE964}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -16,13 +16,13 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{26F5E71D-4A91-4B14-8D4A-9CDAB54FE471}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{26F5E71D-4A91-4B14-8D4A-9CDAB54FE471}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{26F5E71D-4A91-4B14-8D4A-9CDAB54FE471}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{26F5E71D-4A91-4B14-8D4A-9CDAB54FE471}.Release|Any CPU.Build.0 = Release|Any CPU
 		{7C72CEE3-8B1F-4482-AD0B-9EC7BBF24AEE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7C72CEE3-8B1F-4482-AD0B-9EC7BBF24AEE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7C72CEE3-8B1F-4482-AD0B-9EC7BBF24AEE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7C72CEE3-8B1F-4482-AD0B-9EC7BBF24AEE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E4A03C2-55DF-4EAF-A8D3-EC4B528DE964}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E4A03C2-55DF-4EAF-A8D3-EC4B528DE964}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E4A03C2-55DF-4EAF-A8D3-EC4B528DE964}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E4A03C2-55DF-4EAF-A8D3-EC4B528DE964}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
