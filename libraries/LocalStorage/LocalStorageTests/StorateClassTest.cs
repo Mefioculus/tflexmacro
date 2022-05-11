@@ -71,6 +71,21 @@ namespace LocalStorageTests {
             Assert.Equal(today.ToString(), testSettings.RetrieveOrDefault<DateTime>("dont existed date", today).ToString());
             testSettings.Save();
             Storage.RemoveSettingsFile(nameOfSettings);
+
+            // Проверка извелечения булевых значений
+            testSettings["boolean"] = true.ToString();
+            Assert.True(testSettings.RetrieveOrDefault<bool>("boolean", false));
+            Assert.False(testSettings.RetrieveOrDefault<bool>("notExistBoolean", false));
+
+            // Провека извлечения целочисленного типа
+            testSettings["integer"] = 30.ToString();
+            Assert.Equal(30, testSettings.RetrieveOrDefault<int>("integer", 0));
+            Assert.Equal(0, testSettings.RetrieveOrDefault<int>("notExistInteger", 0));
+            
+            // Проверка извлечения типа с плавающей точкой
+            testSettings["double"] = 30.ToString();
+            Assert.Equal(30, testSettings.RetrieveOrDefault<double>("double", 0.0));
+            Assert.Equal(0.0, testSettings.RetrieveOrDefault<double>("notExistDouble", 0.0));
         }
 
         [Fact]
