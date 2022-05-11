@@ -183,6 +183,13 @@ public class Macro : MacroProvider
             public static Guid СодержаниеКомпонента6 = new Guid("3730bbb3-f58e-4566-b162-b127d50b3da8");
             public static Guid СодержаниеКомпонента7 = new Guid("98a206e5-4cc4-4572-966d-95979fcc7812");
             public static Guid СодержаниеКомпонента8 = new Guid("c15a0f03-5738-4e48-9fbd-fc57736fe46c");
+
+            // Параметры каталога оборудования
+            public static Guid НаименованиеОборудования = new Guid("b9b13d1f-397b-4467-bd41-f4f606fe01a8");
+            public static Guid ЗаводскойНомерОборудования = new Guid("f436ae6d-7840-4ae0-8593-63e69f55ba7a");
+            public static Guid ОкончаниеПоверкиОборудования = new Guid("1fc6089b-073b-4183-a5d2-ea0414e90d28");
+            public static Guid НомерСвидетельстваОборудования = new Guid("19bf4e5b-afbf-4f64-af0e-29cff1e4d141");
+            public static Guid СводноеНаименованиеОборудования = new Guid("836e0691-cbd3-445b-95c3-f8db5b6c919b");
         }
 
         public static class Links {
@@ -456,6 +463,23 @@ public class Macro : MacroProvider
             return "ОШИБКА";
         }
     }
+
+    // Генерация сводного наименования в каталоге оборудования ЦЗЛ
+    public void ГенерацияСводногоОбозначенияОборудования() {
+        ReferenceObject оборудование = Context.ReferenceObject;
+
+        // Получаем параметры для заполнения сводного обозначения
+        string наименование = (string)оборудование[Guids.Props.НаименованиеОборудования].Value;
+        string обозначение = (string)оборудование[Guids.Props.ЗаводскойНомерОборудования].Value;
+        string поверка = (string)оборудование[Guids.Props.НомерСвидетельстваОборудования].Value;
+        string годенДо = ((DateTime)оборудование[Guids.Props.ОкончаниеПоверкиОборудования].Value).ToString("dd.MM.yyyy");
+
+        // Заполняем сводное обозначение
+        оборудование[Guids.Props.СводноеНаименованиеОборудования].Value = поверка != string.Empty ?
+            $"{наименование} зав. №{обозначение} поверка №{поверка} до {годенДо}" :
+            $"{наименование} зав. №{обозначение}";
+    }
+
 
 
     #endregion Общие методы для всех протоколов
