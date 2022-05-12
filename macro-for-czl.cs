@@ -196,6 +196,8 @@ public class Macro : MacroProvider
             public static Guid СправочныеМатериалыМагнитнаяЛаборатория = new Guid("c543586f-17ce-4731-9690-bfddd0f10a4b");
             public static Guid ПодлинникПротокола = new Guid("5545694e-602c-4090-bb9f-1453aa54845b");
             public static Guid СправочныеМатериалыХимическаяЛаборатория = new Guid("56c4a7e2-3007-4c94-a9f0-ad1857064a4f");
+            public static Guid ГруппыРассылки = new Guid("4685b9f7-1e97-48e7-a192-52ed786eadb3");
+            public static Guid ГруппыПользователей = new Guid("861bbc2e-ab60-4bd9-bc09-404d6c90aa95");
         }
 
         public static class Stages {
@@ -275,75 +277,27 @@ public class Macro : MacroProvider
     public void TestSendNotification() {
         // Получаем объект для тестирования
         Reference czlReference = Context.Connection.ReferenceCatalog.Find(new Guid("f7f43d73-857c-41f9-b449-38ee72caa221")).CreateReference();
-        ReferenceObject testObject = czlReference.Find(new Guid("84590a8d-3bfb-42f6-b1c1-a4c641003be7"));
+        ReferenceObject testObject = czlReference.Find(new Guid("af8603b9-9786-4a66-a73d-a107c7477ac3"));
 
         Message("Проверка содержимого аккаунта", Context.Connection.Mail.DOCsAccount.ToString());
         Message("Аккаунты, которые есть в MailService", string.Join("\n", Context.Connection.Mail.Accounts.Select(acc => acc.ToString())));
 
-        //SendNotification(testObject);
+        SendNotification(testObject);
+        Message("Информация", "Работа макроса завершена");
     }
 
     private void SendNotification(ReferenceObject protocol) {
-        // Для начала определяем заказчика
-        string client = ((string)protocol[Guids.Props.Заказчик].Value).ToLower().Trim();
+        // Получаем пользователей, прикрепленных через группы рассылок к протоколу
+        ReferenceObject mailGroup = protocol.GetObject(Guids.Links.ГруппыРассылки);
+        List<ReferenceObject> users = mailGroup != null ?
+            mailGroup.GetObjects(Guids.Links.ГруппыПользователей) : new List<ReferenceObject>();
 
-        // Перечень людей для оповещения
-        Dictionary<int, List<User>> UsersToNotificate = new Dictionary<int, List<User>>() {
-            [0] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("dcc50bcc-1911-4515-b9f2-0fa778d032fd")) as User // Гуков Руслан Юрьевич 
-            },
-            [1] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("d63fc678-fc69-4fb7-8849-61b6872fd24f")) as User // Першина Галина Анатольевна
-            },
-            [5] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("f2c473de-7409-4011-a0bb-41203d93908f")) as User // Смирнова Марина Анатольевна
-            },
-            [16] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("12c080c7-ac83-4bff-bf55-cfe97cc7c466")) as User // Паршин Александр Николаевич
-            },
-            [17] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("53f4ce42-8bc5-43cb-b72f-9670001cd4d3")) as User // Борисенко Андрей Александрович
-            },
-            [22] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("22c58303-f231-4388-9aeb-9d745d68dad1")) as User // Лыгина Светлана Викторовна 
-            },
-            [23] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("22c58303-f231-4388-9aeb-9d745d68dad1")) as User // Лыгина Светлана Викторовна
-            },
-            [24] = new List<User>() {
-                Context.Connection.References.Users.Find(new Guid("41a58cc1-03f9-4088-bd54-7e5de89ac17d")) as User // Шаприцкий Михаил Львович
-            },
-        };
-
-        switch (client) {
-            case "цех №1":
-                SendMailTo(UsersToNotificate[1], protocol);
-                break;
-            case "цех №5":
-                SendMailTo(UsersToNotificate[5], protocol);
-                break;
-            case "цех №16":
-                SendMailTo(UsersToNotificate[16], protocol);
-                break;
-            case "цех №17":
-                SendMailTo(UsersToNotificate[17], protocol);
-                break;
-            case "цех №22":
-                SendMailTo(UsersToNotificate[22], protocol);
-                break;
-            case "цех №23":
-                SendMailTo(UsersToNotificate[23], protocol);
-                break;
-            case "цех №24":
-                SendMailTo(UsersToNotificate[24], protocol);
-                break;
-            default:
-                SendMailTo(UsersToNotificate[0], protocol);
-                break;
-        }
+        SendMailTo(users.Cast<User>().ToList<User>(), protocol);
     }
 
     private void SendMailTo(List<User> users, ReferenceObject protocol) {
+        if ((users.Count == 0) || (users == null))
+            return;
         // Получаем название протокола
         string protocolName = (string)protocol[Guids.Props.СводноеНаименованиеПротокола].Value;
         String clientName = (string)protocol[Guids.Props.Заказчик].Value;
@@ -375,7 +329,17 @@ public class Macro : MacroProvider
         }
 
         // Отправляем сообщение
-        message.Send();
+        string errors = string.Empty;
+        try {
+            message.Send();
+        }
+        catch (Exception e) {
+            errors += $"Возникла ошибка при отправке письма следующим адресатам:\n{message.To.ToString()}\n\nТекст ошибки:\n{e.Message}";
+        }
+
+        if (errors != string.Empty) {
+            Message("Ошибка", errors);
+        }
     }
 
     private void ChangeStage(ReferenceObject refObj, Guid guidOfStage) {
