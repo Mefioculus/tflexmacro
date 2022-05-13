@@ -398,9 +398,13 @@ private void GenerateChemTable(string tableString) {
 
     // Производим корректировку таблицы с основными параметрами
     table1.BeginInit();
-    table1.DeleteRow(table1.Rows[4]);
-    table1.DeleteRow(table1.Rows[3]);
-    table1.DeleteRow(table1.Rows[1]);
+    //table1.DeleteRow(table1.Rows[4]); // Оборудование
+    table1.DeleteRow(table1.Rows[3]); // Материал
+    table1.DeleteRow(table1.Rows[2]); // Объект исследования
+    table1.DeleteRow(table1.Rows[1]); // Основание
+    //table1.DeleteRow(table1.Rows[0]); // Заказчик
+    
+    Detail1.Height = 300; // Уменьшение размера раздела в связи с корректировкой размера таблицы
     table1.EndInit();
 }
 
