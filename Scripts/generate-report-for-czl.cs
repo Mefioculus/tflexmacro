@@ -400,11 +400,11 @@ private void GenerateChemTable(string tableString) {
     table1.BeginInit();
     //table1.DeleteRow(table1.Rows[4]); // Оборудование
     table1.DeleteRow(table1.Rows[3]); // Материал
-    table1.DeleteRow(table1.Rows[2]); // Объект исследования
+    //table1.DeleteRow(table1.Rows[2]); // Объект исследования
     table1.DeleteRow(table1.Rows[1]); // Основание
     //table1.DeleteRow(table1.Rows[0]); // Заказчик
     
-    Detail1.Height = 300; // Уменьшение размера раздела в связи с корректировкой размера таблицы
+    Detail1.Height -= 100; // Уменьшение размера раздела в связи с корректировкой размера таблицы
     table1.EndInit();
 }
 
