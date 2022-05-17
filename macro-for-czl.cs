@@ -73,6 +73,7 @@ public class Macro : MacroProvider
             public static Guid ФактическиеПоказания = new Guid("a6f224ab-6044-472b-8e32-5780d2148e39");
             public static Guid ОбразцыМагнитнойЛаборатории = new Guid("784e5bb5-8247-4a47-bf78-7fc5033a2a6c");
             public static Guid КомпонентыЭлектролита = new Guid("fd3ca50d-79c1-4237-91f5-b65ecf706d27");
+            public static Guid СписокОборудования = new Guid("93e97cfd-25b6-4b2a-98b0-21ae8ed24eb3");
         }
 
         public static class Props {
@@ -81,9 +82,13 @@ public class Macro : MacroProvider
             public static Guid АвторПротокола = new Guid("799ce8dc-6936-4d0f-b837-acf5525fef40");
             public static Guid СводноеНаименованиеПротокола = new Guid("7b4b4de4-70b0-4a1c-83ce-20d2adf9f4f6");
             public static Guid Заказчик = new Guid("04deee06-ef48-4538-b82f-5e0e3b463687");
+            public static Guid Оборудование = new Guid("058ab970-1352-4e10-82b4-e49d8847004f");
             // Параметры для передачи данных в отчет
             public static Guid ПараметрВидТаблицы = new Guid("5ee7e25b-e56a-4f62-abb0-f092fc0bdb27");
-            //
+
+            // Параметр типа Оборудование списка объектов Оборудование
+            public static Guid НаименованиеОборудованияВСписке = new Guid("93e75517-2c3b-4b36-ba32-c39847b861f7");
+
             // Параметры типа Образец
             // Для расчета сводного размера
             public static Guid ФормаОбразца = new Guid("03b50c57-5856-4761-807e-8bf07ef6c50f");
@@ -357,6 +362,7 @@ public class Macro : MacroProvider
     //Формирование отчета для предварительного просмотра
     public void СформироватьОтчетДляПредварительногоПросмотра() {
         // Получаем текущий объект
+        UpdateEquipment(); // Вызов метода для того, чтобы в отчет попало актуальное состояние добавленного оборудования
         ReferenceObject currentObject = Context.ReferenceObject;
         if (currentObject == null) {
             Message("Ошибка", "Не получилось обратиться к текущему объекту для формирования отчета");
@@ -404,6 +410,20 @@ public class Macro : MacroProvider
         currentObject[Guids.Props.СводноеНаименованиеПротокола].Value = string.Format("{0}-{1}-{2}/{3}", typeOfRecord, orderNumber, date.Month, date.Year);
         //currentObject.EndChanges();
         
+    }
+
+    public void UpdateEquipment() {
+        //ReferenceObject currentProtocol = currentEquip.MasterObject; // Получаем протокол
+        ReferenceObject currentProtocol = Context.ReferenceObject;
+
+        currentProtocol[Guids.Props.Оборудование].Value =
+            string.Join(
+                    ";\n",
+                    currentProtocol.GetObjects(
+                        Guids.ListsOfObjects.СписокОборудования)
+                            .OrderBy(equip => equip.SystemFields.CreationDate)
+                            .Select(obj => (string)obj[Guids.Props.НаименованиеОборудованияВСписке].Value)
+            );
     }
 
     private string GetStringOfType(ReferenceObject referenceObject) {
