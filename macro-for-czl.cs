@@ -74,6 +74,7 @@ public class Macro : MacroProvider
             public static Guid ОбразцыМагнитнойЛаборатории = new Guid("784e5bb5-8247-4a47-bf78-7fc5033a2a6c");
             public static Guid КомпонентыЭлектролита = new Guid("fd3ca50d-79c1-4237-91f5-b65ecf706d27");
             public static Guid СписокОборудования = new Guid("93e97cfd-25b6-4b2a-98b0-21ae8ed24eb3");
+            public static Guid СписокПользователей = new Guid("e837ec33-6aa8-4e02-be5f-75a8cb54e566");
         }
 
         public static class Props {
@@ -85,6 +86,9 @@ public class Macro : MacroProvider
             public static Guid Оборудование = new Guid("058ab970-1352-4e10-82b4-e49d8847004f");
             // Параметры для передачи данных в отчет
             public static Guid ПараметрВидТаблицы = new Guid("5ee7e25b-e56a-4f62-abb0-f092fc0bdb27");
+
+            // Параметры объектов списка пользователей
+            public static Guid GuidПользователя = new Guid("1e0036f9-adb0-4ddd-9ccf-ba210d9d951e");
 
             // Параметр типа Оборудование списка объектов Оборудование
             public static Guid НаименованиеОборудованияВСписке = new Guid("93e75517-2c3b-4b36-ba32-c39847b861f7");
@@ -294,10 +298,16 @@ public class Macro : MacroProvider
     private void SendNotification(ReferenceObject protocol) {
         // Получаем пользователей, прикрепленных через группы рассылок к протоколу
         ReferenceObject mailGroup = protocol.GetObject(Guids.Links.ГруппыРассылки);
-        List<ReferenceObject> users = mailGroup != null ?
-            mailGroup.GetObjects(Guids.Links.ГруппыПользователей) : new List<ReferenceObject>();
 
-        SendMailTo(users.Cast<User>().ToList<User>(), protocol);
+        List<User> users = new List<User>();
+
+        foreach (ReferenceObject user in mailGroup.GetObjects(Guids.ListsOfObjects.СписокПользователей)) {
+            User findedUser = Context.Connection.References.Users.Find((Guid)user[Guids.Props.GuidПользователя].Value) as User;
+            if (findedUser != null)
+                users.Add(findedUser);
+        }
+
+        SendMailTo(users, protocol);
     }
 
     private void SendMailTo(List<User> users, ReferenceObject protocol) {
@@ -423,8 +433,17 @@ public class Macro : MacroProvider
                     .Select(equip => (string)equip[Guids.Props.НаименованиеОборудованияВСписке].Value)
                 );
 
-        if ((string)currentProtocol[Guids.Props.Оборудование].Value != result)
+        if ((string)currentProtocol[Guids.Props.Оборудование].Value != result) {
+            bool wasEditable = true;
+            if (!currentProtocol.CanEdit) {
+                currentProtocol.BeginChanges();
+                wasEditable = false;
+            }
             currentProtocol[Guids.Props.Оборудование].Value = result;
+            if (!wasEditable) {
+                currentProtocol.EndChanges();
+            }
+        }
     }
 
     private string GetStringOfType(ReferenceObject referenceObject) {
@@ -463,6 +482,11 @@ public class Macro : MacroProvider
         оборудование[Guids.Props.СводноеНаименованиеОборудования].Value = поверка != string.Empty ?
             $"{наименование} зав. №{обозначение} поверка №{поверка} до {годенДо}" :
             $"{наименование} зав. №{обозначение}";
+
+        оборудование[Guids.Props.СводноеНаименованиеОборудования].Value =
+            наименование +
+            (обозначение != string.Empty ? $"зав. №{обозначение}" : string.Empty) +
+            (поверка != string.Empty ? $"поверка №{поверка} до {годенДо}" : string.Empty);
     }
 
 
