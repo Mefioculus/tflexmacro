@@ -416,14 +416,15 @@ public class Macro : MacroProvider
         //ReferenceObject currentProtocol = currentEquip.MasterObject; // Получаем протокол
         ReferenceObject currentProtocol = Context.ReferenceObject;
 
-        currentProtocol[Guids.Props.Оборудование].Value =
-            string.Join(
-                    ";\n",
-                    currentProtocol.GetObjects(
-                        Guids.ListsOfObjects.СписокОборудования)
-                            .OrderBy(equip => equip.SystemFields.CreationDate)
-                            .Select(obj => (string)obj[Guids.Props.НаименованиеОборудованияВСписке].Value)
-            );
+        string result = string.Join(
+                ":\n",
+                currentProtocol.GetObjects(Guids.ListsOfObjects.СписокОборудования)
+                    .OrderBy(equip => equip.SystemFields.CreationDate)
+                    .Select(equip => (string)equip[Guids.Props.НаименованиеОборудованияВСписке].Value)
+                );
+
+        if ((string)currentProtocol[Guids.Props.Оборудование].Value != result)
+            currentProtocol[Guids.Props.Оборудование].Value = result;
     }
 
     private string GetStringOfType(ReferenceObject referenceObject) {
