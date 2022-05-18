@@ -397,15 +397,22 @@ private void GenerateChemTable(string tableString) {
     RegularDataTable.EndInit();
 
     // Производим корректировку таблицы с основными параметрами
-    table1.BeginInit();
-    //table1.DeleteRow(table1.Rows[4]); // Оборудование
-    table1.DeleteRow(table1.Rows[3]); // Материал
-    //table1.DeleteRow(table1.Rows[2]); // Объект исследования
-    table1.DeleteRow(table1.Rows[1]); // Основание
-    //table1.DeleteRow(table1.Rows[0]); // Заказчик
+    headerTable.BeginInit();
+    headerTable.Rows[2].Cells[0].Text = "Проба:";
+    headerTable.Rows[2].Cells[0].Width = 50; // Делаем ячейку уже
+    //headerTable.DeleteRow(headerTable.Rows[4]); // Оборудование
+    headerTable.DeleteRow(headerTable.Rows[3]); // Материал
+    //headerTable.DeleteRow(headerTable.Rows[2]); // Объект исследования
+    headerTable.DeleteRow(headerTable.Rows[1]); // Основание
+    //headerTable.DeleteRow(headerTable.Rows[0]); // Заказчик
     
+    headerTable.EndInit();
     Detail1.Height -= 100; // Уменьшение размера раздела в связи с корректировкой размера таблицы
-    table1.EndInit();
+
+    signsTable.BeginInit();
+    // Производим корректировку приписки
+    signsTable.Rows[1].Cells[0].Text = "Результат испытаний распространяется только на предоставленную пробу";
+    signsTable.EndInit();
 }
 
 #endregion Метод для генерации таблицы для протокола химической лаборатории
