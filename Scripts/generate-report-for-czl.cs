@@ -15,6 +15,9 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
     #endregion Основные переменные
 
     #region Подготовительные работы
+    //Tables имеет класс DetailReportBand
+
+
     // Получаем данные, которые содержатся в списке полей
     DataSet ds = (DataSet)Tables.DataSource;
     if (ds == null) {
@@ -52,20 +55,20 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
 
     switch (protocolType) {
         case "Протокол металлографической лаборатории":
-            GenerateDefaultTable(tableString);
+            GenerateDefaultTable(tableString, ds);
             break;
         case "Протокол физикомеханической лаборатории":
-            GenerateDefaultTable(tableString);
+            GenerateDefaultTable(tableString, ds);
             break;
         case "Протокол спектральной лаборатории":
             break;
         case "Протокол химической лаборатории":
-            GenerateChemTable(tableString);
+            GenerateChemTable(tableString, ds);
             break;
         case "Протокол гальванической лаборатории":
             break;
         case "Протокол магнитной лаборатории":
-            GenerateMagneteTable(tableString);
+            GenerateMagneteTable(tableString, ds);
             break;
         case "Протокол электрической лаборатории":
             break;
@@ -112,7 +115,7 @@ private void xtraReport1_BeforePrint(object sender, System.Drawing.Printing.Prin
 #region Service methods
 #region Метод для генерации таблицы по умолчанию
 
-private void GenerateDefaultTable(string tableString) {
+private void GenerateDefaultTable(string tableString, DataSet ds) {
 
     // Приступаем к корректированию табличных данных
     RegularDataTable.BeginInit();
@@ -224,7 +227,7 @@ private void GenerateDefaultTable(string tableString) {
 
 #region Метод для генерации таблицы для протокола магнитной лаборатории
 
-private void GenerateMagneteTable(string tableString) {
+private void GenerateMagneteTable(string tableString, DataSet ds) {
 
     // Завершаем работу метода, если строка не содержит информации с данными таблицы
     // (скорее всего это означает, что пользователь пытается сформировать отчет на протокол
@@ -237,7 +240,6 @@ private void GenerateMagneteTable(string tableString) {
     // Получаем выбранный пользлователем тип исследвоания магнитной лаборатории.
     // Может быть магнитная индукция - 0
     // Может быть удельные потери - 1
-    DataSet ds = (DataSet)Tables.DataSource;
     var index = ds.Tables.IndexOf("Табличные данные (Табличные данные)");
     var tableWithData = ds.Tables[index];
     int typeOfMeasure = Convert.ToInt32(tableWithData.Rows[0]["TypeMeasure"]);
@@ -369,7 +371,7 @@ private void GenerateMagneteTable(string tableString) {
 
 #region Метод для генерации таблицы для протокола химической лаборатории
 
-private void GenerateChemTable(string tableString) {
+private void GenerateChemTable(string tableString, DataSet ds) {
     if (tableString == string.Empty)
         return;
 
@@ -400,14 +402,20 @@ private void GenerateChemTable(string tableString) {
     headerTable.BeginInit();
     headerTable.Rows[2].Cells[0].Text = "Проба:";
     headerTable.Rows[2].Cells[0].Width = 50; // Делаем ячейку уже
-    //headerTable.DeleteRow(headerTable.Rows[4]); // Оборудование
+
+    // Если оборудование не заполнено, удаляем строку с оборудованием
+    var index = ds.Tables.IndexOf("Параметры отчета");
+    var ParametersOfReportTable = ds.Tables[index];
+    if (string.IsNullOrEmpty(Convert.ToString(ParametersOfReportTable.Rows[0]["Оборудование"])))
+        headerTable.DeleteRow(headerTable.Rows[4]); // Оборудование
+
     headerTable.DeleteRow(headerTable.Rows[3]); // Материал
     //headerTable.DeleteRow(headerTable.Rows[2]); // Объект исследования
     headerTable.DeleteRow(headerTable.Rows[1]); // Основание
     //headerTable.DeleteRow(headerTable.Rows[0]); // Заказчик
     
     headerTable.EndInit();
-    Detail1.Height -= 100; // Уменьшение размера раздела в связи с корректировкой размера таблицы
+    Detail1.Height -= 200; // Уменьшение размера раздела в связи с корректировкой размера таблицы
 
     signsTable.BeginInit();
     // Производим корректировку приписки
