@@ -1,21 +1,21 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using TFlex.DOCs.Model;
-using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
 using TFlex.DOCs.Model.References.Files;
-using TFlex.DOCs.Common;
+using TFlex.DOCs.Model.References.Users;
 
 
 // Макрос для тестовых задач
+// Для работы данного макроса так же потребуется добавление ссылки TFlex.Model.Technology.dll
 
 public class Macro : MacroProvider {
-    public Macro (MacroContext context) : base(context)
-    {
+    public Macro (MacroContext context) : base(context) {
     }
 
     public static class Guids {
@@ -70,37 +70,11 @@ public class Macro : MacroProvider {
         }
 
     }
-    
-    public void GetFieldsOfReferences() {
-    	ReferenceObject currentObject = Context.ReferenceObject;
-    	if (currentObject == null) {
-    		Message("Ошибка", "Отсутствует текущий объект");
-    		return;
-    	}
-    	Reference referenceOfObject = currentObject.Reference;
-    	
-    	Message("", referenceOfObject.Id.ToString());
-    	Message("", referenceOfObject.Name);
-    	Message("", referenceOfObject.ToString());
-    	
-    }
-    
-    // Метод для поиска позиций в справочнике по порядковому номеру
-    public void FindEqualReferenceObject() {
-    	ReferenceObject referenceObject = Context.ReferenceObject;
-    	Reference reference = referenceObject.Reference;
-    	
-    	// Guid поля, по которому мы будем производить поиск
-    	Guid guidOfParameter = new Guid("8b503bdc-5672-4324-96e1-82ea130ef078");
-    	ParameterInfo parameterInfo = reference.ParameterGroup[guidOfParameter];
-    	
-    	int orderNumber = 3;
-    	
-    	List<ReferenceObject> result = reference.Find(parameterInfo, orderNumber);
-    	
-    	Message("Информация", string.Format("Записей с порядковым номером '{0}' найдено {1} шт.", orderNumber, result.Count));
-    	
+
+    public void ПоискПользователяВГруппахИПользователях() {
+        List<User> users = Context.Connection.References.Users.GetAllUsers();
+        Message("Количество пользователей", users.Count);
+        Message("Найденные пользователи", string.Join("\n", users.Select(user => (string)user[new Guid("42c81c2b-7354-46aa-9547-0f1a93e9d4e1")].Value).OrderBy(login => login)));
     }
 }
-
 
