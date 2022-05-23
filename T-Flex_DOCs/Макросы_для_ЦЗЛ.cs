@@ -298,6 +298,8 @@ public class Macro : MacroProvider
     private void SendNotification(ReferenceObject protocol) {
         // Получаем пользователей, прикрепленных через группы рассылок к протоколу
         ReferenceObject mailGroup = protocol.GetObject(Guids.Links.ГруппыРассылки);
+        if (mailGroup == null)
+            return;
 
         List<User> users = new List<User>();
 
@@ -1226,4 +1228,3 @@ public class Macro : MacroProvider
 
     #endregion Присвоение дефолтного вида таблицы в зависимости от типа протокола
 }
-
