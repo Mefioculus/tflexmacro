@@ -8,8 +8,8 @@ using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
 using TFlex.DOCs.Model.References.Files;
+using TFlex.DOCs.Model.References.Nomenclature;
 using TFlex.DOCs.Model.References.Users;
-
 
 // Макрос для тестовых задач
 // Для работы данного макроса так же потребуется добавление ссылки TFlex.Model.Technology.dll
@@ -39,6 +39,10 @@ public class Macro : MacroProvider {
 
     // Код тестового макроса
     
+    public override void Run() {
+        ТестированиеРаботыССтруктурами();
+    }
+    
     public void ImportFileInFileReference() {
         // Для начала получаем объект setOfDocuments
         ReferenceInfo referenceInfo = Context.Connection.ReferenceCatalog.Find(Guids.References.КомплектыДокументов);
@@ -47,13 +51,7 @@ public class Macro : MacroProvider {
         TechnologicalSet setOfDocuments = reference.Find(Guids.Objects.КомплектДокументов) as TechnologicalSet;
 
         // Получаем с этого объекта нужную директорию
-        FolderObject folder = setOfDocuments.Folder as FolderObject;
-
-
-        
-
-
-
+        TFlex.DOCs.Model.References.Files.FolderObject folder = setOfDocuments.Folder as TFlex.DOCs.Model.References.Files.FolderObject;
 
         string pathToFile = @"C:\Users\gukovry\AppData\Local\Temp\testPdf.pdf";
 
@@ -103,9 +101,41 @@ public class Macro : MacroProvider {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Обозначения изделий Сергеевой.txt"),
                 string.Join("\n", shifrs)
                 );
+    }
+
+    public void ТестированиеРаботыССтруктурами() {
+        NomenclatureReference nomReference = new NomenclatureReference(Context.Connection);
+        NomenclatureObject parent1 = nomReference.Find(new Guid("c1529b46-3e69-4236-91a5-ac7ada3ff56e")) as NomenclatureObject;
+        NomenclatureObject parent2 = nomReference.Find(new Guid("0adceb5f-1194-4277-9873-2d71cfd6c225")) as NomenclatureObject;
+        NomenclatureObject child1 = nomReference.Find(new Guid("f3d1a9b7-1cc2-44fd-a7b4-6e54f50e6b4b")) as NomenclatureObject;
+        NomenclatureObject child2 = nomReference.Find(new Guid("2c54e674-c50b-4454-9f13-8adfa748e027")) as NomenclatureObject;
+
+        Message(
+                "Информация",
+                string.Format(
+                    "{0}\n\n{1}\n\n{2}\n\n{3}",
+                    GetAllLinks(parent1),
+                    GetAllLinks(parent2),
+                    GetAllLinks(child1),
+                    GetAllLinks(child2)
+                    ));
+    }
+
+    private string GetAllLinks(NomenclatureObject dse) {
+        string result =
+            $"Объект {dse.ToString()}" +
+            $"\nРодительские подключения: {string.Join("; ", dse.Parents.GetHierarchyLinks().Select(link => GetInfoAboutLink(link)))}" +
+            $"\nДочерние подключения: {string.Join("; ", dse.Children.GetHierarchyLinks().Select(link => GetInfoAboutLink(link)))}";
 
 
+        return result;
+    }
 
+    private string GetInfoAboutLink(ComplexHierarchyLink hLink) {
+        string name = $"{(string)hLink.ParentObject[new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")].Value} -> {(string)hLink.ChildObject[new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")].Value}";
+        string connectionsToStructures = $"{hLink.GetObjects(new Guid("77726357-b0eb-4cea-afa5-182e21eb6373")).Count.ToString()}";
+        return $"{name} {connectionsToStructures}";
     }
 }
+
 
