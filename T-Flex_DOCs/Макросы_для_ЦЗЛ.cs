@@ -444,7 +444,7 @@ public class Macro : MacroProvider
 
         if ((string)currentProtocol[Guids.Props.Оборудование].Value != result) {
             bool wasEditable = true;
-            if (!currentProtocol.CanEdit) {
+            if (!currentProtocol.Changing) {
                 currentProtocol.BeginChanges();
                 wasEditable = false;
             }
