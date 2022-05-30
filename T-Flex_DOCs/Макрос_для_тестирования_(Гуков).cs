@@ -4,6 +4,7 @@ using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using TFlex.DOCs.Model;
+using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
@@ -40,7 +41,7 @@ public class Macro : MacroProvider {
     // Код тестового макроса
     
     public override void Run() {
-        ТестированиеРаботыССтруктурами();
+        АнализОбъектовСправочникаФайлов();
     }
     
     public void ImportFileInFileReference() {
@@ -136,6 +137,95 @@ public class Macro : MacroProvider {
         string connectionsToStructures = $"{hLink.GetObjects(new Guid("77726357-b0eb-4cea-afa5-182e21eb6373")).Count.ToString()}";
         return $"{name} {connectionsToStructures}";
     }
-}
 
+    public void АнализОбъектовСправочникаФайлов() {
+        FileReference fileReference = new FileReference(Context.Connection);
+        List<ReferenceObject> files = fileReference.Objects.GetAllTreeNodes();
+
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Анализ файлового справочника");
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        Dictionary<string, int> quantity = new Dictionary<string, int>();
+        List<string>errors = new List<string>();
+        foreach (ClassObject classObject in fileReference.Classes) {
+            try {
+                quantity.Add($"{classObject.Name} {classObject.Guid.ToString()}", ПолучитьВсеФайлыТипа(files, classObject, dir));
+            }
+            catch (Exception e) {
+                throw e;
+                errors.Add($"{classObject.Name}");
+            }
+        }
+
+        if (errors.Count > 0)
+            Message("Информация", $"Возникли ошибки при обработке классов:\n{string.Join("\n", errors)}");
+        Message("Информация", $"Работа макроса завершена:\n\n{string.Join("\n", quantity.Select(kvp => $"{kvp.Key}: {kvp.Value} шт."))}");
+
+    }
+
+    public void ПолучитьАттрибутыТипа() {
+        FileReference fileReference = new FileReference(Context.Connection);
+        ClassObject testClass = fileReference.Classes.Find(new Guid("a477f9ed-37b5-4b70-a968-a89f8af1b37d"));
+        if (testClass == null)
+            Message("", "Не удалось найти класс");
+            return;
+        if (testClass.Attributes == null) {
+            Message("", "Тестовый класс не содержит аттрибутов");
+            return;
+        }
+        Message("Информация", string.Join("\n", testClass.Attributes.Select(attr => $"{attr.Name}: {attr.Value.ToString()}")));
+    }
+
+    private int ПолучитьВсеФайлыТипа(List<ReferenceObject> files, ClassObject classObject, string pathToDir) {
+
+        List<string> paths = files
+            .Where(refObj => refObj.Class.IsInherit(classObject))
+            //.Select(refObj => (FileObject)refObj)
+            //.Select(file => file.Path.ToString())
+            .Select(refObj => refObj.ToString())
+            .Select(refObj => refObj is FileObject ? $"{((FileObject)refObj).Path.ToString()}" : refObj.ToString())
+            .ToList<string>();
+
+        string extension = classObject.Attributes != null ?
+            classObject.Attributes.Contains("Extension") ?
+                classObject.Attributes["Extension"] != null ?
+                    Convert.ToString(classObject.Attributes["Extension"]).Replace("Расширение: ", string.Empty) :
+                    string.Empty :
+                string.Empty :
+            string.Empty;
+
+        string pathToFile = Path.Combine(pathToDir, $"{extension} - ({classObject.Guid.ToString()}).txt");
+
+        try {
+            File.WriteAllText(
+                    Path.Combine(pathToDir, $"{extension} - {classObject.Name.Replace(@"\", "").Replace(@"/", "").Replace("\"", "'")} ({classObject.Guid.ToString()}).txt"),
+                    string.Join("\n", paths)
+                    );
+        }
+        catch (Exception e) {
+            throw new Exception($"При создании файла по пути {pathToFile} возникла ошибка {e.Message}");
+        }
+
+        return paths.Count();
+    }
+
+    public void ПолучениеАтрибутовКлассов() {
+        FileReference fileReference = new FileReference(Context.Connection);
+
+        List<string> resultsWithAttr = new List<string>();
+        List<string> resultsWithoutAttr = new List<string>();
+
+
+        foreach (ClassObject classObject in fileReference.Classes) {
+            if (classObject.Attributes != null)
+                resultsWithAttr.Add($"Класс {classObject.Name} содержит аттрибуты: {string.Join("; ", classObject.Attributes.Select(attr => $"{attr.Name}: {attr.Value}"))}");
+            else
+                resultsWithoutAttr.Add($"Класс {classObject.Name} не содержит никаких аттрибутов");
+        }
+
+        if (Question($"Типов с аттрибутами: {resultsWithAttr.Count}\nТипов без аттрибутов: {resultsWithoutAttr.Count}\nОтобразить результаты?"))
+            Message("Результаты", $"{string.Join("\n", resultsWithAttr)}\n\n{string.Join("\n", resultsWithoutAttr)}");
+    }
+}
 
