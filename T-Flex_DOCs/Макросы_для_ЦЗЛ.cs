@@ -1168,6 +1168,12 @@ public class Macro : MacroProvider
 
         public void Add(string value) {
             // Если значение содержит 0, мы не заполняем данную колонку
+            if (value.Contains(this.valueSplitter) || value.Contains(this.rowSplitter))
+                throw new Exception(
+                        "В процессе формирования сериализованной строки с табличными данными возникла ошибка\n" +
+                        $"Ячейка с значением '{value}' содержит один из служебных символов, используемых для разделения данных " + 
+                        $"({this.valueSplitter} или {this.rowSplitter})"
+                        );
             if (value == "0")
                 value = "-";
             this.intermediateResult.Add(value);
