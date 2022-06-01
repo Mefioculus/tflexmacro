@@ -4,12 +4,13 @@ using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using TFlex.DOCs.Model;
+using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
 using TFlex.DOCs.Model.References.Files;
+using TFlex.DOCs.Model.References.Nomenclature;
 using TFlex.DOCs.Model.References.Users;
-
 
 // Макрос для тестовых задач
 // Для работы данного макроса так же потребуется добавление ссылки TFlex.Model.Technology.dll
@@ -39,6 +40,10 @@ public class Macro : MacroProvider {
 
     // Код тестового макроса
     
+    public override void Run() {
+        АнализОбъектовСправочникаФайлов();
+    }
+    
     public void ImportFileInFileReference() {
         // Для начала получаем объект setOfDocuments
         ReferenceInfo referenceInfo = Context.Connection.ReferenceCatalog.Find(Guids.References.КомплектыДокументов);
@@ -47,13 +52,7 @@ public class Macro : MacroProvider {
         TechnologicalSet setOfDocuments = reference.Find(Guids.Objects.КомплектДокументов) as TechnologicalSet;
 
         // Получаем с этого объекта нужную директорию
-        FolderObject folder = setOfDocuments.Folder as FolderObject;
-
-
-        
-
-
-
+        TFlex.DOCs.Model.References.Files.FolderObject folder = setOfDocuments.Folder as TFlex.DOCs.Model.References.Files.FolderObject;
 
         string pathToFile = @"C:\Users\gukovry\AppData\Local\Temp\testPdf.pdf";
 
@@ -103,9 +102,130 @@ public class Macro : MacroProvider {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Обозначения изделий Сергеевой.txt"),
                 string.Join("\n", shifrs)
                 );
+    }
+
+    public void ТестированиеРаботыССтруктурами() {
+        NomenclatureReference nomReference = new NomenclatureReference(Context.Connection);
+        NomenclatureObject parent1 = nomReference.Find(new Guid("c1529b46-3e69-4236-91a5-ac7ada3ff56e")) as NomenclatureObject;
+        NomenclatureObject parent2 = nomReference.Find(new Guid("0adceb5f-1194-4277-9873-2d71cfd6c225")) as NomenclatureObject;
+        NomenclatureObject child1 = nomReference.Find(new Guid("f3d1a9b7-1cc2-44fd-a7b4-6e54f50e6b4b")) as NomenclatureObject;
+        NomenclatureObject child2 = nomReference.Find(new Guid("2c54e674-c50b-4454-9f13-8adfa748e027")) as NomenclatureObject;
+
+        Message(
+                "Информация",
+                string.Format(
+                    "{0}\n\n{1}\n\n{2}\n\n{3}",
+                    GetAllLinks(parent1),
+                    GetAllLinks(parent2),
+                    GetAllLinks(child1),
+                    GetAllLinks(child2)
+                    ));
+    }
+
+    private string GetAllLinks(NomenclatureObject dse) {
+        string result =
+            $"Объект {dse.ToString()}" +
+            $"\nРодительские подключения: {string.Join("; ", dse.Parents.GetHierarchyLinks().Select(link => GetInfoAboutLink(link)))}" +
+            $"\nДочерние подключения: {string.Join("; ", dse.Children.GetHierarchyLinks().Select(link => GetInfoAboutLink(link)))}";
 
 
+        return result;
+    }
 
+    private string GetInfoAboutLink(ComplexHierarchyLink hLink) {
+        string name = $"{(string)hLink.ParentObject[new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")].Value} -> {(string)hLink.ChildObject[new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")].Value}";
+        string connectionsToStructures = $"{hLink.GetObjects(new Guid("77726357-b0eb-4cea-afa5-182e21eb6373")).Count.ToString()}";
+        return $"{name} {connectionsToStructures}";
+    }
+
+    public void АнализОбъектовСправочникаФайлов() {
+        FileReference fileReference = new FileReference(Context.Connection);
+        List<ReferenceObject> files = fileReference.Objects.GetAllTreeNodes();
+
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Анализ файлового справочника");
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        Dictionary<string, int> quantity = new Dictionary<string, int>();
+        List<string>errors = new List<string>();
+        foreach (ClassObject classObject in fileReference.Classes) {
+            try {
+                quantity.Add($"{classObject.Name} {classObject.Guid.ToString()}", ПолучитьВсеФайлыТипа(files, classObject, dir));
+            }
+            catch (Exception e) {
+                throw e;
+                errors.Add($"{classObject.Name}");
+            }
+        }
+
+        if (errors.Count > 0)
+            Message("Информация", $"Возникли ошибки при обработке классов:\n{string.Join("\n", errors)}");
+        Message("Информация", $"Работа макроса завершена:\n\n{string.Join("\n", quantity.Select(kvp => $"{kvp.Key}: {kvp.Value} шт."))}");
+
+    }
+
+    public void ПолучитьАттрибутыТипа() {
+        FileReference fileReference = new FileReference(Context.Connection);
+        ClassObject testClass = fileReference.Classes.Find(new Guid("a477f9ed-37b5-4b70-a968-a89f8af1b37d"));
+        if (testClass == null)
+            Message("", "Не удалось найти класс");
+            return;
+        if (testClass.Attributes == null) {
+            Message("", "Тестовый класс не содержит аттрибутов");
+            return;
+        }
+        Message("Информация", string.Join("\n", testClass.Attributes.Select(attr => $"{attr.Name}: {attr.Value.ToString()}")));
+    }
+
+    private int ПолучитьВсеФайлыТипа(List<ReferenceObject> files, ClassObject classObject, string pathToDir) {
+
+        List<string> paths = files
+            .Where(refObj => refObj.Class.IsInherit(classObject))
+            //.Select(refObj => (FileObject)refObj)
+            //.Select(file => file.Path.ToString())
+            .Select(refObj => refObj.ToString())
+            .Select(refObj => refObj is FileObject ? $"{((FileObject)refObj).Path.ToString()}" : refObj.ToString())
+            .ToList<string>();
+
+        string extension = classObject.Attributes != null ?
+            classObject.Attributes.Contains("Extension") ?
+                classObject.Attributes["Extension"] != null ?
+                    Convert.ToString(classObject.Attributes["Extension"]).Replace("Расширение: ", string.Empty) :
+                    string.Empty :
+                string.Empty :
+            string.Empty;
+
+        string pathToFile = Path.Combine(pathToDir, $"{extension} - ({classObject.Guid.ToString()}).txt");
+
+        try {
+            File.WriteAllText(
+                    Path.Combine(pathToDir, $"{extension} - {classObject.Name.Replace(@"\", "").Replace(@"/", "").Replace("\"", "'")} ({classObject.Guid.ToString()}).txt"),
+                    string.Join("\n", paths)
+                    );
+        }
+        catch (Exception e) {
+            throw new Exception($"При создании файла по пути {pathToFile} возникла ошибка {e.Message}");
+        }
+
+        return paths.Count();
+    }
+
+    public void ПолучениеАтрибутовКлассов() {
+        FileReference fileReference = new FileReference(Context.Connection);
+
+        List<string> resultsWithAttr = new List<string>();
+        List<string> resultsWithoutAttr = new List<string>();
+
+
+        foreach (ClassObject classObject in fileReference.Classes) {
+            if (classObject.Attributes != null)
+                resultsWithAttr.Add($"Класс {classObject.Name} содержит аттрибуты: {string.Join("; ", classObject.Attributes.Select(attr => $"{attr.Name}: {attr.Value}"))}");
+            else
+                resultsWithoutAttr.Add($"Класс {classObject.Name} не содержит никаких аттрибутов");
+        }
+
+        if (Question($"Типов с аттрибутами: {resultsWithAttr.Count}\nТипов без аттрибутов: {resultsWithoutAttr.Count}\nОтобразить результаты?"))
+            Message("Результаты", $"{string.Join("\n", resultsWithAttr)}\n\n{string.Join("\n", resultsWithoutAttr)}");
     }
 }
 

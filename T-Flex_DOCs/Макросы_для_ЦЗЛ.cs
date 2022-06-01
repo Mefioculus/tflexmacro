@@ -372,17 +372,16 @@ public class Macro : MacroProvider
     }
 
     //Формирование отчета для предварительного просмотра
-    public void СформироватьОтчетДляПредварительногоПросмотра() {
+    public void СформироватьОтчетДляПредварительногоПросмотра(ReferenceObject protocol) {
         // Получаем текущий объект
-        UpdateEquipment(); // Вызов метода для того, чтобы в отчет попало актуальное состояние добавленного оборудования
-        ReferenceObject currentObject = Context.ReferenceObject;
-        if (currentObject == null) {
+        UpdateEquipment(protocol); // Вызов метода для того, чтобы в отчет попало актуальное состояние добавленного оборудования
+        if (protocol == null) {
             Message("Ошибка", "Не получилось обратиться к текущему объекту для формирования отчета");
             return;
         }
 
         // Получаем контекст формирования отчета
-        ReportGenerationContext reportContext = new ReportGenerationContext(currentObject, null);
+        ReportGenerationContext reportContext = new ReportGenerationContext(protocol, null);
         reportContext.OpenFile = true;
 
         // Получаем объект отчета
@@ -392,6 +391,15 @@ public class Macro : MacroProvider
         report.Generate(reportContext);
 
         Desktop.CheckIn(reportContext.ReportFileObject, "Предварительный просмотр", false);
+    }
+
+    public void СформироватьОтчетДляПредварительногоПросмотра() {
+        СформироватьОтчетДляПредварительногоПросмотра(Context.ReferenceObject);
+    }
+
+    public void СформироватьОтчетДляПредварительногоПросмотра(Объекты объекты) {
+        foreach (Объект вложение in объекты)
+            СформироватьОтчетДляПредварительногоПросмотра((ReferenceObject)вложение);
     }
 
     #endregion Методы для запуска генерации отчета
@@ -424,9 +432,8 @@ public class Macro : MacroProvider
         
     }
 
-    public void UpdateEquipment() {
-        //ReferenceObject currentProtocol = currentEquip.MasterObject; // Получаем протокол
-        ReferenceObject currentProtocol = Context.ReferenceObject;
+    public void UpdateEquipment(ReferenceObject currentProtocol) {
+        //ReferenceObject currentProtocol = Context.ReferenceObject;
 
         string result = string.Join(
                 ":\n",
@@ -437,7 +444,7 @@ public class Macro : MacroProvider
 
         if ((string)currentProtocol[Guids.Props.Оборудование].Value != result) {
             bool wasEditable = true;
-            if (!currentProtocol.CanEdit) {
+            if (!currentProtocol.Changing) {
                 currentProtocol.BeginChanges();
                 wasEditable = false;
             }
@@ -1147,7 +1154,7 @@ public class Macro : MacroProvider
 
     private class DataClass {
         private string valueSplitter = "^";
-        private string rowSplitter = ";";
+        private string rowSplitter = "@";
         private List<string> intermediateResult = new List<string>();
         private List<string> result = new List<string>();
 
@@ -1161,6 +1168,12 @@ public class Macro : MacroProvider
 
         public void Add(string value) {
             // Если значение содержит 0, мы не заполняем данную колонку
+            if (value.Contains(this.valueSplitter) || value.Contains(this.rowSplitter))
+                throw new Exception(
+                        "В процессе формирования сериализованной строки с табличными данными возникла ошибка\n" +
+                        $"Ячейка с значением '{value}' содержит один из служебных символов, используемых для разделения данных " + 
+                        $"({this.valueSplitter} или {this.rowSplitter})"
+                        );
             if (value == "0")
                 value = "-";
             this.intermediateResult.Add(value);

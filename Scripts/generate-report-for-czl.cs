@@ -400,8 +400,6 @@ private void GenerateChemTable(string tableString, DataSet ds) {
 
     // Производим корректировку таблицы с основными параметрами
     headerTable.BeginInit();
-    headerTable.Rows[2].Cells[0].Text = "Проба:";
-    headerTable.Rows[2].Cells[0].Width = 50; // Делаем ячейку уже
 
     // Если оборудование не заполнено, удаляем строку с оборудованием
     var index = ds.Tables.IndexOf("Параметры отчета");
@@ -409,11 +407,21 @@ private void GenerateChemTable(string tableString, DataSet ds) {
     if (string.IsNullOrEmpty(Convert.ToString(ParametersOfReportTable.Rows[0]["Оборудование"])))
         headerTable.DeleteRow(headerTable.Rows[4]); // Оборудование
 
+    // Удаляем строки, которые не будут использоваться
     headerTable.DeleteRow(headerTable.Rows[3]); // Материал
     //headerTable.DeleteRow(headerTable.Rows[2]); // Объект исследования
     headerTable.DeleteRow(headerTable.Rows[1]); // Основание
     //headerTable.DeleteRow(headerTable.Rows[0]); // Заказчик
     
+    // Добавляем новые строки, специфичные для данного протокола
+    XRTableRow probeRow = headerTable.InsertRowBelow(headerTable.Rows[0]);
+
+    probeRow.Cells[0].Text = "Номер пробы:";
+    probeRow.Cells[0].Font = headerTable.Rows[0].Cells[0].Font;
+    probeRow.Cells[0].Width = 13;
+    probeRow.Cells[1].Text = Convert.ToString(ParametersOfReportTable.Rows[0]["НомерПробы"]);
+    probeRow.Cells[1].Width = 87;
+
     headerTable.EndInit();
     Detail1.Height -= 200; // Уменьшение размера раздела в связи с корректировкой размера таблицы
 
@@ -425,14 +433,14 @@ private void GenerateChemTable(string tableString, DataSet ds) {
 
 #endregion Метод для генерации таблицы для протокола химической лаборатории
 
-#region ParseDateTable
+#region ParseDataTable
 private List<List<string>> ParseDataTable (string stringFromInput, bool tableWithHeader = true) {
     // Данный метод преобразовывает входную струку с табличными данными в отдельные строки.
     // Так же данный метод будет удалять назадействованные колонки
     List<List<string>> result = new List<List<string>>();
     
     // Получаем список строк
-    string[] rows = stringFromInput.Split(';');
+    string[] rows = stringFromInput.Split('@');
 
     // Определяем, какие колонки требуется выводить на печать
     SortedSet<int> indexes = GetIndexesOfColumnsForPrinting(rows, tableWithHeader);
@@ -472,7 +480,17 @@ private List<string> GetRowForPrint(string rawRow, SortedSet<int> indexes) {
     List<string> valuesToPrint = new List<string>();
     // Разбиваем полученную строку на входящие элементы
     foreach (int index in indexes) {
-        valuesToPrint.Add(rawRow.Split('^')[index]);
+        try {
+            valuesToPrint.Add(rawRow.Split('^')[index]);
+        }
+        catch (Exception e) {
+            throw new Exception(string.Format(
+                        "Во время выполнения метода '{0}' при обращении по индексу '{1}' массива {3} возникла ошибка:\n'{2}'",
+                        "GetRowForPrint",
+                        index, e.Message,
+                        string.Join("; ", rawRow.Split('^'))
+                        ));
+        }
     }
 
     return valuesToPrint;
