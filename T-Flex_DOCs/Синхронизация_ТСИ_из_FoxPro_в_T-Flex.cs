@@ -1237,7 +1237,7 @@ public class Macro : MacroProvider {
         Desktop.ClearRecycleBin(testObject);
         Message("Информация", "Удаление объекта завершено");
 
-        // Пытаемся создать объект в справочнике "Электронные компоненты и произвести подключение всех объектов"
+        // Пытаемся создать объект в справочнике "Электронные компоненты" и произвести подключение всех объектов
         ReferenceObject newComponent = componentReference.CreateReferenceObject(dictTypesToClassObject[TypeOfObject.ЭлектронныйКомпонент]);
         newComponent[Guids.Parameters.ЭлектронныеКомпоненты.Обозначение].Value = shifr;
         newComponent[Guids.Parameters.ЭлектронныеКомпоненты.Наименование].Value = name;
@@ -3694,6 +3694,14 @@ public class Macro : MacroProvider {
 
         public static Dictionary<string, ObjectInTFlex> Objects { get; set; } = new Dictionary<string, ObjectInTFlex>(); // статический словарь, в котором будут содержаться все объекты
 
+        // Поля, необходимые для подключения объектов к технологической структуре
+        private static Guid LinkToStructuresGuid = new Guid("77726357-b0eb-4cea-afa5-182e21eb6373");
+        private static Guid TechStructureGuid = new Guid("633f08c5-4aef-44f8-924b-81c3e7339aea");
+        private static Guid ConsStructureGuid = new Guid("6dd4ecc3-70bd-407d-8661-e2438c3e7287");
+        private static Reference TypeOfStructuresReference = Context.Connection.Find(new Guid("b6e2f4e4-1167-478b-94b2-deb0dded4e29")).CreateReference();
+        private static ReferenceObject TechStructureObject = TypeOfStructuresReference.Find(TechStructureGuid);
+        private static ReferenceObject ConsStructureObject = TypeOfStructuresReference.Find(ConsStructureGuid);
+
         // Найденные в T-Flex позиции
         private static List<ReferenceObject> nomenclatureFox { get; set; } = null;
         private static List<ReferenceObject> nomenclatureTflex { get; set; } = null;
@@ -4619,8 +4627,15 @@ public class Macro : MacroProvider {
             }
             
             // Производим поиск подкючения
-            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject.GetParentLinks(parent.NomenclatureObject).ToList<ComplexHierarchyLink>();
-            ComplexHierarchyLink hLink = hLinks.Where(link => ((int)link[Guids.hLinks.Позиция].Value == pos) && ((double)link[Guids.hLinks.Количество].Value == prim)).FirstOrDefault();
+            // Примечание: поиск производится только среди подключений, относящихся к ТСИ
+            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject
+                .GetParentLinks(parent.NomenclatureObject)
+                .Where(link => link.GetObjects(LinkToStructuresGuid).Where(struct => struct.Guid == TechStructureGuid).Count() == 1)
+                .ToList<ComplexHierarchyLink>();
+
+            ComplexHierarchyLink hLink = hLinks
+                .Where(link => ((int)link[Guids.hLinks.Позиция].Value == pos) && ((double)link[Guids.hLinks.Количество].Value == prim))
+                .FirstOrDefault();
 
             templateError =
                 "Ошибка в процессе создания нового подключения.\n" +
@@ -4636,6 +4651,7 @@ public class Macro : MacroProvider {
 
             try {
                 hLink = this.NomenclatureObject.CreateParentLink(parent.NomenclatureObject);
+                AddLinkToTechStructure(hLink);
                 hLink[Guids.hLinks.Позиция].Value = pos;
                 hLink[Guids.hLinks.Количество].Value = prim;
                 hLink.EndChanges();
@@ -4662,8 +4678,14 @@ public class Macro : MacroProvider {
             }
 
             // Прозводим поиск подключения
-            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject.GetParentLinks(parent.NomenclatureObject).ToList<ComplexHierarchyLink>();
-            ComplexHierarchyLink hLink = hLinks.Where(link => ((int)link[Guids.hLinks.Позиция].Value == oldPos) && ((double)link[Guids.hLinks.Количество].Value == oldPrim)).FirstOrDefault();
+            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject
+                .GetParentLinks(parent.NomenclatureObject)
+                .Where(link => link.GetObjects(LinkToStructuresGuid).Where(struct => struct.Guid == TechStructureGuid).Count() == 1)
+                .ToList<ComplexHierarchyLink>();
+
+            ComplexHierarchyLink hLink = hLinks
+                .Where(link => ((int)link[Guids.hLinks.Позиция].Value == oldPos) && ((double)link[Guids.hLinks.Количество].Value == oldPrim))
+                .FirstOrDefault();
 
             templateError =
                 "Ошибка в процессе изменения существующего подключения.\n" +
@@ -4710,8 +4732,14 @@ public class Macro : MacroProvider {
                 throw new Exception(string.Format("Попытка удаления подключения ('{0}') на объект, который не создавался в системе", parent.Shifr));
             }
 
-            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject.GetParentLinks(parent.NomenclatureObject).ToList<ComplexHierarchyLink>();
-            ComplexHierarchyLink hLink = hLinks.Where(link => ((int)link[Guids.hLinks.Позиция].Value == pos) && ((double)link[Guids.hLinks.Количество].Value == prim)).FirstOrDefault();
+            List<ComplexHierarchyLink> hLinks = this.NomenclatureObject
+                .GetParentLinks(parent.NomenclatureObject)
+                .Where(link => link.GetObjects(LinkToStructuresGuid).Where(struct => struct.Guid == TechStructureGuid).Count() == 1)
+                .ToList<ComplexHierarchyLink>();
+
+            ComplexHierarchyLink hLink = hLinks
+                .Where(link => ((int)link[Guids.hLinks.Позиция].Value == pos) && ((double)link[Guids.hLinks.Количество].Value == prim))
+                .FirstOrDefault();
 
             templateError =
                 "Ошибка в процессе удаления существующего подключения.\n" +
@@ -4736,6 +4764,10 @@ public class Macro : MacroProvider {
         }
 
         #endregion DeleteConnectionLinkTo()
+
+        private void AddLinkToTechStructure(ComplexHierarchyLink hLink) {
+            hLink.AddLinkedObject(LinkToStructuresGuid, TechStructureObject);
+        }
 
         #endregion Методы по работе с подключениями
 
@@ -5126,10 +5158,10 @@ public class Macro : MacroProvider {
             this.Name = (string)initialObject[Guids.Parameters.Номенклатура.Наименование].Value;
             this.Denotation = (string)initialObject[Guids.Parameters.Номенклатура.Обозначение].Value;
 
-            // Формируем перечень всех дочерних подключений
             double amount;
             int position;
 
+            // Формируем перечень всех дочерних подключений
             if (initialObject.Children != null) {
                 foreach (var hlink in initialObject.Children.GetHierarchyLinks()) {
                     // Пробуем получить значения параметров
