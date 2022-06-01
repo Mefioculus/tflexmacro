@@ -1154,7 +1154,7 @@ public class Macro : MacroProvider
 
     private class DataClass {
         private string valueSplitter = "^";
-        private string rowSplitter = ";";
+        private string rowSplitter = "@";
         private List<string> intermediateResult = new List<string>();
         private List<string> result = new List<string>();
 

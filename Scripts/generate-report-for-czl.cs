@@ -433,14 +433,14 @@ private void GenerateChemTable(string tableString, DataSet ds) {
 
 #endregion Метод для генерации таблицы для протокола химической лаборатории
 
-#region ParseDateTable
+#region ParseDataTable
 private List<List<string>> ParseDataTable (string stringFromInput, bool tableWithHeader = true) {
     // Данный метод преобразовывает входную струку с табличными данными в отдельные строки.
     // Так же данный метод будет удалять назадействованные колонки
     List<List<string>> result = new List<List<string>>();
     
     // Получаем список строк
-    string[] rows = stringFromInput.Split(';');
+    string[] rows = stringFromInput.Split('@');
 
     // Определяем, какие колонки требуется выводить на печать
     SortedSet<int> indexes = GetIndexesOfColumnsForPrinting(rows, tableWithHeader);
@@ -480,7 +480,17 @@ private List<string> GetRowForPrint(string rawRow, SortedSet<int> indexes) {
     List<string> valuesToPrint = new List<string>();
     // Разбиваем полученную строку на входящие элементы
     foreach (int index in indexes) {
-        valuesToPrint.Add(rawRow.Split('^')[index]);
+        try {
+            valuesToPrint.Add(rawRow.Split('^')[index]);
+        }
+        catch (Exception e) {
+            throw new Exception(string.Format(
+                        "Во время выполнения метода '{0}' при обращении по индексу '{1}' массива {3} возникла ошибка:\n'{2}'",
+                        "GetRowForPrint",
+                        index, e.Message,
+                        string.Join("; ", rawRow.Split('^'))
+                        ));
+        }
     }
 
     return valuesToPrint;
