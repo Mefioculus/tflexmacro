@@ -5,17 +5,113 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using TFlex.DOCs.Model.Macros;
+using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 
 public class Macro : MacroProvider
 {
+    private Reference СписокНоменклатурыСправочник { get; set; }
+    private Reference ПодключенияСправочник { get; set; }
+    private Reference ЭсиСправочник { get; set; }
+    private string ДиректорияДляЛогов { get; set; }
+
     public Macro(MacroContext context)
-        : base(context)
-    {
+        : base(context) {
+
+        // Получаем экземпляры справочников для работы
+        СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
+        ПодключенияСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Подключения).CreateReference();
+        ЭсиСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭСИ).CreateReference();
+
+        // Создаем директорию для ведения логов
+        ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
+
+        if (!Directory.Exists(ДиректорияДляЛогов))
+            Directory.CreateDirectory(ДиректорияДляЛогов);
+
     }
 
-    public override void Run()
-    {
-    
+    private static class Guids {
+        public static class References {
+            public static Guid СписокНоменклатурыFoxPro = new Guid("c9d26b3c-b318-4160-90ae-b9d4dd7565b6");
+            public static Guid Подключения = new Guid("9dd79ab1-2f40-41f3-bebc-0a8b4f6c249e");
+            public static Guid ЭСИ = new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83");
+        }
+
+        public static class Parameters {
+            // Параметры справочника "Список номерклатуры FoxPro"
+            public static Guid НомерклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200");
+
+            // Параметры справчоника "Подключения"
+        }
+
+        public static class Links {
+            public static Guid СвязьСпискаНоменклатурыНаЭСИ = new Guid("ec9b1e06-d8d5-4480-8a5c-4e6329993eac");
+        }
     }
+
+    public override void Run() {
+        // Производим загрузку всей необходимой информации
+        Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
+        Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
+
+        // Запрашиваем у пользователя перечень изделий, по которым нужно произвести выгрузку
+        List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
+
+        // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
+        List<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(изделияДляВыгрузки);
+
+        // Производим поиск и (при необходимости) создание объектов в ЭСИ и смежных справочниках
+        List<ReferenceObject> созданныеДСЕ = FindOrCreateNomenclatureObjects(номенклатураДляСоздания);
+
+        // Производим соединение созданных ДСЕ в иерархию при помощи подключений
+        ConnectCreatedObjects(созданныеДСЕ, подключения);
+
+        Message("Информация", "Работа макроса завершена");
+    }
+
+    private Dictionary<string, ReferenceObject> GetNomenclature() {
+        // Функция возвращает словарь с изделиями
+        return null;
+    }
+
+    private Dictionary<string, List<ReferenceObject>> GetLinks() {
+        // Функция возвращает словарь с подключениями
+        return null;
+    }
+
+    private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature) {
+        // Функция запрашивает у пользователя, какие изделия необходимо выгрузить.
+        // Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
+        // Так же должна быть возможность снова ввести данные.
+        return null;
+    }
+
+    private List<ReferenceObject> GetNomenclatureToProcess(List<string> shifrs) {
+        return null;
+    }
+
+    private List<ReferenceObject> FindOrCreateNomenclatureObjects(List<ReferenceObject> nomenclature) {
+        // Функция принимает записи справочника "Список номенклатуры FoxPro" для создания объектов с справочнике ЭСИ и смежных справочников
+        // Функция возвращает найденные или созданные записи справочника ЭСИ
+        //
+        // Необходимо реализовать:
+        // - Поиск объектов в справочнике ЭСИ
+        // - Создание объектов, если они не были найдены
+        // - Подключение созданных или найденных объектов к соответствующим записям справочника "Список номенклатуры FoxPro"
+        // - Возврат всех найденных/созданных объектов для последующей с ними работы
+        // - Вывод лога о всех произведенных действиях
+        return null;
+    }
+
+    private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
+        // Функция принимает созданные номенклатурный объекты, а так же объекты справочника "Подключения"
+        // 
+        // Необходимо реализовать:
+        // - Анализ полученных объектов (у них уже могут быть связи, так как там будут и найденные позиции)
+        // - Создание/Корректировка/Удаление связей при необходимости
+        // - Вывод лога о всех произведенных действиях
+    }
+
+
 }
