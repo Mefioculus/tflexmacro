@@ -13,6 +13,9 @@ public class Macro : MacroProvider
     private Reference СписокНоменклатурыСправочник { get; set; }
     private Reference ПодключенияСправочник { get; set; }
     private Reference ЭсиСправочник { get; set; }
+    private Reference ДокументыСправочник { get; set; }
+    private Reference ЭлектронныеКомпонентыСправочник { get; set; }
+    private Reference МатериалыСправочник { get; set; }
     private string ДиректорияДляЛогов { get; set; }
 
     public Macro(MacroContext context)
@@ -74,7 +77,7 @@ public class Macro : MacroProvider
         List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
 
         // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
-        HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(изделияДляВыгрузки);
+        HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(номенклатура, подключения, изделияДляВыгрузки);
 
         // Производим поиск и (при необходимости) создание объектов в ЭСИ и смежных справочниках
         List<ReferenceObject> созданныеДСЕ = FindOrCreateNomenclatureObjects(номенклатураДляСоздания);
@@ -147,30 +150,38 @@ public class Macro : MacroProvider
         // - Вывод лога о всех произведенных действиях
     }
 
-    private TypeOfObject DefineTypeOfObject(ReferenceObject) {
+    private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
         return TypeOfObject.НеОпределено;
     }
 
     // Интерфейсы
-    private interface ITree {
+    public interface ITree {
         // Название изделия
-        public string NameProduct { get; private set; }
+        public string NameProduct { get; }
+        public INode RootObject { get; }
 
         // Метод для генерации дерева.
         // Принимает загруженные данные из справочника с номенклатурой и справочника с подключениями
-        public void CreateTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> connection, string shifr);
+        public INode CreateTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> connections, string shifr);
 
         // Возврат всех входящих в изделие объектов из справочника "Список номенклатуры" (только уникальные позиции) в виде плоского списка
         public List<ReferenceObject> GetAllReferenceObjects();
 
         // Создание сообщение для лога с деревом изделия
-        public string GenerageLog();
+        public string GenerateLog();
+    }
+
+    public interface INode {
+        public ITree Tree { get; }
+        public INode Parent { get; }
+        public List<INode> Children { get; }
+        public ReferenceObject NomenclatureObject { get; }
     }
 
     // Перечисления
 
     private enum TypeOfObject {
-        НеОпределено
+        НеОпределено,
         Изделие,
         СборочнаяЕдиница,
         СтандартноеИзделие,
@@ -182,5 +193,33 @@ public class Macro : MacroProvider
     }
 
     // Классы
+    private class NomenclatureTree : ITree {
+        public string NameProduct { get; private set; }
+        public INode RootObject { get; private set; }
+
+        public NomenclatureTree (Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> connections, string shifr) {
+            this.NameProduct = shifr;
+            this.RootObject = CreateTree(nomenclature, connections, shifr);
+        }
+
+        public INode CreateTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> connections, string shifr) {
+            return null;
+        }
+
+        public List<ReferenceObject> GetAllReferenceObjects() {
+            return null;
+        }
+
+        public string GenerateLog() {
+            return string.Empty;
+        }
+    }
+
+    private class NomenclatureNode : INode {
+        public ITree Tree { get; private set; }
+        public INode Parent { get; private set; }
+        public List<INode> Children { get; private set; }
+        public ReferenceObject NomenclatureObject { get; private set; }
+    }
 
 }
