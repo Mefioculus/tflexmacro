@@ -22,7 +22,9 @@ public class Macro : MacroProvider
         СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
         ПодключенияСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Подключения).CreateReference();
         ЭсиСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭСИ).CreateReference();
-
+        ЭлектронныеКомпонентыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭлектронныеКомпоненты).CreateReference();
+        МатериалыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Материалы).CreateReference();
+        
         // Создаем директорию для ведения логов
         ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
 
@@ -36,6 +38,8 @@ public class Macro : MacroProvider
             public static Guid СписокНоменклатурыFoxPro = new Guid("c9d26b3c-b318-4160-90ae-b9d4dd7565b6");
             public static Guid Подключения = new Guid("9dd79ab1-2f40-41f3-bebc-0a8b4f6c249e");
             public static Guid ЭСИ = new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83");
+            public static Guid ЭлектронныеКомпоненты = new Guid("2ac850d9-5c70-45c2-9897-517ab571b213");
+            public static Guid Материалы = new Guid("c5e7ae00-90f2-49e9-a16c-f51ed087752a");
         }
 
         public static class Parameters {
@@ -43,6 +47,17 @@ public class Macro : MacroProvider
             public static Guid НомерклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200");
 
             // Параметры справчоника "Подключения"
+            public static Guid ПодключенияСборка = new Guid("4a3cb1ca-6a4c-4dce-8c25-c5c3bd13a807");
+            public static Guid Подключениякомплектующая = new Guid("7d1ac031-8c7f-49b5-84b8-c5bafa3918c2");
+
+            // Параметры справочника "ЭСИ"
+            
+            // Параметры справочника "Документы"
+            
+            // Параметры справочника "Электронные компоненты"
+            
+            // Параметры справочника "Материалы"
+            
         }
 
         public static class Links {
@@ -155,11 +170,15 @@ public class Macro : MacroProvider
     // Перечисления
 
     private enum TypeOfObject {
-        // TODO: Дописать все типы
         НеОпределено
         Изделие,
-        Сборка,
-
+        СборочнаяЕдиница,
+        СтандартноеИзделие,
+        ПрочееИзделие,
+        Деталь,
+        ЭлектронныйКомпонент,
+        Материал,
+        Другое,
     }
 
     // Классы
