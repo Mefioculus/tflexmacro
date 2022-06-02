@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.Macros.ObjectModel;
+using TFlex.DOCs.Model;
 
 public class Macro : MacroProvider
 {
@@ -88,20 +89,45 @@ public class Macro : MacroProvider
         Message("Информация", "Работа макроса завершена");
     }
 
-    private Dictionary<string, ReferenceObject> GetNomenclature() {
-        // Функция возвращает словарь с изделиями
+
+    /// <summary>
+    /// Получает все объекты справочника
+    /// </summary>
+    public ReferenceObjectCollection GeAlltRefObj(Guid guidref)
+    {
+        ReferenceInfo info = Context.Connection.ReferenceCatalog.Find(guidref);
+        Reference reference = info.CreateReference();
+        var result = reference.Objects;
+        return result;
+    }
+
+    /// <summary>
+    /// Функция возвращает словарь с изделиями
+    /// </summary>
+    private Dictionary<string, ReferenceObject> GetNomenclature()
+    {
+        var ListNum = GeAlltRefObj(Guids.References.СписокНоменклатурыFoxPro);
+        var dictListNum = ListNum.ToDictionary(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()));
+        return dictListNum;
+    }
+
+    /// <summary>
+    /// Функция возвращает словарь с подключениями
+    /// </summary>
+    private Dictionary<string, List<ReferenceObject>> GetLinks()
+    {
         return null;
     }
 
-    private Dictionary<string, List<ReferenceObject>> GetLinks() {
-        // Функция возвращает словарь с подключениями
-        return null;
-    }
 
-    private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature) {
-        // Функция запрашивает у пользователя, какие изделия необходимо выгрузить.
-        // Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
-        // Так же должна быть возможность снова ввести данные.
+    /// <summary>
+    /// Функция запрашивает у пользователя, какие изделия необходимо выгрузить.
+    /// Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
+    /// Так же должна быть возможность снова ввести данные.
+    /// </summary>
+    private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature)
+    {
+
         return null;
     }
 
