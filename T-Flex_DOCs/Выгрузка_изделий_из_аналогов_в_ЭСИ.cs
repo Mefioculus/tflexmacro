@@ -108,7 +108,12 @@ public class Macro : MacroProvider
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
         // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
         // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
-        return null;
+        HashSet<ReferenceObject> result = new HashSet<ReferenceObject>();
+        foreach (string shifr in shifrs) {
+            NomenclatureTree tree = new NomenclatureTree(nomenclature, links, shifr);
+            result.UnionWith(tree.AllReferenceObjects);
+        }
+        return result;
     }
 
     private List<ReferenceObject> FindOrCreateNomenclatureObjects(HashSet<ReferenceObject> nomenclature) {
@@ -157,11 +162,9 @@ public class Macro : MacroProvider
     // Интерфейсы
     public interface ITree {
         // Название изделия
-        string NameProduct { get; }
-        INode RootObject { get; }
-
-        // Возврат всех входящих в изделие объектов из справочника "Список номенклатуры" (только уникальные позиции) в виде плоского списка
-        List<ReferenceObject> GetAllReferenceObjects();
+        string NameProduct { get; } // Шифр корневой ноды дерева
+        INode RootObject { get; } // Корневая нода дерева
+        HashSet<ReferenceObject> AllReferenceObjects { get; set; } // Уникальные объекты дерева
 
         // Создание сообщение для лога с деревом изделия
         string GenerateLog();
@@ -192,14 +195,11 @@ public class Macro : MacroProvider
     private class NomenclatureTree : ITree {
         public string NameProduct { get; private set; }
         public INode RootObject { get; private set; }
+        public HashSet<ReferenceObject> AllReferenceObjects { get; set; }
 
-        private NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
+        public NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
             this.NameProduct = shifr;
             this.RootObject = new NomenclatureNode(this, null, nomenclature, links, shifr);
-        }
-
-        public List<ReferenceObject> GetAllReferenceObjects() {
-            return null;
         }
 
         public string GenerateLog() {
@@ -216,9 +216,15 @@ public class Macro : MacroProvider
         public NomenclatureNode (ITree tree, INode parent, Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
             this.Tree = tree;
             this.Parent = parent;
+
             this.NomenclatureObject = nomenclature.ContainsKey(shifr) ?
                 nomenclature[shifr] :
                 throw new Exception($"Во время создания дерева изделия '{tree.NameProduct}' возникла ошибка. Обозначение '{shifr}' отсутствует в справочнике 'Список номенклатуры FoxPro'");
+
+            // Подключаем номенклатурный объект в список всех объектов дерева
+            this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
+
+            // Рекурсивно получаем потомков
             this.Children = new List<INode>();
             foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияСборка].Value)) {
                 this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
