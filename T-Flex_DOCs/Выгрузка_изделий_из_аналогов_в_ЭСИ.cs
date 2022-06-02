@@ -59,7 +59,7 @@ public class Macro : MacroProvider
         List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
 
         // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
-        List<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(изделияДляВыгрузки);
+        HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(изделияДляВыгрузки);
 
         // Производим поиск и (при необходимости) создание объектов в ЭСИ и смежных справочниках
         List<ReferenceObject> созданныеДСЕ = FindOrCreateNomenclatureObjects(номенклатураДляСоздания);
@@ -87,11 +87,13 @@ public class Macro : MacroProvider
         return null;
     }
 
-    private List<ReferenceObject> GetNomenclatureToProcess(List<string> shifrs) {
+    private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
+        // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
+        // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
         return null;
     }
 
-    private List<ReferenceObject> FindOrCreateNomenclatureObjects(List<ReferenceObject> nomenclature) {
+    private List<ReferenceObject> FindOrCreateNomenclatureObjects(HashSet<ReferenceObject> nomenclature) {
         // Функция принимает записи справочника "Список номенклатуры FoxPro" для создания объектов с справочнике ЭСИ и смежных справочников
         // Функция возвращает найденные или созданные записи справочника ЭСИ
         //
@@ -101,7 +103,24 @@ public class Macro : MacroProvider
         // - Подключение созданных или найденных объектов к соответствующим записям справочника "Список номенклатуры FoxPro"
         // - Возврат всех найденных/созданных объектов для последующей с ними работы
         // - Вывод лога о всех произведенных действиях
-        return null;
+        List<ReferenceObject> result = new List<ReferenceObject>();
+
+        // ВАЖНО: при проведении поиска нужно проверять на то, что найденный объект единственный. Если он не единственный, тогда нужно выдать ошибку для принятия решения по поводу обработки данного случая
+        
+        foreach (ReferenceObject nom in nomenclature) {
+            // Пробуем получить объект по связи на справочник ЭСИ. Если получилось, добавляем его в result, дальнейший код не выполняем
+            //
+            // Пробуем найти объект в справочнике ЭСИ. Если получилось, подключаем его к объекту nom по связи, добавляем в result, дальнейший код не выполняем
+            //
+            // Определяем тип объекта
+            TypeOfObject type = DefineTypeOfObject(nom);
+            // На основе полученных данных о типе производим поиск в смежных справочниках. Если найти объект получилось, создаем номенклатурный объект на его основе, добавляем в result, подключаем в nom,
+            // дальнейший код не выполняем
+            //
+            // Если найти объект не получилось, в завосомости от типа объекта создаем объект в соответствующем справочнике, создаем ЭСИ, добавляем в result, подключаем в nom
+        }
+
+        return result;
     }
 
     private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
@@ -113,5 +132,36 @@ public class Macro : MacroProvider
         // - Вывод лога о всех произведенных действиях
     }
 
+    private TypeOfObject DefineTypeOfObject(ReferenceObject) {
+        return TypeOfObject.НеОпределено;
+    }
+
+    // Интерфейсы
+    private interface ITree {
+        // Название изделия
+        public string NameProduct { get; private set; }
+
+        // Метод для генерации дерева.
+        // Принимает загруженные данные из справочника с номенклатурой и справочника с подключениями
+        public void CreateTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> connection, string shifr);
+
+        // Возврат всех входящих в изделие объектов из справочника "Список номенклатуры" (только уникальные позиции) в виде плоского списка
+        public List<ReferenceObject> GetAllReferenceObjects();
+
+        // Создание сообщение для лога с деревом изделия
+        public string GenerageLog();
+    }
+
+    // Перечисления
+
+    private enum TypeOfObject {
+        // TODO: Дописать все типы
+        НеОпределено
+        Изделие,
+        Сборка,
+
+    }
+
+    // Классы
 
 }
