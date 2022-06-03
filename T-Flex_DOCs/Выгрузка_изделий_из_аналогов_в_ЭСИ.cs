@@ -124,7 +124,7 @@ public class Macro : MacroProvider
     private Dictionary<string, ReferenceObject> GetNomenclature()
     {
         var ListNum = GeAlltRefObj(Guids.References.СписокНоменклатурыFoxPro);
-        var dictListNum = ListNum.ToDictionary(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()));
+        var dictListNum = ListNum.ToDictionary(objref => (objref[Guids.Parameters.НоменклатураОбозначение].Value.ToString()));
         return dictListNum;
     }
 
@@ -151,10 +151,10 @@ public class Macro : MacroProvider
         return dict;
     }
 
-     /// <summary>
+    /// <summary>
     /// Получает объекты справочника по условию если parametr содердит строку str
     /// </summary>
-    public List<ReferenceObject> GeFiltertRefObj(String str, Guid guidref, Guid parametr)
+    public List<ReferenceObject> GetFilterRefObj(String str, Guid guidref, Guid parametr)
     {
         ReferenceInfo info = Context.Connection.ReferenceCatalog.Find(guidref);
         Reference reference = info.CreateReference();
@@ -170,13 +170,12 @@ public class Macro : MacroProvider
     /// </summary>
     private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature)
     {
-
-         List<string> result = new List<string>();
-       string shifr = "УЯИС.731353.037";
-       var filter =  GeFiltertRefObj(shifr, Guids.References.СписокНоменклатурыFoxPro, Guids.Parameters.НомерклатураОбозначение);
+        List<string> result = new List<string>();
+        string shifr = "УЯИС.731353.037";
+        var filter =  GetFilterRefObj(shifr, Guids.References.СписокНоменклатурыFoxPro, Guids.Parameters.НоменклатураОбозначение);
         if (filter != null)
         {
-            result = (filter.Select(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()))).ToList();            
+            result = (filter.Select(objref => (objref[Guids.Parameters.НоменклатураОбозначение].Value.ToString()))).ToList();            
         }
 
         return result;
@@ -185,11 +184,24 @@ public class Macro : MacroProvider
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
         // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
         // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
+        if (nomenclature == null || links == null || shifrs == null)
+            throw new Exception("На вход функции GetNomenclatureToProcess были поданы отсутствующие значения");
         HashSet<ReferenceObject> result = new HashSet<ReferenceObject>();
+
+        // Для лога
+        string log = string.Empty;
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, "Сгенерированные деревья.txt");
+
+        // Формируем деревья и получаем все объекты
         foreach (string shifr in shifrs) {
             NomenclatureTree tree = new NomenclatureTree(nomenclature, links, shifr);
             result.UnionWith(tree.AllReferenceObjects);
+            log += $"Дерево изделия {shifr}:\n\n{tree.GenerateLog()}\n\n";
         }
+
+        // Пишем лог
+        File.WriteAllText(pathToLogFile, log);
+
         return result;
     }
 
@@ -244,7 +256,7 @@ public class Macro : MacroProvider
         HashSet<ReferenceObject> AllReferenceObjects { get; set; } // Уникальные объекты дерева
 
         // Создание сообщение для лога с деревом изделия
-        string GenerateLog();
+        string GenerateLog(int indent);
     }
 
     public interface INode {
@@ -254,6 +266,8 @@ public class Macro : MacroProvider
         INode Parent { get; }
         List<INode> Children { get; }
         ReferenceObject NomenclatureObject { get; }
+
+        string ToString(int indent);
     }
 
     // Перечисления
@@ -277,12 +291,20 @@ public class Macro : MacroProvider
         public HashSet<ReferenceObject> AllReferenceObjects { get; set; }
 
         public NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
+            if (nomenclature == null || links == null || shifr == null)
+                throw new Exception("В конструктор создания NomenclatureTree были поданы отсутствующие значения");
+
             this.NameProduct = shifr;
+            this.AllReferenceObjects = new HashSet<ReferenceObject>();
             this.RootObject = new NomenclatureNode(this, null, nomenclature, links, shifr);
         }
 
+        public string GenerateLog(int indent) {
+            return RootObject.ToString(indent);
+        }
+
         public string GenerateLog() {
-            return string.Empty;
+            return GenerateLog(2);
         }
     }
 
@@ -298,7 +320,7 @@ public class Macro : MacroProvider
             this.Tree = tree;
             this.Parent = parent;
 
-            this.Level = parent == null ? 1 : parent.Level + 1;
+            this.Level = parent == null ? 0 : parent.Level + 1;
 
             this.NomenclatureObject = nomenclature.ContainsKey(shifr) ?
                 nomenclature[shifr] :
@@ -312,9 +334,14 @@ public class Macro : MacroProvider
 
             // Рекурсивно получаем потомков
             this.Children = new List<INode>();
-            foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияСборка].Value)) {
-                this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
-            }
+            if (links.ContainsKey(shifr))
+                foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияКомплектующая].Value))
+                    this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
+        }
+
+
+        public string ToString(int indent) {
+            return $"{new string(' ', (int)(indent * this.Level))}{this.Name}\n{string.Join("\n", Children.Select(child => child.ToString(indent)))}";
         }
     }
 
