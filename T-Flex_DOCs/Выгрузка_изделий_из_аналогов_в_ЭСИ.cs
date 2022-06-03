@@ -50,11 +50,26 @@ public class Macro : MacroProvider
 
         public static class Parameters {
             // Параметры справочника "Список номерклатуры FoxPro"
-            public static Guid НоменклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200");
+            public static Guid НоменклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200"); // string
+            public static Guid НоменклатураТипНоменклатуры = new Guid("3c7a075f-0b53-4d68-8242-9f76ca7b2e97"); // int
+            public static Guid НоменклатураНаименование = new Guid("c531e1a8-9c6e-4456-86aa-84e0826c7df7"); // string
+            public static Guid НоменклатураГОСТ = new Guid("0f48ff0a-36c0-4ae5-ae4c-482f2728181f"); // string
 
             // Параметры справчоника "Подключения"
-            public static Guid ПодключенияСборка = new Guid("4a3cb1ca-6a4c-4dce-8c25-c5c3bd13a807");
-            public static Guid ПодключенияКомплектующая = new Guid("7d1ac031-8c7f-49b5-84b8-c5bafa3918c2");
+            public static Guid ПодключенияСборка = new Guid("4a3cb1ca-6a4c-4dce-8c25-c5c3bd13a807"); // string
+            public static Guid ПодключенияКомплектующая = new Guid("7d1ac031-8c7f-49b5-84b8-c5bafa3918c2"); // string
+            public static Guid ПодключенияСводноеОбозначение = new Guid("05ffddba-74e9-4637-b249-90cec5953295"); // string
+            public static Guid ПодключенияПозиция = new Guid("b05be213-7646-4edb-9d56-391509b48c2a"); // int
+            public static Guid ПодключенияКоличество = new Guid("fa56458a-e817-4e6d-85a0-e64dad032c5f"); // double
+            public static Guid ПодключенияОКЕИ = new Guid("19d31f8c-06d2-402b-85ee-bda3f5111e8c"); // int
+            public static Guid ПодключенияКодEdiz = new Guid("d85db0fe-6c97-4664-9c16-a82695a40984"); // int
+            public static Guid ПодключенияЕдиницаИзмерения = new Guid("94158439-cf0a-470b-872c-d783d8ebbd60"); // string
+            public static Guid ПодключенияЕдиницаИзмеренияСокр = new Guid("d485a313-6228-4bbf-b40e-b29e82adbb68"); // string
+            public static Guid ПодключенияВозвратныеОтходы = new Guid("d9e79828-12d8-4a8a-b77e-9626cedeb307"); // double
+            public static Guid ПодключенияПлощадьПокрытия = new Guid("8b12a1f1-0478-4e31-b05f-7205ae683f38"); // double
+            public static Guid ПодключенияПотери = new Guid("dd57da68-ebb4-4e43-ab83-05fa621895aa"); // double
+            public static Guid ПодключенияТолщинаПокрытия = new Guid("2475329d-3128-4d2d-82a0-af6c35961753"); // double
+            public static Guid ПодключенияЧистыйВес = new Guid("e8200590-255d-4a51-9826-686d21c5f2b6"); // double
 
             // Параметры справочника "ЭСИ"
             
