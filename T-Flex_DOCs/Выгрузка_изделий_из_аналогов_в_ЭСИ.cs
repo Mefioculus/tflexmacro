@@ -171,10 +171,12 @@ public class Macro : MacroProvider
     }
 
     public interface INode {
-        public ITree Tree { get; }
-        public INode Parent { get; }
-        public List<INode> Children { get; }
-        public ReferenceObject NomenclatureObject { get; }
+        string Name { get; }
+        int Level { get; }
+        ITree Tree { get; }
+        INode Parent { get; }
+        List<INode> Children { get; }
+        ReferenceObject NomenclatureObject { get; }
     }
 
     // Перечисления
@@ -208,6 +210,8 @@ public class Macro : MacroProvider
     }
 
     private class NomenclatureNode : INode {
+        public string Name { get; private set; }
+        public int Level { get; private set; }
         public ITree Tree { get; private set; }
         public INode Parent { get; private set; }
         public List<INode> Children { get; private set; }
@@ -217,12 +221,17 @@ public class Macro : MacroProvider
             this.Tree = tree;
             this.Parent = parent;
 
+            this.Level = parent == null ? 1 : parent.Level + 1;
+
             this.NomenclatureObject = nomenclature.ContainsKey(shifr) ?
                 nomenclature[shifr] :
                 throw new Exception($"Во время создания дерева изделия '{tree.NameProduct}' возникла ошибка. Обозначение '{shifr}' отсутствует в справочнике 'Список номенклатуры FoxPro'");
 
             // Подключаем номенклатурный объект в список всех объектов дерева
             this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
+
+            // Получаем название объекта
+            this.Name = (string)this.NomenclatureObject[Guids.Parameters.ОбозначениеСписокНомерклатуры].Value;
 
             // Рекурсивно получаем потомков
             this.Children = new List<INode>();
