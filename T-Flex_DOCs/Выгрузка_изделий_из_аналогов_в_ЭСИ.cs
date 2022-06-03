@@ -47,7 +47,7 @@ public class Macro : MacroProvider
 
         public static class Parameters {
             // Параметры справочника "Список номерклатуры FoxPro"
-            public static Guid НомерклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200");
+            public static Guid НоменклатураОбозначение = new Guid("1bbb1d78-6e30-40b4-acde-4fc844477200");
 
             // Параметры справчоника "Подключения"
             public static Guid ПодключенияСборка = new Guid("4a3cb1ca-6a4c-4dce-8c25-c5c3bd13a807");
@@ -231,7 +231,7 @@ public class Macro : MacroProvider
             this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
 
             // Получаем название объекта
-            this.Name = (string)this.NomenclatureObject[Guids.Parameters.ОбозначениеСписокНомерклатуры].Value;
+            this.Name = (string)this.NomenclatureObject[Guids.Parameters.НоменклатураОбозначение].Value;
 
             // Рекурсивно получаем потомков
             this.Children = new List<INode>();
