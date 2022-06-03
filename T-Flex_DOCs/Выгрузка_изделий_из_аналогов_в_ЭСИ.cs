@@ -7,6 +7,9 @@ using System.Windows.Forms;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.Macros.ObjectModel;
+using TFlex.DOCs.Model;
+using TFlex.DOCs.Model.Structure;
+using TFlex.DOCs.Model.Search;
 
 public class Macro : MacroProvider
 {
@@ -88,21 +91,80 @@ public class Macro : MacroProvider
         Message("Информация", "Работа макроса завершена");
     }
 
-    private Dictionary<string, ReferenceObject> GetNomenclature() {
-        // Функция возвращает словарь с изделиями
-        return null;
+
+    /// <summary>
+    /// Получает все объекты справочника
+    /// </summary>
+    public ReferenceObjectCollection GeAlltRefObj(Guid guidref)
+    {
+        ReferenceInfo info = Context.Connection.ReferenceCatalog.Find(guidref);
+        Reference reference = info.CreateReference();
+        var result = reference.Objects;
+        return result;
     }
 
-    private Dictionary<string, List<ReferenceObject>> GetLinks() {
-        // Функция возвращает словарь с подключениями
-        return null;
+    /// <summary>
+    /// Функция возвращает словарь с изделиями
+    /// </summary>
+    private Dictionary<string, ReferenceObject> GetNomenclature()
+    {
+        var ListNum = GeAlltRefObj(Guids.References.СписокНоменклатурыFoxPro);
+        var dictListNum = ListNum.ToDictionary(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()));
+        return dictListNum;
     }
 
-    private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature) {
-        // Функция запрашивает у пользователя, какие изделия необходимо выгрузить.
-        // Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
-        // Так же должна быть возможность снова ввести данные.
-        return null;
+    /// <summary>
+    /// Функция возвращает словарь с подключениями
+    /// </summary>
+    private Dictionary<string, List<ReferenceObject>> GetLinks()
+    {
+           var RefConnectNum = GeAlltRefObj(Guids.References.Подключения);
+
+        Dictionary<string,List<ReferenceObject>> dict = new Dictionary<string,List<ReferenceObject>>(300000);
+        foreach (var item in RefConnectNum)
+        {
+            string shifr = (String)item[Guids.Parameters.ПодключенияСборка].Value;
+            if (dict.ContainsKey(shifr))
+            {
+                    dict[shifr].Add(item);
+            }
+            else
+            {
+                dict.Add(shifr, new List<ReferenceObject>() { item });
+            }
+        }
+        return dict;
+    }
+
+     /// <summary>
+    /// Получает объекты справочника по условию если parametr содердит строку str
+    /// </summary>
+    public List<ReferenceObject> GeFiltertRefObj(String str, Guid guidref, Guid parametr)
+    {
+        ReferenceInfo info = Context.Connection.ReferenceCatalog.Find(guidref);
+        Reference reference = info.CreateReference();
+        ParameterInfo parameterInfo = reference.ParameterGroup[parametr];
+        List<ReferenceObject> result = reference.Find(parameterInfo, ComparisonOperator.Equal, str);
+        return result;
+    }
+
+    /// <summary>
+    /// Функция запрашивает у пользователя, какие изделия необходимо выгрузить.
+    /// Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
+    /// Так же должна быть возможность снова ввести данные.
+    /// </summary>
+    private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature)
+    {
+
+         List<string> result = new List<string>();
+       string shifr = "УЯИС.731353.037";
+       var filter =  GeFiltertRefObj(shifr, Guids.References.СписокНоменклатурыFoxPro, Guids.Parameters.НомерклатураОбозначение);
+        if (filter != null)
+        {
+            result = (filter.Select(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()))).ToList();            
+        }
+
+        return result;
     }
 
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {

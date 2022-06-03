@@ -163,13 +163,19 @@ public class Macro : MacroProvider
         ДокументОГТ.Подключить("Изменения", измененияОГТ);
         ДокументОГТ.Сохранить();
     }
-    
 
-    public  void LinkcopyOboz()
+    public void LinkcopyOboz()
+    {
+        Объект документ = ТекущийОбъект;
+        LinkcopyOboz(документ);
+    }
+
+
+        public  void LinkcopyOboz(Объект документ)
     {
         Normalizer norm = new Normalizer();
         norm.setprefix = false;
-        Объект документ = ТекущийОбъект;
+        
         var Oboz=документ["Обозначение детали, узла"].ToString().Split(' ').First();
         string link_skan = документ["Скан документа"].ToString();
         string tip_doc = документ["Тип документа"].ToString();
@@ -255,5 +261,28 @@ public class Macro : MacroProvider
         {
             //Сообщение("Файл в справочнике Docs не найден ",String.Format("{e.ToString} {файлы.ToString()}"));
         }
-}
+    }
+
+
+    public void CreateLinkFiletoDocOgt()
+    {
+        
+        Объект файл = ТекущийОбъект;
+        string path = файл["Относительный путь"].ToString();
+        string filename = файл["Наименование"].ToString();
+        if (path.Contains(@"Архив ОГТ\ogtMK\") & filename.EndsWith(".pdf"))
+        {
+            Объект ДокуметОГТ = НайтиОбъект("Документы ОГТ", @$"[Обозначение детали, узла] = '{filename.Replace(".pdf","")}");
+            if (ДокуметОГТ != null)
+            {
+                
+                LinkcopyOboz(ДокуметОГТ);
+            }
+        }
+        
+
+
+
+
+    }
 }
