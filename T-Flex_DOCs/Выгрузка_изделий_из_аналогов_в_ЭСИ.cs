@@ -72,6 +72,7 @@ public class Macro : MacroProvider
             public static Guid ПодключенияЧистыйВес = new Guid("e8200590-255d-4a51-9826-686d21c5f2b6"); // double
 
             // Параметры справочника "ЭСИ"
+            public static Guid ЭсиОбозначение = new Guid("");
             
             // Параметры справочника "Документы"
             
@@ -129,7 +130,7 @@ public class Macro : MacroProvider
     }
 
     /// <summary>
-    /// Функция возвращает словарь с подключениями
+    /// Функция возвращает словарь с подключениями, сгруппированными по параметру 'Сборка'
     /// </summary>
     private Dictionary<string, List<ReferenceObject>> GetLinks()
     {
@@ -205,6 +206,11 @@ public class Macro : MacroProvider
         return result;
     }
 
+    /// <summary>
+    /// Функция производит поиск выгружаемого объекта во всех справочниках, в которых он может быть.
+    /// Если объект находится, то он возвращается, если нет - создается новый и возвращается уже он.
+    /// Функция поделена на четыре стадии для удобства, в качестве входных параметров принимает объекты справочника "Список номенклатуры FoxPro", которые необходимо выгрузить
+    /// </summary>
     private List<ReferenceObject> FindOrCreateNomenclatureObjects(HashSet<ReferenceObject> nomenclature) {
         // Функция принимает записи справочника "Список номенклатуры FoxPro" для создания объектов с справочнике ЭСИ и смежных справочников
         // Функция возвращает найденные или созданные записи справочника ЭСИ
@@ -215,25 +221,133 @@ public class Macro : MacroProvider
         // - Подключение созданных или найденных объектов к соответствующим записям справочника "Список номенклатуры FoxPro"
         // - Возврат всех найденных/созданных объектов для последующей с ними работы
         // - Вывод лога о всех произведенных действиях
-        List<ReferenceObject> result = new List<ReferenceObject>();
 
         // ВАЖНО: при проведении поиска нужно проверять на то, что найденный объект единственный. Если он не единственный, тогда нужно выдать ошибку для принятия решения по поводу обработки данного случая
-        
+        List<ReferenceObject> result = new List<ReferenceObject>();
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"ПоискПозиций({DateTime.Now.ToString("yyyy.MM.dd HH.mm")}).txt");
+        List<string> messages = new List<string>();
+
         foreach (ReferenceObject nom in nomenclature) {
-            // Пробуем получить объект по связи на справочник ЭСИ. Если получилось, добавляем его в result, дальнейший код не выполняем
-            //
-            // Пробуем найти объект в справочнике ЭСИ. Если получилось, подключаем его к объекту nom по связи, добавляем в result, дальнейший код не выполняем
-            //
-            // Определяем тип объекта
-            TypeOfObject type = DefineTypeOfObject(nom);
-            // На основе полученных данных о типе производим поиск в смежных справочниках. Если найти объект получилось, создаем номенклатурный объект на его основе, добавляем в result, подключаем в nom,
-            // дальнейший код не выполняем
-            //
-            // Если найти объект не получилось, в завосомости от типа объекта создаем объект в соответствующем справочнике, создаем ЭСИ, добавляем в result, подключаем в nom
+            // Получаем обозначение текущего объекта и его тип
+            ReferenceObject resultObject;
+            string nomDesignation = (string)nom[Guids.Parameters.НоменклатураОбозначение].Value; // обозначение
+            TypeOfObject nomType = DefineTypeOfObject(nom); // тип
+            // Пишем информацию в лог
+            messages.Add(new String('-', 30));
+            messages.Add($"{nomDesignation}:");
+
+            try {
+                // СТАДИЯ 1: Пытаемся получить объект по связи на справочник ЭСИ
+                resultObject = ProcessFirstStageFindOrCreate(nom, nomDesignation, nomType, messages);
+                if (resultObject != null) {
+                    result.Add(resultObject);
+                    continue;
+                }
+
+                // СТАДИЯ 2: Пытаемся найти объект в справочнике ЭСИ
+                resultObject = ProcessSecondStageFindOrCreate(nom, nomDesignation, nomType, messages);
+                if (resultObject != null) {
+                    result.Add(resultObject);
+                    continue;
+                }
+
+                // СТАДИЯ 3: Пытаемся найти объект в смежных справочниках
+                resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
+                if (resultObject != null) {
+                    result.Add(resultObject);
+                    continue;
+                }
+
+                // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
+                resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
+                if (resultObject != null) {
+                    result.Add(resultObject);
+                }
+            }
+            catch (Exception e) {
+                messages.Add($"Error: {e.Message}");
+                continue;
+            }
         }
+
+        // Проверяем, были ли ошибки в процессе выполнения данного метода.
+        // Если ошибки были, выдаем сообщение пользователю
+        string errors = string.Join("\n", messages.Where(message => message.StartsWith("Error")));
+        if (errors != string.Empty)
+            Message("Ошибка", "В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+
+        // Пишем лог
+        File.WriteAllText(pathToLogFile, string.Join("\n", messages));
 
         return result;
     }
+
+    /// <summary>
+    /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
+    /// Данный код производит пробует получить объект по связи, а так же проверить корректность полученного объекта, если таковой имеется.
+    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
+    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
+    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
+    /// Исключение выбрасывается если объект был найден, но при его проверке возникли проблемы (об этом нужно оповестить пользователя и пока что не включать объект в выгрузку).
+    /// </summary>
+    private ReferenceObject ProcessFirstStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+        // Получаем объект по связи и, если он есть, производим его проверку
+        ReferenceObject linkedObject = nom.GetObject(Guids.Links.СвязьСпискаНоменклатурыНаЭСИ);
+
+        if (linkedObject != null) {
+            // TODO: Реализовать код произведения проверки объекта
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
+    /// Данный код запускается в том случае, если не удалось получить объект по связи и производит поиск объекта в справочнике ЭСИ, и если таковой имеется, производит проверку его типа.
+    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
+    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
+    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
+    /// </summary>
+    private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+        List<ReferenceObject> findedObjectInEsi = ЭсиСправочник
+            .Find(Guids.Parameters.ЭсиОбозначение, designation) // Производим поиск по всему справочнику
+            .Where(finded => finded.Class.IsInherit(new Guid(""))) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+            .ToList<ReferenceObject>();
+
+        if (findedObjectInEsi.Count == 1) {
+            // TODO: Реализовать код произведения проверки объекта
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
+    /// Данный код запускается в том случае, если не удалось найти объект в ЭСИ и производит поиск объекта в смежных справочниках, и если такой имеется, производит проверку типа и создание объекта ЭСИ.
+    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
+    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
+    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
+    /// </summary>
+    private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+        // Производим поиск по смежным справочникам
+        return null;
+    }
+
+
+    /// <summary>
+    /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
+    /// Данный код запускается только в том случае, если объет найти не получилось и производит создание объекта сначала в смежном справчонике, а затем в ЭСИ.
+    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
+    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
+    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
+    /// </summary>
+    private ReferenceObject ProcessFinalStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+        // Производим создание объекта
+        return null;
+    }
+
 
     private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
         // Функция принимает созданные номенклатурный объекты, а так же объекты справочника "Подключения"
