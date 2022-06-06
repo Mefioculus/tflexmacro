@@ -10,6 +10,7 @@ using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
+using FoxProShifrsNormalizer;
 
 public class Macro : MacroProvider
 {
@@ -23,7 +24,10 @@ public class Macro : MacroProvider
 
     public Macro(MacroContext context)
         : base(context) {
-
+#if DEBUG
+System.Diagnostics.Debugger.Launch();
+System.Diagnostics.Debugger.Break();
+#endif
         // Получаем экземпляры справочников для работы
         СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
         ПодключенияСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Подключения).CreateReference();
@@ -108,23 +112,14 @@ public class Macro : MacroProvider
     }
 
 
-    /// <summary>
-    /// Получает все объекты справочника
-    /// </summary>
-    public ReferenceObjectCollection GeAlltRefObj(Guid guidref)
-    {
-        ReferenceInfo info = Context.Connection.ReferenceCatalog.Find(guidref);
-        Reference reference = info.CreateReference();
-        var result = reference.Objects;
-        return result;
-    }
+
 
     /// <summary>
     /// Функция возвращает словарь с изделиями
     /// </summary>
     private Dictionary<string, ReferenceObject> GetNomenclature()
     {
-        var ListNum = GeAlltRefObj(Guids.References.СписокНоменклатурыFoxPro);
+        var ListNum = СписокНоменклатурыСправочник.Objects;
         var dictListNum = ListNum.ToDictionary(objref => (objref[Guids.Parameters.НоменклатураОбозначение].Value.ToString()));
         return dictListNum;
     }
@@ -134,15 +129,14 @@ public class Macro : MacroProvider
     /// </summary>
     private Dictionary<string, List<ReferenceObject>> GetLinks()
     {
-           var RefConnectNum = GeAlltRefObj(Guids.References.Подключения);
-
+        var RefConnectNum = ПодключенияСправочник.Objects;
         Dictionary<string,List<ReferenceObject>> dict = new Dictionary<string,List<ReferenceObject>>(300000);
         foreach (var item in RefConnectNum)
         {
             string shifr = (String)item[Guids.Parameters.ПодключенияСборка].Value;
             if (dict.ContainsKey(shifr))
             {
-                    dict[shifr].Add(item);
+                dict[shifr].Add(item);
             }
             else
             {
@@ -172,13 +166,57 @@ public class Macro : MacroProvider
     private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature)
     {
         List<string> result = new List<string>();
+        /*
         string shifr = "УЯИС.731353.037";
-        var filter =  GetFilterRefObj(shifr, Guids.References.СписокНоменклатурыFoxPro, Guids.Parameters.НоменклатураОбозначение);
+        var filter =  GeFiltertRefObj(shifr, Guids.References.СписокНоменклатурыFoxPro, Guids.Parameters.НомерклатураОбозначение);
         if (filter != null)
         {
-            result = (filter.Select(objref => (objref[Guids.Parameters.НоменклатураОбозначение].Value.ToString()))).ToList();            
+            result = (filter.Select(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()))).ToList();
         }
+        */
 
+        ДиалогВвода диалог = СоздатьДиалогВвода("Введите значения");
+        диалог.ДобавитьСтроковое("Введите обозначение изделия", "УЯИС.731353.038\r\nУЯИС.731353.037", многострочное: true, количествоСтрок: 10);
+        ДиалогВыбораОбъектов диалог2 = СоздатьДиалогВыбораОбъектов("Список номенклатуры FoxPro");
+        диалог2.Заголовок = "Выбор изделий для импорта";
+        диалог2.Вид = "Список";
+        диалог2.МножественныйВыбор = true;
+        диалог2.ВыборФлажками = true;
+        диалог2.ПоказатьПанельКнопок = false;
+
+        if (диалог.Показать())
+        {
+            string oboz = диалог["Введите обозначение изделия"];
+            Normalizer normalizer = new Normalizer();
+            normalizer.setprefix = false;
+
+            var list_oboz = oboz.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var list_oboz_insert_dot = list_oboz.Select(oboz => normalizer.NormalizeShifrsFromFox(oboz.Replace(".", "")));
+            if (list_oboz.Length == 1)
+            {
+                oboz = normalizer.NormalizeShifrsFromFox(oboz.Replace(".", ""));
+                диалог2.Фильтр = $"[Обозначение] начинается с '{oboz}'";
+            }
+            else
+            {
+                var filter = String.Join(",", list_oboz_insert_dot.Distinct());
+                диалог2.Фильтр = $"[Обозначение] Входит в список '{filter}'";
+            }
+            if (диалог2.Показать())
+            {
+                var selectobj = диалог2.SelectedObjects;
+
+                //var s2 = (IEnumerable<ReferenceObject>)selectobj;
+                //result = (List<string>)s2.Select(objref => (objref[Guids.Parameters.НомерклатураОбозначение].Value.ToString()));
+                //result = (List<string>)selectobj.Select(objref => (objref["Обозначение"].ToString()));
+
+                foreach (var item in selectobj)
+                {
+                    result.Add(item["Обозначение"].ToString());
+                }
+
+            }
+        }
         return result;
     }
 
