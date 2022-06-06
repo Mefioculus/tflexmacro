@@ -358,8 +358,68 @@ public class Macro : MacroProvider
         // - Вывод лога о всех произведенных действиях
     }
 
+    /// <summary>
+    /// Метод для определения типа переданного объекта
+    /// На вход передается ReferenceObject, который может относиться к справочникам:
+    /// Список номенклатуры FoxPro, ЭСИ, Документы, Материалы, Электронные компоненты
+    /// Если в петод передается объект другого справочника, выдается ошибка
+    /// </summary>
     private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
-        return TypeOfObject.НеОпределено;
+        string reference = nomenclature.Reference.Name;
+
+        // Разбираем случай, если в метод был передан объект справочника 'Список номенклатуры FoxPro'
+        if (reference == СписокНоменклатурыСправочник.Name) {
+            int intType = (int)nomenclature[Guids.Parameters.НоменклатураТипНоменклатуры].Value;
+            switch (intType) {
+                case 0: // Не определено
+                    return TypeOfObject.НеОпределено;
+                case 1: // Сборочная единица
+                    return TypeOfObject.СборочнаяЕдиница;
+                case 2: // Стандартное изделие
+                    return TypeOfObject.СтандартноеИзделие;
+                case 3: // Прочее изделие
+                    return TypeOfObject.ПрочееИзделие;
+                case 4: // Изделие
+                    return TypeOfObject.Изделие;
+                case 5: // Деталь
+                    return TypeOfObject.Деталь;
+                case 6: // Электронный компонент
+                    return TypeOfObject.ЭлектронныйКомпонент;
+                case 7: // Материал
+                    return TypeOfObject.Материал;
+                case 8: // Другое
+                    return TypeOfObject.Другое;
+                default:
+                    throw new Exception($"Ошибка при определении типа объекта справочника '{reference}'. Номера {intType.ToString()} не предусмотрено при разборе");
+            }
+        }
+
+        // Разбираем случай, если в метод был передан объект справочника 'Электронная структура изделий'
+        if ((reference == ЭсиСправочник.Name) || (reference == ДокументыСправочник.Name) || (reference == ЭлектронныеКомпонентыСправочник.Name) || (reference == МатериалыСправочник.Name)) {
+            string typeName = nomenclature.Class.Name;
+            switch (typeName) {
+                case "Сборочная единица":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Стандартное изделие":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Прочее изделие":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Изделие":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Деталь":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Электронный компонент":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Материал":
+                    return TypeOfObject.СборочнаяЕдиница;
+                case "Другое":
+                    return TypeOfObject.СборочнаяЕдиница;
+                default:
+                    throw new Exception($"Ошибка при определении типа объекта справочника '{reference}'. Разбрт типа объекта '{typeName}' не предусмотрен");
+            }
+        }
+
+        throw new Exception($"Метод 'DefineTypeOfObject' не работает с объектами справочника '{reference}'");
     }
 
     // Интерфейсы
