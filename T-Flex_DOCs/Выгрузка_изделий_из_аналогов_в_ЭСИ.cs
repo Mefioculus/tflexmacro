@@ -29,10 +29,12 @@ public class Macro : MacroProvider
 
     public Macro(MacroContext context)
         : base(context) {
-#if DEBUG
-System.Diagnostics.Debugger.Launch();
-System.Diagnostics.Debugger.Break();
-#endif
+
+        #if DEBUG
+        System.Diagnostics.Debugger.Launch();
+        System.Diagnostics.Debugger.Break();
+        #endif
+
         // Получаем экземпляры справочников для работы
         СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
         ПодключенияСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Подключения).CreateReference();
@@ -264,12 +266,18 @@ System.Diagnostics.Debugger.Break();
         string log = string.Empty;
         string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Деревья для {StringForLog}.txt");
 
+        List<string> errors = new List<string>();
         // Формируем деревья и получаем все объекты
         foreach (string shifr in shifrs) {
             NomenclatureTree tree = new NomenclatureTree(nomenclature, links, shifr);
             result.UnionWith(tree.AllReferenceObjects);
             log += $"Дерево изделия {shifr}:\n\n{tree.GenerateLog()}\n\n";
+            if (tree.HaveErrors)
+                errors.Add(tree.ErrString);
         }
+
+        if (errors.Count != 0)
+            Message("Ошибки в процессе построения деревьев", string.Join("\n\n", errors));
 
         // Пишем лог
         File.WriteAllText(pathToLogFile, log);
@@ -542,8 +550,13 @@ System.Diagnostics.Debugger.Break();
         INode RootObject { get; } // Корневая нода дерева
         HashSet<ReferenceObject> AllReferenceObjects { get; set; } // Уникальные объекты дерева
 
+        // Обработка исключений
+        bool HaveErrors { get; }
+        string ErrString { get; }
+
         // Создание сообщение для лога с деревом изделия
         string GenerateLog(int indent);
+        void AddError(string error);
     }
 
     public interface INode {
@@ -576,11 +589,15 @@ System.Diagnostics.Debugger.Break();
         public string NameProduct { get; private set; }
         public INode RootObject { get; private set; }
         public HashSet<ReferenceObject> AllReferenceObjects { get; set; }
+        private List<string> Errors { get; set; }
+        public bool HaveErrors => this.Errors.Count > 0;
+        public string ErrString => this.HaveErrors ? $"Ошибки в дереве {this.NameProduct}:\n{string.Join("\n", this.Errors)}" : string.Empty;
 
         public NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
             if (nomenclature == null || links == null || shifr == null)
                 throw new Exception("В конструктор создания NomenclatureTree были поданы отсутствующие значения");
 
+            this.Errors = new List<string>();
             this.NameProduct = shifr;
             this.AllReferenceObjects = new HashSet<ReferenceObject>();
             this.RootObject = new NomenclatureNode(this, null, nomenclature, links, shifr);
@@ -588,6 +605,10 @@ System.Diagnostics.Debugger.Break();
 
         public string GenerateLog(int indent) {
             return RootObject.ToString(indent);
+        }
+
+        public void AddError(string error) {
+            this.Errors.Add(error);
         }
 
         public string GenerateLog() {
@@ -624,8 +645,10 @@ System.Diagnostics.Debugger.Break();
             
             // Рекурсивно получаем потомков
             // Отключаем рекурсию при достижении большого уровня вложенности
-            if (this.Level > 100)
+            if (this.Level > 100) {
+                this.Tree.AddError($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (node: {this.Name}; parent node: {this.Parent.Name})");
                 return;
+            }
 
             if (links.ContainsKey(shifr))
                 foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияКомплектующая].Value))
