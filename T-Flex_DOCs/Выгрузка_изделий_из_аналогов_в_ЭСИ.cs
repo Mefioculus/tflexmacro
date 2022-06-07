@@ -21,8 +21,11 @@ public class Macro : MacroProvider
     private Reference ЭлектронныеКомпонентыСправочник { get; set; }
     private Reference МатериалыСправочник { get; set; }
     private string ДиректорияДляЛогов { get; set; }
+
+    // Для лога
     private string TimeStamp { get; set; }
     private string NameOfImport { get; set; }
+    private string StringForLog => $"{NameOfImport} ({TimeStamp})";
 
     public Macro(MacroContext context)
         : base(context) {
@@ -259,7 +262,7 @@ System.Diagnostics.Debugger.Break();
 
         // Для лога
         string log = string.Empty;
-        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Деревья для {NameOfImport} ({TimeStamp}).txt");
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Деревья для {StringForLog}.txt");
 
         // Формируем деревья и получаем все объекты
         foreach (string shifr in shifrs) {
@@ -292,7 +295,7 @@ System.Diagnostics.Debugger.Break();
 
         // ВАЖНО: при проведении поиска нужно проверять на то, что найденный объект единственный. Если он не единственный, тогда нужно выдать ошибку для принятия решения по поводу обработки данного случая
         List<ReferenceObject> result = new List<ReferenceObject>();
-        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Поиск позиций для {NameOfImport} ({TimeStamp}).txt");
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Поиск позиций для {StringForLog}.txt");
         List<string> messages = new List<string>();
 
         foreach (ReferenceObject nom in nomenclature) {
