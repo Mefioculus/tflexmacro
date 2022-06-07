@@ -34,6 +34,7 @@ System.Diagnostics.Debugger.Break();
         ЭсиСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭСИ).CreateReference();
         ЭлектронныеКомпонентыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭлектронныеКомпоненты).CreateReference();
         МатериалыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Материалы).CreateReference();
+        ДокументыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Документы).CreateReference();
         
         // Создаем директорию для ведения логов
         ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
@@ -50,6 +51,7 @@ System.Diagnostics.Debugger.Break();
             public static Guid ЭСИ = new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83");
             public static Guid ЭлектронныеКомпоненты = new Guid("2ac850d9-5c70-45c2-9897-517ab571b213");
             public static Guid Материалы = new Guid("c5e7ae00-90f2-49e9-a16c-f51ed087752a");
+            public static Guid Документы = new Guid("ac46ca13-6649-4bbb-87d5-e7d570783f26");
         }
 
         public static class Parameters {
@@ -76,7 +78,7 @@ System.Diagnostics.Debugger.Break();
             public static Guid ПодключенияЧистыйВес = new Guid("e8200590-255d-4a51-9826-686d21c5f2b6"); // double
 
             // Параметры справочника "ЭСИ"
-            public static Guid ЭсиОбозначение = new Guid("");
+            public static Guid ЭсиОбозначение = new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb");
             
             // Параметры справочника "Документы"
             
@@ -88,6 +90,11 @@ System.Diagnostics.Debugger.Break();
 
         public static class Links {
             public static Guid СвязьСпискаНоменклатурыНаЭСИ = new Guid("ec9b1e06-d8d5-4480-8a5c-4e6329993eac");
+        }
+
+        public static class Types {
+            // Тип справочника ЭСИ
+            public static Guid МатериальныйОбъект = new Guid("0ba28451-fb4d-47d0-b8f6-af0967468959");
         }
     }
 
@@ -312,7 +319,7 @@ System.Diagnostics.Debugger.Break();
         // Если ошибки были, выдаем сообщение пользователю
         string errors = string.Join("\n", messages.Where(message => message.StartsWith("Error")));
         if (errors != string.Empty)
-            Message("Ошибка", "В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+            Message("Ошибка", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
 
         // Пишем лог
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
@@ -350,13 +357,21 @@ System.Diagnostics.Debugger.Break();
     private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
         List<ReferenceObject> findedObjectInEsi = ЭсиСправочник
             .Find(Guids.Parameters.ЭсиОбозначение, designation) // Производим поиск по всему справочнику
-            .Where(finded => finded.Class.IsInherit(new Guid(""))) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+            .Where(finded => finded.Class.IsInherit(Guids.Types.МатериальныйОбъект)) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
             .ToList<ReferenceObject>();
 
         if (findedObjectInEsi.Count == 1) {
-            // TODO: Реализовать код произведения проверки объекта
+            SyncronizeTypes(nom, findedObjectInEsi[0]);
+            messages.Add("Объект успешно найден в ЭСИ");
+            return findedObjectInEsi[0];
         }
-        return null;
+        else if (findedObjectInEsi.Count > 1) {
+            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjectInEsi.Select(obj => obj.ToString()))}");
+        }
+        else {
+            messages.Add("Объект не найден в ЭСИ");
+            return null;
+        }
     }
 
     /// <summary>
@@ -386,7 +401,41 @@ System.Diagnostics.Debugger.Break();
         return null;
     }
 
+    /// <summary>
+    /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
+    /// Входные параметры:
+    /// nomenclatureRecord - объект справочника 'Список номенклатуры FoxPro'
+    /// findedObject - объект справочников ЭСИ, Документы, Материалы, ЭлектронныеКомпоненты
+    ///
+    /// При нахождении разницы в типах, или при нахождении неопределенных типов данный метод пробует в автоматическом режиме сделать предположение о правильном типа,
+    /// и если ему это удается - меняет тип у одного из объектов.
+    /// Если в автоматическом режиме изменить тип не удается, выбрасывается исключение с целью предупредить пользователя
+    /// </summary>
+    private void SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject) {
+        // Производим верификацию входных данных
+        // Проверка параметра nomenclatureRecord
+        if (nomenclatureRecord.Reference.Name != СписокНоменклатурыСправочник.Name)
+            throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр nomenclatureRecord поддерживает только объекты справочника {СписокНоменклатурыСправочник.Name}");
 
+        // Проверка параметра findedObject
+        List<string> supportedReferences = new List<string>() {
+            ЭсиСправочник.Name,
+            ДокументыСправочник.Name,
+            ЭлектронныеКомпонентыСправочник.Name,
+            МатериалыСправочник.Name,
+        };
+        if (!supportedReferences.Contains(findedObject.Reference.Name)) {
+            throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
+        }
+    }
+
+
+    /// <summary>
+    /// Функция для создания связей между созданными в процессе выгрузки номенклатурными объектами
+    /// Входные данные:
+    /// createdObjects - список созданных объектов
+    /// links - словарь с всеми подключениями в виде словаря по ключу с обозначением ДСЕ
+    /// </summary>
     private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
         // Функция принимает созданные номенклатурный объекты, а так же объекты справочника "Подключения"
         // 
@@ -544,8 +593,14 @@ System.Diagnostics.Debugger.Break();
             // Получаем название объекта
             this.Name = (string)this.NomenclatureObject[Guids.Parameters.НоменклатураОбозначение].Value;
 
-            // Рекурсивно получаем потомков
+            // Создаем список дочерний нод
             this.Children = new List<INode>();
+            
+            // Рекурсивно получаем потомков
+            // Отключаем рекурсию при достижении большого уровня вложенности
+            if (this.Level > 100)
+                return;
+
             if (links.ContainsKey(shifr))
                 foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияКомплектующая].Value))
                     this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
