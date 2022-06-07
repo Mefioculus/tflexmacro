@@ -92,7 +92,8 @@ public class Macro : MacroProvider
 
             // Параметры справочника "ЭСИ"
             public static Guid ЭсиОбозначение = new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb");
-            
+            public static Guid ЭсиКодОКП = new Guid("f6d059f7-67b9-4477-917a-c585346df75b");
+
             // Параметры справочника "Документы"
             public static Guid ДокументыОбозначение = new Guid("b8992281-a2c3-42dc-81ac-884f252bd062");
             
@@ -387,8 +388,32 @@ public class Macro : MacroProvider
         // Получаем объект по связи и, если он есть, производим его проверку
         ReferenceObject linkedObject = nom.GetObject(Guids.Links.СвязьСпискаНоменклатурыНаЭСИ);
 
-        if (linkedObject != null) {
+        if (linkedObject != null)
+        {
             // TODO: Реализовать код произведения проверки объекта
+
+            TypeOfObject esiType = DefineTypeOfObject(nom); // тип
+
+
+            if (type == esiType)
+                if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
+                {
+                    var okp = linkedObject[Guids.Parameters.ЭсиКодОКП].Value.ToString();
+                    if (designation.Equals(okp))
+                        return linkedObject;
+                }
+                else
+                {
+                    var oboz = linkedObject[Guids.Parameters.ЭсиОбозначение].Value.ToString();
+                    if (designation.Equals(oboz))
+                        return linkedObject;
+                }
+            else
+            {
+                messages.Add($"Ошибка! У объекта {designation} тип в foxpro {type} в ЭСИ {esiType}");
+            }
+
+
         }
         return null;
     }
