@@ -94,10 +94,13 @@ public class Macro : MacroProvider
             public static Guid ЭсиОбозначение = new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb");
             
             // Параметры справочника "Документы"
+            public static Guid ДокументыОбозначение = new Guid("b8992281-a2c3-42dc-81ac-884f252bd062");
             
             // Параметры справочника "Электронные компоненты"
+            public static Guid ЭкОбозначение = new Guid("65e0e04a-1a6f-4d21-9eb4-dfe5a135ec3b");
             
             // Параметры справочника "Материалы"
+            public static Guid МатериалыОбозначение = new Guid("d0441280-01ea-43b5-8726-d2d02e4d996f");
             
         }
 
@@ -108,6 +111,8 @@ public class Macro : MacroProvider
         public static class Types {
             // Тип справочника ЭСИ
             public static Guid МатериальныйОбъект = new Guid("0ba28451-fb4d-47d0-b8f6-af0967468959");
+            // Тип справочника Документы
+            public static Guid ОбъектСоставаИзделия = new Guid("f89e9648-c8a0-43f8-82bb-015cfe1486a4");
         }
     }
 
@@ -427,7 +432,39 @@ public class Macro : MacroProvider
     /// </summary>
     private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
         // Производим поиск по смежным справочникам
-        return null;
+        List<ReferenceObject> result = new List<ReferenceObject>();
+        
+        List<ReferenceObject> tempResult;
+
+        // Производим поиск по справочнику "Документы"
+        tempResult = ДокументыСправочник
+            .Find(Guids.Parameters.ДокументыОбозначение, designation)
+            .Where(finded => finded.Class.IsInherit(Guids.Types.ОбъектСоставаИзделия))
+            .ToList<ReferenceObject>();
+        if (tempResult != null)
+            result.AddRange(tempResult);
+
+        // Производим поиск по справочнику "Электронные компоненты"
+        tempResult = ЭлектронныеКомпонентыСправочник.Find(Guids.Parameters.ЭкОбозначение, designation);
+        if (tempResult != null)
+            result.AddRange(tempResult);
+        
+        // Производим поиск по справочнику "Материалы"
+        tempResult = МатериалыСправочник.Find(Guids.Parameters.МатериалыОбозначение, designation);
+        if (tempResult != null)
+            result.AddRange(tempResult);
+
+        switch (result.Count) {
+            case 0:
+                messages.Add("Объект не найден в смежных справочниках");
+                return null;
+            case 1:
+                messages.Add("Объект найден в смежных справочниках");
+                return result[0];
+            default:
+                messages.Add("Объект найден в смежных справочниках");
+                throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
+        }
     }
 
 
