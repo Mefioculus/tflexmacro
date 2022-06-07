@@ -255,6 +255,14 @@ public class Macro : MacroProvider
         NameOfImport = $"{nomenclature[0]}{addition}";
     }
 
+    /// <summary>
+    /// Функция для определения перечня ДСЕ, которые необходимо обработать во время загрузки данных из FoxPro
+    /// На вход принимает:
+    /// nomenclature - словарь с всеми объектами справочника 'Список номеклатуры FoxPro' проиндексированный по обозначению
+    /// links - словарь с всеми объектами справочника 'Подключения', проиндексированный и сгруппированный по родительской сборке
+    /// shifs - список с обозначениями изделий, которые необходимо выгрузить
+    /// На выход предоставляет HashSet объектов справочника 'Список номенклатуры FoxPro', выгрузку которых необходимо произвести
+    /// </summary>
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
         // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
         // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
@@ -351,7 +359,7 @@ public class Macro : MacroProvider
 
         // Проверяем, были ли ошибки в процессе выполнения данного метода.
         // Если ошибки были, выдаем сообщение пользователю
-        string errors = string.Join("\n", messages.Where(message => message.StartsWith("Error")));
+        string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
         if (errors != string.Empty)
             Message("Ошибка", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
 
@@ -395,11 +403,12 @@ public class Macro : MacroProvider
             .ToList<ReferenceObject>();
 
         if (findedObjectInEsi.Count == 1) {
+            messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjectInEsi[0]);
-            messages.Add("Объект успешно найден в ЭСИ");
             return findedObjectInEsi[0];
         }
         else if (findedObjectInEsi.Count > 1) {
+            messages.Add("Объект найден в ЭСИ");
             throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjectInEsi.Select(obj => obj.ToString()))}");
         }
         else {
@@ -461,6 +470,18 @@ public class Macro : MacroProvider
         if (!supportedReferences.Contains(findedObject.Reference.Name)) {
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
         }
+
+        TypeOfObject typeOfNom = DefineTypeOfObject(nomenclatureRecord);
+        TypeOfObject typeOfFinded = DefineTypeOfObject(findedObject);
+
+        if (typeOfNom != typeOfFinded)
+            // TODO: Реализовать код, который будет пытаться привести типы к соответствию, и в том случае, если ему это не будет удаваться. будет выдавать исключения
+            throw new Exception(
+                    $"Обнаружено несоответствие типов объекта {nomenclatureRecord.ToString()} и {findedObject.ToString()}" +
+                    $" ({typeOfNom.ToString()} и {typeOfFinded.ToString()} соответственно)"
+                    );
+        else
+            return;
     }
 
 
@@ -522,19 +543,19 @@ public class Macro : MacroProvider
                 case "Сборочная единица":
                     return TypeOfObject.СборочнаяЕдиница;
                 case "Стандартное изделие":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.СтандартноеИзделие;
                 case "Прочее изделие":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.ПрочееИзделие;
                 case "Изделие":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.Изделие;
                 case "Деталь":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.Деталь;
                 case "Электронный компонент":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.ЭлектронныйКомпонент;
                 case "Материал":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.Материал;
                 case "Другое":
-                    return TypeOfObject.СборочнаяЕдиница;
+                    return TypeOfObject.Другое;
                 default:
                     throw new Exception($"Ошибка при определении типа объекта справочника '{reference}'. Разбрт типа объекта '{typeName}' не предусмотрен");
             }
