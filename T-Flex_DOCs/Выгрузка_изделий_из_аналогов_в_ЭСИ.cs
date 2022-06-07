@@ -21,6 +21,8 @@ public class Macro : MacroProvider
     private Reference ЭлектронныеКомпонентыСправочник { get; set; }
     private Reference МатериалыСправочник { get; set; }
     private string ДиректорияДляЛогов { get; set; }
+    private string TimeStamp { get; set; }
+    private string NameOfImport { get; set; }
 
     public Macro(MacroContext context)
         : base(context) {
@@ -38,6 +40,12 @@ System.Diagnostics.Debugger.Break();
         
         // Создаем директорию для ведения логов
         ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
+
+        // Сохраняем текущее время для использования в логах
+        TimeStamp = DateTime.Now.ToString("yyyy.MM.dd HH-mm");
+
+        // Даем временное название текущей выгрузке для использования в логах
+        NameOfImport = "Временное название выгрузки";
 
         if (!Directory.Exists(ДиректорияДляЛогов))
             Directory.CreateDirectory(ДиректорияДляЛогов);
@@ -224,7 +232,22 @@ System.Diagnostics.Debugger.Break();
 
             }
         }
+        SetNameOfExport(result);
         return result;
+    }
+
+    /// <summary>
+    /// Вспомогательная функция для определения названия импотра для использования этих данных в названиях
+    /// лог файлов.
+    /// Метод ничего не принимает и не возвращает.
+    /// Он производит присвоение строки определенного формата переменной NameOfImport
+    /// </summary>
+    private void SetNameOfExport(List<string> nomenclature) {
+        if (nomenclature.Count == 0)
+            return;
+
+        string addition = nomenclature.Count > 1 ? $" (+{nomenclature.Count - 1})" : string.Empty;
+        NameOfImport = $"{nomenclature[0]}{addition}";
     }
 
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
@@ -236,7 +259,7 @@ System.Diagnostics.Debugger.Break();
 
         // Для лога
         string log = string.Empty;
-        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, "Сгенерированные деревья.txt");
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Деревья для {NameOfImport} ({TimeStamp}).txt");
 
         // Формируем деревья и получаем все объекты
         foreach (string shifr in shifrs) {
@@ -269,7 +292,7 @@ System.Diagnostics.Debugger.Break();
 
         // ВАЖНО: при проведении поиска нужно проверять на то, что найденный объект единственный. Если он не единственный, тогда нужно выдать ошибку для принятия решения по поводу обработки данного случая
         List<ReferenceObject> result = new List<ReferenceObject>();
-        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"ПоискПозиций({DateTime.Now.ToString("yyyy.MM.dd HH.mm")}).txt");
+        string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Поиск позиций для {NameOfImport} ({TimeStamp}).txt");
         List<string> messages = new List<string>();
 
         foreach (ReferenceObject nom in nomenclature) {
