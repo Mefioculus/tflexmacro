@@ -613,7 +613,7 @@ public class Macro : MacroProvider
         string ErrString { get; }
 
         // Создание сообщение для лога с деревом изделия
-        string GenerateLog(int indent);
+        string GenerateLog();
         void AddError(string error);
     }
 
@@ -624,8 +624,6 @@ public class Macro : MacroProvider
         INode Parent { get; }
         List<INode> Children { get; }
         ReferenceObject NomenclatureObject { get; }
-
-        string ToString(int indent);
     }
 
     // Перечисления
@@ -661,16 +659,12 @@ public class Macro : MacroProvider
             this.RootObject = new NomenclatureNode(this, null, nomenclature, links, shifr);
         }
 
-        public string GenerateLog(int indent) {
-            return RootObject.ToString(indent);
+        public string GenerateLog() {
+            return RootObject.ToString();
         }
 
         public void AddError(string error) {
             this.Errors.Add(error);
-        }
-
-        public string GenerateLog() {
-            return GenerateLog(2);
         }
     }
 
@@ -688,12 +682,15 @@ public class Macro : MacroProvider
 
             this.Level = parent == null ? 0 : parent.Level + 1;
 
-            this.NomenclatureObject = nomenclature.ContainsKey(shifr) ?
-                nomenclature[shifr] :
-                throw new Exception($"Во время создания дерева изделия '{tree.NameProduct}' возникла ошибка. Обозначение '{shifr}' отсутствует в справочнике 'Список номенклатуры FoxPro'");
-
-            // Подключаем номенклатурный объект в список всех объектов дерева
-            this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
+            if (nomenclature.ContainsKey(shifr)) {
+                this.NomenclatureObject = nomenclature[shifr];
+                // Подключаем номенклатурный объект в список осех объектов дерева
+                this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
+            }
+            else {
+                this.NomenclatureObject = null;
+                this.Tree.AddError($"В дереве изделия {this.Tree.NameProduct} отсутствует '{shifr}'");
+            }
 
             // Получаем название объекта
             this.Name = (string)this.NomenclatureObject[Guids.Parameters.НоменклатураОбозначение].Value;
@@ -714,8 +711,13 @@ public class Macro : MacroProvider
         }
 
 
-        public string ToString(int indent) {
-            return $"{new string(' ', (int)(indent * this.Level))}{this.Name}\n{string.Join("\n", Children.Select(child => child.ToString(indent)))}";
+        public override string ToString() {
+            string prefix = string.Empty;
+            if (this.Level == 1)
+                prefix = "└";
+            if (this.Level > 1)
+                prefix = new string('│', this.Level - 1) + "└";
+            return $"{prefix}{this.Name}\n{string.Join("", Children.Select(child => child.ToString()))}";
         }
     }
 
