@@ -292,12 +292,15 @@ public class Macro : MacroProvider
                 errors.Add(tree.ErrString);
         }
 
-        if (errors.Count != 0)
-            Message("Ошибки в процессе построения деревьев", string.Join("\n\n", errors));
-
         // Пишем лог
         File.WriteAllText(pathToLogFile, log);
 
+        // Выдаем пользователю сообщение об ошибках в дереве и спрашиваем, продолжать ли выгрузку
+        if (errors.Count != 0)
+            if (Question(string.Join("\n\n", errors) + "\n\nПродолжать выгрузку?"))
+                return result;
+            else
+                return new HashSet<ReferenceObject>();
         return result;
     }
 
@@ -652,6 +655,8 @@ public class Macro : MacroProvider
         INode Parent { get; }
         List<INode> Children { get; }
         ReferenceObject NomenclatureObject { get; }
+
+        string GetTail(int quantityOfNodes);
     }
 
     // Перечисления
@@ -729,13 +734,30 @@ public class Macro : MacroProvider
             // Рекурсивно получаем потомков
             // Отключаем рекурсию при достижении большого уровня вложенности
             if (this.Level > 100) {
-                this.Tree.AddError($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (node: {this.Name}; parent node: {this.Parent.Name})");
+                this.Tree.AddError($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
                 return;
             }
 
             if (links.ContainsKey(shifr))
                 foreach (string childShifr in links[shifr].Select(link => (string)link[Guids.Parameters.ПодключенияКомплектующая].Value))
                     this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
+        }
+
+        public string GetTail(int quantityOfNodes) {
+            string result = this.Name;
+            INode currentNode = this;
+            while (true) {
+                currentNode = currentNode.Parent;
+                if (currentNode != null)
+                    result = $"{currentNode.Name} -> {result}";
+                else
+                    break;
+                quantityOfNodes -= 1;
+                if (quantityOfNodes < 2)
+                    break;
+            }
+
+            return result;
         }
 
 
