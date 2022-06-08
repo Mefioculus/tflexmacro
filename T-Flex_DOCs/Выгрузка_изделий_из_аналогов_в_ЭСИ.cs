@@ -11,6 +11,7 @@ using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
 using FoxProShifrsNormalizer;
+using TFlex.DOCs.Model.Desktop;
 
 public class Macro : MacroProvider
 {
@@ -30,10 +31,10 @@ public class Macro : MacroProvider
     public Macro(MacroContext context)
         : base(context) {
 
-        #if DEBUG
+#if DEBUG
         System.Diagnostics.Debugger.Launch();
         System.Diagnostics.Debugger.Break();
-        #endif
+#endif
 
         // Получаем экземпляры справочников для работы
         СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
@@ -42,7 +43,7 @@ public class Macro : MacroProvider
         ЭлектронныеКомпонентыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.ЭлектронныеКомпоненты).CreateReference();
         МатериалыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Материалы).CreateReference();
         ДокументыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.Документы).CreateReference();
-        
+
         // Создаем директорию для ведения логов
         ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
 
@@ -96,15 +97,18 @@ public class Macro : MacroProvider
 
             // Параметры справочника "Документы"
             public static Guid ДокументыОбозначение = new Guid("b8992281-a2c3-42dc-81ac-884f252bd062");
+            public static Guid ДокументыНаименование = new Guid("7e115f38-f446-40ce-8301-9b211e6ce5fd");
             public static Guid ДокументыКодОКП = new Guid("45ead73a-1773-4156-bafd-48795f844cfb");
 
             // Параметры справочника "Электронные компоненты"
             public static Guid ЭкОбозначение = new Guid("65e0e04a-1a6f-4d21-9eb4-dfe5a135ec3b");
+            public static Guid ЭкНаименование = new Guid("01184891-8364-4a5c-bf05-2163e1f3d460");
             public static Guid ЭкКодОКП = new Guid("72f18ec6-d471-45c7-b1df-26f8ccd89af3");
 
             // Параметры справочника "Материалы"
             public static Guid МатериалыОбозначение = new Guid("d0441280-01ea-43b5-8726-d2d02e4d996f");
-            
+            public static Guid МатериалыСводноеНаименование = new Guid("23cfeee6-57f3-4a1e-9cf0-9040fed0e90c");
+
         }
 
         public static class Links {
@@ -158,7 +162,7 @@ public class Macro : MacroProvider
     private Dictionary<string, List<ReferenceObject>> GetLinks()
     {
         var RefConnectNum = ПодключенияСправочник.Objects;
-        Dictionary<string,List<ReferenceObject>> dict = new Dictionary<string,List<ReferenceObject>>(300000);
+        Dictionary<string, List<ReferenceObject>> dict = new Dictionary<string, List<ReferenceObject>>(300000);
         foreach (var item in RefConnectNum)
         {
             string shifr = (String)item[Guids.Parameters.ПодключенияСборка].Value;
@@ -398,29 +402,36 @@ public class Macro : MacroProvider
             // TODO: Реализовать код произведения проверки объекта
 
             TypeOfObject esiType = DefineTypeOfObject(nom); // тип
-
-            
+            var okp = linkedObject[Guids.Parameters.ЭсиКодОКП].Value.ToString();
+            var oboz = linkedObject[Guids.Parameters.ЭсиОбозначение].Value.ToString();
             if (type == esiType)
                 if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
                 {
-                    
-                    var okp = linkedObject[Guids.Parameters.ЭсиКодОКП].Value.ToString();
                     if (designation.Equals(okp))
+                    {
+                        messages.Add("Объект найден в ЭСИ по связи из справочника СписокНоменклатуры FoxPro");
                         return linkedObject;
+                    }
+                    else if (designation.Equals(oboz))
+                    {
+                        messages.Add($"Ошибка! У объекта {designation} тип {esiType} код ОКП не совпадает c FoxPro {designation}");
+                    }
                 }
                 else
                 {
-                    var oboz = linkedObject[Guids.Parameters.ЭсиОбозначение].Value.ToString();
                     if (designation.Equals(oboz))
+                    {
+                        messages.Add("Объект найден в ЭСИ по связи из справочника СписокНоменклатуры FoxPro");
                         return linkedObject;
+                    }
                 }
             else
             {
                 messages.Add($"Ошибка! У объекта {designation} тип в foxpro {type} в ЭСИ {esiType}");
             }
-
-
         }
+        else
+            messages.Add($"Ошибка! У объекта {designation} в справочнике справочника СписокНоменклатуры FoxPro нет связи с ЭСИ");
         return null;
     }
 
@@ -464,7 +475,7 @@ public class Macro : MacroProvider
     private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
         // Производим поиск по смежным справочникам
         List<ReferenceObject> result = new List<ReferenceObject>();
-        
+
         List<ReferenceObject> tempResult;
 
         // Производим поиск по справочнику "Документы"
@@ -479,7 +490,7 @@ public class Macro : MacroProvider
         tempResult = ЭлектронныеКомпонентыСправочник.Find(Guids.Parameters.ЭкОбозначение, designation);
         if (tempResult != null)
             result.AddRange(tempResult);
-        
+
         // Производим поиск по справочнику "Материалы"
         tempResult = МатериалыСправочник.Find(Guids.Parameters.МатериалыОбозначение, designation);
         if (tempResult != null)
@@ -509,8 +520,83 @@ public class Macro : MacroProvider
     /// </summary>
     private ReferenceObject ProcessFinalStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
         // Производим создание объекта
+        string nomName = (string)nom[Guids.Parameters.НоменклатураНаименование].Value;
+        //string nomTip = nom[Guids.Parameters.НоменклатураТипНоменклатуры].Value.ToString();
+        //var createDocument = CreateDocumentObject(nomName, designation, type.ToString());
+        ReferenceObject createDocument = null;
+        string nomTip = getTypeString(type);
+        if (type == TypeOfObject.СтандартноеИзделие)
+        {
+            createDocument = CreateRefObject(nomName, designation, nomTip, ДокументыСправочник,
+                                                    Guids.Parameters.ДокументыНаименование, Guids.Parameters.ДокументыКодОКП);
+        }
+        else if (type == TypeOfObject.Материал)
+        {
+            createDocument = CreateRefObject(nomName, designation, nomTip, МатериалыСправочник,
+                                Guids.Parameters.МатериалыСводноеНаименование, Guids.Parameters.МатериалыОбозначение);
+        }
+        else if (type == TypeOfObject.ЭлектронныйКомпонент)
+        {
+            createDocument = CreateRefObject(nomName, designation, nomTip, ЭлектронныеКомпонентыСправочник,
+                                            Guids.Parameters.ЭкНаименование, Guids.Parameters.ЭкКодОКП);
+        }
+        else
+        {
+            createDocument = CreateRefObject(nomName, designation, nomTip, ДокументыСправочник,
+                                                       Guids.Parameters.ДокументыНаименование, Guids.Parameters.ДокументыОбозначение);
+        }
+
+        // var createDocument2 = CreateRefObject(nomName, designation, type.ToString(), ЭлектронныеКомпонентыСправочник,Guids.Parameters.ЭкНаименование, Guids.Parameters.ЭкКодОКП);
+        // var createDocument = CreateRefObject(nomName, designation, type.ToString(),ДокументыСправочник,Guids.Parameters.ДокументыНаименование,Guids.Parameters.ДокументыОбозначение);
+
+        if (createDocument != null)
+        {
+            messages.Add($"В справочнике {createDocument.Reference.Name.ToString()} создан объект {designation}");
+            return createDocument;
+        }
         return null;
     }
+
+    private string getTypeString(TypeOfObject type)
+    {
+
+        switch (type)
+        {
+            case TypeOfObject.СборочнаяЕдиница:
+                return "Сборочная единица";
+            case TypeOfObject.СтандартноеИзделие:
+                return "Стандартное изделие";
+            case TypeOfObject.ПрочееИзделие:
+                return "Прочее изделие";
+            case TypeOfObject.Изделие:
+                return "Изделие";
+            case TypeOfObject.Деталь:
+                return "Деталь";
+            case TypeOfObject.ЭлектронныйКомпонент:
+                return "Электронный компонент";
+            case TypeOfObject.Материал:
+                return "Материал";
+            case TypeOfObject.Другое:
+                return "Другое";
+            default:
+                throw new Exception($"Ошибка при определении типа объекта справочника ");
+
+        }
+    }
+
+
+
+    private ReferenceObject CreateRefObject(string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
+    {
+        var createdClassObject = refName.Classes.Find(classObjectName);
+        ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
+        refereceObject[guidName].Value = name;
+        refereceObject[guidShifr].Value = oboz;
+        refereceObject.EndChanges();
+        Desktop.CheckIn(refereceObject, "Объект создан", false);
+        return refereceObject;
+    }
+
 
     /// <summary>
     /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
@@ -672,6 +758,8 @@ public class Macro : MacroProvider
         Материал,
         Другое,
     }
+
+    
 
     // Классы
     private class NomenclatureTree : ITree {
