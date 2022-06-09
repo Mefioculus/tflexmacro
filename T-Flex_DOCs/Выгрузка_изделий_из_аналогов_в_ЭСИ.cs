@@ -851,4 +851,47 @@ public class Macro : MacroProvider
         }
     }
 
+    private class RefGuidData {
+        public Reference Ref { get; private set; }
+        public Dictionary<string, Guid> Types { get; private set; }
+        public Dictionary<string, Guid> Parameters { get; private set; }
+        public Dictionary<string, Guid> Links { get; private set; }
+        public Dictionary<string, Guid> Objects { get; private set; }
+
+        // Конструктор
+        public RefGuidData (MacroContext context, Guid guidOfReference) {
+            ReferenceInfo refInfo = context.Connection.ReferenceCatalog.Find(guidOfReference);
+            // Проверка на то, что удалось найти в базе справочник с таким Guid
+            if (refInfo == null)
+                throw new Exception($"Ошибка поиска справочника с уникальным идентификатором {guidOfReference} при инициализации нового объекта ReferenceData");
+            Ref = context.Connection.ReferenceCatalog.Find(guidOfReference).CreateReference();
+        }
+
+        private void CheckKey(string nameOfDict, Dictionary<string, Guid> dict, string key) {
+            if (dict.ContainsKey(key))
+                throw new Exception($"Ошибка добавления ключа '{key}' в словарь '{nameOfDict}' объекта 'RefGuidData'. Объект с таким ключом уже существует");
+        }
+
+        // Методы для добавления Guid
+        public void AddType(string name, Guid guid) {
+            CheckKey("Types", this.Types, name);
+            this.Types.Add(name, guid);
+        }
+
+        public void AddLink(string name, Guid guid) {
+            CheckKey("Links", this.Links, name);
+            this.Links.Add(name, guid);
+        }
+
+        public void AddParameter(string name, Guid guid) {
+            CheckKey("Parameters", this.Parameters, name);
+            this.Parameters.Add(name, guid);
+        }
+
+        public void AddObject(string name, Guid guid) {
+            CheckKey("Objects", this.Objects, name);
+            this.Objects.Add(name, guid);
+        }
+    }
+
 }
