@@ -110,6 +110,26 @@ public class Macro : MacroProvider
 
     }
 
+    public override void Run() {
+        // Производим загрузку всей необходимой информации
+        Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
+        Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
+
+        // Запрашиваем у пользователя перечень изделий, по которым нужно произвести выгрузку
+        List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
+
+        // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
+        HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(номенклатура, подключения, изделияДляВыгрузки);
+
+        // Производим поиск и (при необходимости) создание объектов в ЭСИ и смежных справочниках
+        List<ReferenceObject> созданныеДСЕ = FindOrCreateNomenclatureObjects(номенклатураДляСоздания);
+
+        // Производим соединение созданных ДСЕ в иерархию при помощи подключений
+        ConnectCreatedObjects(созданныеДСЕ, подключения);
+
+        Message("Информация", "Работа макроса завершена");
+    }
+
     /// <summary>
     /// Функция возвращает словарь с изделиями
     /// </summary>
@@ -826,10 +846,10 @@ public class Macro : MacroProvider
     public class RefGuidData {
         public Reference Ref { get; private set; }
         public Guid RefGuid { get; private set; }
-        public Dictionary<string, Guid> Types { get; private set; }
-        public Dictionary<string, Guid> Params { get; private set; }
-        public Dictionary<string, Guid> Links { get; private set; }
-        public Dictionary<string, Guid> Objects { get; private set; }
+        public Container Types { get; private set; }
+        public Container Params { get; private set; }
+        public Container Links { get; private set; }
+        public Container Objects { get; private set; }
 
         // Конструктор
         public RefGuidData (MacroContext context, Guid guidOfReference) {
@@ -839,32 +859,61 @@ public class Macro : MacroProvider
             if (refInfo == null)
                 throw new Exception($"Ошибка поиска справочника с уникальным идентификатором {guidOfReference} при инициализации нового объекта ReferenceData");
             Ref = context.Connection.ReferenceCatalog.Find(guidOfReference).CreateReference();
-        }
 
-        private void CheckKey(string nameOfDict, Dictionary<string, Guid> dict, string key) {
-            if (dict.ContainsKey(key))
-                throw new Exception($"Ошибка добавления ключа '{key}' в словарь '{nameOfDict}' объекта 'RefGuidData'. Объект с таким ключом уже существует");
+            // Инициализируем контейнеры для уникальных идентификаторов
+            this.Types = new Container(this, "Types");
+            this.Params = new Container(this, "Params");
+            this.Links = new Container(this, "Links");
+            this.Objects = new Container(this, "Objects");
         }
 
         // Методы для добавления Guid
-        public void AddType(string name, Guid guid) {
-            CheckKey("Types", this.Types, name);
+        public void AddType(string name, Guid guid) =>
             this.Types.Add(name, guid);
-        }
 
-        public void AddLink(string name, Guid guid) {
-            CheckKey("Links", this.Links, name);
+        public void AddLink(string name, Guid guid) =>
             this.Links.Add(name, guid);
-        }
 
-        public void AddParam(string name, Guid guid) {
-            CheckKey("Params", this.Params, name);
+        public void AddParam(string name, Guid guid) =>
             this.Params.Add(name, guid);
-        }
 
-        public void AddObject(string name, Guid guid) {
-            CheckKey("Objects", this.Objects, name);
+        public void AddObject(string name, Guid guid) =>
             this.Objects.Add(name, guid);
+
+        public class Container {
+            public string Name { get; private set; }
+            private Dictionary<string, Guid> Storage { get; set; }
+            private RefGuidData Parent { get; set; }
+
+            public Container(RefGuidData parent, string name) {
+                this.Parent = parent;
+                this.Name = name;
+                this.Storage = new Dictionary<string, Guid>();
+            }
+
+            public int Count => this.Storage.Count;
+
+            public bool ContainsKey(string key) => this.Storage.ContainsKey(key);
+
+            public void Add(string key, Guid guid) {
+                string lowerKey = key.ToLower();
+                if (this.Storage.ContainsKey(lowerKey))
+                    throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} уже содержит ключ '{key}'");
+                this.Storage.Add(lowerKey, guid);
+            }
+
+            public Guid this[string key] {
+                get {
+                    string lowerKey = key.ToLower();
+                    if (!this.Storage.ContainsKey(lowerKey))
+                        throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} не содержит ключа '{key}'");
+                    return this.Storage[lowerKey];
+                }
+
+                set {
+                    throw new Exception("Для добавления объекта используйте методы класса RefGuidData");
+                }
+            }
         }
     }
 
