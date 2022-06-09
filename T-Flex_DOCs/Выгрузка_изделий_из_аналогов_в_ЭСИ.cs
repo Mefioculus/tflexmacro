@@ -31,10 +31,10 @@ public class Macro : MacroProvider
     public Macro(MacroContext context)
         : base(context) {
 
-#if DEBUG
+        #if DEBUG
         System.Diagnostics.Debugger.Launch();
         System.Diagnostics.Debugger.Break();
-#endif
+        #endif
 
         // Получаем экземпляры справочников для работы
         СписокНоменклатурыСправочник = Context.Connection.ReferenceCatalog.Find(Guids.References.СписокНоменклатурыFoxPro).CreateReference();
@@ -399,39 +399,28 @@ public class Macro : MacroProvider
 
         if (linkedObject != null)
         {
-            // TODO: Реализовать код произведения проверки объекта
+            messages.Add("Объект был получен по связи");
+            SyncronizeTypes(nom, linkedObject);
 
             TypeOfObject esiType = DefineTypeOfObject(nom); // тип
             var okp = linkedObject[Guids.Parameters.ЭсиКодОКП].Value.ToString();
             var oboz = linkedObject[Guids.Parameters.ЭсиОбозначение].Value.ToString();
-            if (type == esiType)
-                if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
-                {
-                    if (designation.Equals(okp))
-                    {
-                        messages.Add("Объект найден в ЭСИ по связи из справочника СписокНоменклатуры FoxPro");
-                        return linkedObject;
-                    }
-                    else if (designation.Equals(oboz))
-                    {
-                        messages.Add($"Ошибка! У объекта {designation} тип {esiType} код ОКП не совпадает c FoxPro {designation}");
-                    }
-                }
-                else
-                {
-                    if (designation.Equals(oboz))
-                    {
-                        messages.Add("Объект найден в ЭСИ по связи из справочника СписокНоменклатуры FoxPro");
-                        return linkedObject;
-                    }
-                }
+
+            if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
+            {
+                if (!designation.Equals(okp))
+                    throw new Exception($"У привязанного объекта отличается код ОКП (указан: '{okp}', должен быть: {designation})");
+                return linkedObject;
+            }
             else
             {
-                messages.Add($"Ошибка! У объекта {designation} тип в foxpro {type} в ЭСИ {esiType}");
+                if (!designation.Equals(oboz))
+                    throw new Exception($"У привязанного объекта отличается обозначенние (указано: '{oboz}', должно быть: {designation})");
+                return linkedObject;
             }
         }
         else
-            messages.Add($"Ошибка! У объекта {designation} в справочнике справочника СписокНоменклатуры FoxPro нет связи с ЭСИ");
+            messages.Add("Связанный объект отсутствовал");
         return null;
     }
 
@@ -557,6 +546,10 @@ public class Macro : MacroProvider
         return null;
     }
 
+    /// <summary>
+    /// Метод для преобразования перечисления TypeOfObject в его строковое представление, понятное DOCs
+    /// На вход принимает объект TypeOfObject, текстовую репрезентакию которого необходимо получить, на выходе - строку
+    /// </summary>
     private string getTypeString(TypeOfObject type)
     {
 
@@ -584,8 +577,8 @@ public class Macro : MacroProvider
         }
     }
 
-
-
+    /// <summary>
+    /// </summary>
     private ReferenceObject CreateRefObject(string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
     {
         var createdClassObject = refName.Classes.Find(classObjectName);
@@ -616,14 +609,13 @@ public class Macro : MacroProvider
 
         // Проверка параметра findedObject
         List<string> supportedReferences = new List<string>() {
-            ЭсиСправочник.Name,
             ДокументыСправочник.Name,
             ЭлектронныеКомпонентыСправочник.Name,
             МатериалыСправочник.Name,
         };
-        if (!supportedReferences.Contains(findedObject.Reference.Name)) {
+
+        if (!supportedReferences.Contains(findedObject.Reference.Name) && (!findedObject.Reference.Name.Contains("Электронная структура изделий")))
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
-        }
 
         TypeOfObject typeOfNom = DefineTypeOfObject(nomenclatureRecord);
         TypeOfObject typeOfFinded = DefineTypeOfObject(findedObject);
@@ -691,7 +683,7 @@ public class Macro : MacroProvider
         }
 
         // Разбираем случай, если в метод был передан объект справочника 'Электронная структура изделий'
-        if ((reference == ЭсиСправочник.Name) || (reference == ДокументыСправочник.Name) || (reference == ЭлектронныеКомпонентыСправочник.Name) || (reference == МатериалыСправочник.Name)) {
+        if ((reference.Contains("Электронная структура изделий")) || (reference == ДокументыСправочник.Name) || (reference == ЭлектронныеКомпонентыСправочник.Name) || (reference == МатериалыСправочник.Name)) {
             string typeName = nomenclature.Class.Name;
             switch (typeName) {
                 case "Сборочная единица":
