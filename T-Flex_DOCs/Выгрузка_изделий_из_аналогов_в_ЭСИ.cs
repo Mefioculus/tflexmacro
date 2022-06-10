@@ -314,6 +314,13 @@ public class Macro : MacroProvider
         string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Поиск позиций для {StringForLog}.txt");
         List<string> messages = new List<string>();
 
+        // Счетчики для статистики
+        int countStage1 = 0;
+        int countStage2 = 0;
+        int countStage3 = 0;
+        int countStage4 = 0;
+        int countErrors = 0;
+
         foreach (ReferenceObject nom in nomenclature) {
             // Получаем обозначение текущего объекта и его тип
             ReferenceObject resultObject;
@@ -323,11 +330,15 @@ public class Macro : MacroProvider
             messages.Add(new String('-', 30));
             messages.Add($"{nomDesignation}:");
 
+
+
+
             try {
                 // СТАДИЯ 1: Пытаемся получить объект по связи на справочник ЭСИ
                 resultObject = ProcessFirstStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage1 += 1;
                     continue;
                 }
 
@@ -335,6 +346,7 @@ public class Macro : MacroProvider
                 resultObject = ProcessSecondStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage2 += 1;
                     continue;
                 }
 
@@ -342,51 +354,64 @@ public class Macro : MacroProvider
                 resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage3 += 1;
                     continue;
                 }
 
                 // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
                 resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
-                if (resultObject != null)
-                {
+                if (resultObject != null) {
+                    countStage4 += 1;
                     result.Add(resultObject);
                 }
             }
             catch (Exception e) {
                 messages.Add($"Error: {e.Message}");
+                countErrors += 1;
                 continue;
             }
         }
 
+        // Вывод статистики и генерация лога
+        // Генерируем строку с статистикой по данному методу
+        string statistics = 
+                $"Всего объектов передано на поиск/создание - {nomenclature.Count.ToString()}. Из них:\n" +
+                $"Получено по связи - {countStage1.ToString()} шт\n" +
+                $"Найдено в ЭСИ - {countStage2.ToString()} шт\n" +
+                $"Найдено в смежных справочниках - {countStage3.ToString()} шт\n" +
+                $"Создано - {countStage4.ToString()} шт\n" +
+                $"Возникли ошибки в процессе обработки - {countErrors.ToString()} шт\n";
 
-
-        // Проверяем, были ли ошибки в процессе выполнения данного метода.
-        // Если ошибки были, выдаем сообщение пользователю
+        // Получаем текст всех ошибок, которые были перехвачены
         string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
-        if (errors != string.Empty)
-            Message("Ошибка", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
 
+        // Если ошибки есть, то сначала выводим статистику и спрашиваем у пользователя, отобразить ли ошибки
+        // Иначе просто выводим статистику
+        if (errors != string.Empty) {
+            statistics += "\n\nОтобразить ошибки?";
+            if (Question(statistics))
+                Message("Ошибки", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+        }
+        else
+            Message("Статистика", statistics);
+        
         // Пишем лог
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
 
         return result;
     }
 
-
-
     /// <summary>
-    ///
+    /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
     /// </summary>
-    private ReferenceObject MoveShifrtoOKP(RefGuidData referData, ReferenceObject resultObject, string designation, List<string> messages)
+    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
     {
         TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
-        
-        var obozEsi = resultObject[referData.Params["Обозначение"]].Value.ToString();
+        var okpEsi = resultObject[ЭСИ.Params["Код ОКП"]].Value.ToString();
+        var obozEsi = resultObject[ЭСИ.Params["Обозначение"]].Value.ToString();
 
         if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
         {
-            var okpEsi = resultObject[referData.Params["Код ОКП"]].Value.ToString();
-
             if (!designation.Equals(okpEsi))
             {
                 if (designation.Equals(obozEsi))
@@ -395,8 +420,8 @@ public class Macro : MacroProvider
                     {
                         resultObject.CheckOut();
                         resultObject.BeginChanges();
-                        resultObject[referData.Params["Код ОКП"]].Value = obozEsi;
-                        resultObject[referData.Params["Обозначение"]].Value = "";
+                        resultObject[ЭСИ.Params["Код ОКП"]].Value = obozEsi;
+                        resultObject[ЭСИ.Params["Обозначение"]].Value = "";
                         resultObject.EndChanges();
                         //linkedObject.CheckIn("Перенос Обозначения в поле код ОКП");
                         Desktop.CheckIn(resultObject, "Перенос Обозначения в поле код ОКП", false);
@@ -438,7 +463,7 @@ public class Macro : MacroProvider
         {
             messages.Add("Объект был получен по связи");
             SyncronizeTypes(nom, linkedObject);
-            return MoveShifrtoOKP(ЭСИ, linkedObject, designation, messages);
+            return MoveShifrToOKP(linkedObject, designation, messages);
    
         }
         else
@@ -455,19 +480,28 @@ public class Macro : MacroProvider
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
-        List<ReferenceObject> findedObjectInEsi = ЭСИ.Ref
+
+        List<ReferenceObject> findedObjects = ЭСИ.Ref
             .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
             .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
             .ToList<ReferenceObject>();
 
-        if (findedObjectInEsi.Count == 1) {
+        List<ReferenceObject> findedObjectsOKP = ЭСИ.Ref
+            .Find(ЭСИ.Params["Код ОКП"], designation) // Производим поиск по всему справочнику
+            .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+            .ToList<ReferenceObject>();
+
+        findedObjects.AddRange(findedObjectsOKP);
+
+
+        if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
-            SyncronizeTypes(nom, findedObjectInEsi[0]);
-            return MoveShifrtoOKP(ЭСИ,findedObjectInEsi[0], designation, messages);
+            SyncronizeTypes(nom, findedObjects[0]);
+            return MoveShifrToOKP(findedObjects[0], designation, messages);
         }
-        else if (findedObjectInEsi.Count > 1) {
+        else if (findedObjects.Count > 1) {
             messages.Add("Объект найден в ЭСИ");
-            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjectInEsi.Select(obj => obj.ToString()))}");
+            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         }
         else {
             messages.Add("Объект не найден в ЭСИ");
@@ -512,16 +546,8 @@ public class Macro : MacroProvider
                 messages.Add("Объект не найден в смежных справочниках");
                 return null;
             case 1:
-                RefGuidData refGuidDataResult = null;
                 messages.Add("Объект найден в смежных справочниках");
-                if (result[0].Reference.Name.Equals("Документы"))
-                    refGuidDataResult = Документы;
-                if (result[0].Reference.Name.Equals("Электронные компоненты"))
-                    refGuidDataResult = ЭлектронныеКомпоненты;
-                if (result[0].Reference.Name.Equals("Материалы"))
-                    refGuidDataResult = Материалы;
-                ConnectRefObjecttoESI(result[0]);
-                return MoveShifrtoOKP(refGuidDataResult, result[0], designation, messages);
+                return MoveShifrToOKP(result[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -620,13 +646,11 @@ public class Macro : MacroProvider
             refereceObject[guidName].Value = name;
             refereceObject[guidShifr].Value = oboz;
             refereceObject.EndChanges();
-            //Desktop.CheckIn(refereceObject, "Объект создан", false);
-            /*            NomenclatureReference nomReference;
-                        nomReference = ЭСИ.Ref as NomenclatureReference;
-                        ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
-
-            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            var newNomenclature = ConnectRefObjecttoESI(refereceObject);
+            Desktop.CheckIn(refereceObject, "Объект создан", false);
+            NomenclatureReference nomReference;
+            nomReference = ЭСИ.Ref as NomenclatureReference;
+            ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
+            Desktop.CheckIn(newNomenclature, "Объект в создан", false);
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
             nom.EndChanges();
@@ -640,34 +664,7 @@ public class Macro : MacroProvider
         return null;
     }
 
-    private ReferenceObject ConnectRefObjecttoESI(ReferenceObject refereceObject)
-    {try
-        {
-            NomenclatureReference nomReference;
-            nomReference = ЭСИ.Ref as NomenclatureReference;
-            ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
-            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            string designation = newNomenclature[СписокНоменклатуры.Params["Обозначение"]].Value.ToString();
-            List<ReferenceObject> findedObjectInSpisokNom = СписокНоменклатуры.Ref
-                .Find(ЭСИ.Params["Обозначение"], designation);
 
-            if (findedObjectInSpisokNom != null && findedObjectInSpisokNom.Count() > 1)
-            {
-                var firstFindObj = findedObjectInSpisokNom.First();
-                firstFindObj.BeginChanges();
-                firstFindObj.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
-                firstFindObj.EndChanges();
-            }
-            return newNomenclature;
-        }
-        catch (Exception e)
-        {
-            throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ {e}");
-        }
-
-
-        return null;
-    }
     /// <summary>
     /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
     /// Входные параметры:
@@ -991,7 +988,7 @@ public class Macro : MacroProvider
             public void Add(string key, Guid guid) {
                 string lowerKey = key.ToLower();
                 if (this.Storage.ContainsKey(lowerKey))
-                    throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} уже содержит ключ '{key}'");
+                    throw new Exception($"Хранилище '{this.Name}' объекта RefGuidData для справочника '{Parent.Ref.Name}' уже содержит ключ '{key}'");
                 this.Storage.Add(lowerKey, guid);
             }
 
