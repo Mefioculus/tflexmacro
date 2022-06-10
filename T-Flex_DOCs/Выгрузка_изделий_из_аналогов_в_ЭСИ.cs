@@ -12,6 +12,7 @@ using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
 using FoxProShifrsNormalizer;
 using TFlex.DOCs.Model.Desktop;
+using TFlex.DOCs.Model.References.Nomenclature;
 
 public class Macro : MacroProvider
 {
@@ -346,7 +347,8 @@ public class Macro : MacroProvider
 
                 // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
                 resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
-                if (resultObject != null) {
+                if (resultObject != null)
+                {
                     result.Add(resultObject);
                 }
             }
@@ -355,6 +357,8 @@ public class Macro : MacroProvider
                 continue;
             }
         }
+
+
 
         // Проверяем, были ли ошибки в процессе выполнения данного метода.
         // Если ошибки были, выдаем сообщение пользователю
@@ -366,6 +370,51 @@ public class Macro : MacroProvider
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
 
         return result;
+    }
+
+
+
+
+    private ReferenceObject MoveShifrtoOKP(ReferenceObject resultObject, string designation, List<string> messages)
+    {
+        TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
+        var okpEsi = resultObject[ЭСИ.Params["Код ОКП"]].Value.ToString();
+        var obozEsi = resultObject[ЭСИ.Params["Обозначение"]].Value.ToString();
+
+        if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
+        {
+            if (!designation.Equals(okpEsi))
+            {
+                if (designation.Equals(obozEsi))
+                {
+                    try
+                    {
+                        resultObject.CheckOut();
+                        resultObject.BeginChanges();
+                        resultObject[ЭСИ.Params["Код ОКП"]].Value = obozEsi;
+                        resultObject[ЭСИ.Params["Обозначение"]].Value = "";
+                        resultObject.EndChanges();
+                        //linkedObject.CheckIn("Перенос Обозначения в поле код ОКП");
+                        Desktop.CheckIn(resultObject, "Перенос Обозначения в поле код ОКП", false);
+                    }
+                    catch (Exception e)
+                    {
+                        messages.Add($"Error: При переносе Обозначения в ОКП  {e.Message}");
+                    }
+                }
+                else
+                    throw new Exception($"У привязанного объекта отличается код ОКП (указан: '{okpEsi}', должен быть: {designation})");
+
+            }
+            return resultObject;
+        }
+        else
+        {
+            if (!designation.Equals(obozEsi))
+                throw new Exception($"У привязанного объекта отличается обозначенние (указано: '{obozEsi}', должно быть: {designation})");
+            return resultObject;
+        }
+
     }
 
     /// <summary>
@@ -385,23 +434,8 @@ public class Macro : MacroProvider
         {
             messages.Add("Объект был получен по связи");
             SyncronizeTypes(nom, linkedObject);
-
-            TypeOfObject esiType = DefineTypeOfObject(nom); // тип
-            var okp = linkedObject[ЭСИ.Params["Код ОКП"]].Value.ToString();
-            var oboz = linkedObject[ЭСИ.Params["Обозначение"]].Value.ToString();
-
-            if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
-            {
-                if (!designation.Equals(okp))
-                    throw new Exception($"У привязанного объекта отличается код ОКП (указан: '{okp}', должен быть: {designation})");
-                return linkedObject;
-            }
-            else
-            {
-                if (!designation.Equals(oboz))
-                    throw new Exception($"У привязанного объекта отличается обозначенние (указано: '{oboz}', должно быть: {designation})");
-                return linkedObject;
-            }
+            return MoveShifrtoOKP(linkedObject, designation, messages);
+   
         }
         else
             messages.Add("Связанный объект отсутствовал");
@@ -425,7 +459,7 @@ public class Macro : MacroProvider
         if (findedObjectInEsi.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjectInEsi[0]);
-            return findedObjectInEsi[0];
+            return MoveShifrtoOKP(findedObjectInEsi[0], designation, messages);
         }
         else if (findedObjectInEsi.Count > 1) {
             messages.Add("Объект найден в ЭСИ");
@@ -475,7 +509,7 @@ public class Macro : MacroProvider
                 return null;
             case 1:
                 messages.Add("Объект найден в смежных справочниках");
-                return result[0];
+                return MoveShifrtoOKP(result[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -500,22 +534,22 @@ public class Macro : MacroProvider
         string nomTip = getTypeString(type);
         if (type == TypeOfObject.СтандартноеИзделие)
         {
-            createDocument = CreateRefObject(nomName, designation, nomTip, Документы.Ref,
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы.Ref,
                                                     Документы.Params["Наименование"], Документы.Params["Код ОКП"]);
         }
         else if (type == TypeOfObject.Материал)
         {
-            createDocument = CreateRefObject(nomName, designation, nomTip, Материалы.Ref,
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Материалы.Ref,
                                 Материалы.Params["Сводное наименование"], Материалы.Params["Обозначение"]);
         }
         else if (type == TypeOfObject.ЭлектронныйКомпонент)
         {
-            createDocument = CreateRefObject(nomName, designation, nomTip, ЭлектронныеКомпоненты.Ref,
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, ЭлектронныеКомпоненты.Ref,
                                             ЭлектронныеКомпоненты.Params["Наименование"], ЭлектронныеКомпоненты.Params["Код ОКП"]);
         }
         else
         {
-            createDocument = CreateRefObject(nomName, designation, nomTip, Документы.Ref,
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы.Ref,
                                                        Документы.Params["Наименование"], Документы.Params["Обозначение"]);
         }
 
@@ -562,16 +596,34 @@ public class Macro : MacroProvider
     }
 
     /// <summary>
+    /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
+    /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
     /// </summary>
-    private ReferenceObject CreateRefObject(string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
+    private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
     {
-        var createdClassObject = refName.Classes.Find(classObjectName);
-        ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
-        refereceObject[guidName].Value = name;
-        refereceObject[guidShifr].Value = oboz;
-        refereceObject.EndChanges();
-        Desktop.CheckIn(refereceObject, "Объект создан", false);
-        return refereceObject;
+        try
+        {
+            var createdClassObject = refName.Classes.Find(classObjectName);
+            ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
+            refereceObject[guidName].Value = name;
+            refereceObject[guidShifr].Value = oboz;
+            refereceObject.EndChanges();
+            Desktop.CheckIn(refereceObject, "Объект создан", false);
+            NomenclatureReference nomReference;
+            nomReference = ЭСИ.Ref as NomenclatureReference;
+            ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
+            Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+            nom.BeginChanges();
+            nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
+            nom.EndChanges();
+            return refereceObject;
+        }
+        catch (Exception e)
+        {
+            throw new Exception($"Ошибка при создании объекта {e}");
+        }
+
+        return null;
     }
 
 
