@@ -313,6 +313,13 @@ public class Macro : MacroProvider
         string pathToLogFile = Path.Combine(ДиректорияДляЛогов, $"Поиск позиций для {StringForLog}.txt");
         List<string> messages = new List<string>();
 
+        // Счетчики для статистики
+        int countStage1 = 0;
+        int countStage2 = 0;
+        int countStage3 = 0;
+        int countStage4 = 0;
+        int countErrors = 0;
+
         foreach (ReferenceObject nom in nomenclature) {
             // Получаем обозначение текущего объекта и его тип
             ReferenceObject resultObject;
@@ -322,11 +329,15 @@ public class Macro : MacroProvider
             messages.Add(new String('-', 30));
             messages.Add($"{nomDesignation}:");
 
+
+
+
             try {
                 // СТАДИЯ 1: Пытаемся получить объект по связи на справочник ЭСИ
                 resultObject = ProcessFirstStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage1 += 1;
                     continue;
                 }
 
@@ -334,6 +345,7 @@ public class Macro : MacroProvider
                 resultObject = ProcessSecondStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage2 += 1;
                     continue;
                 }
 
@@ -341,27 +353,47 @@ public class Macro : MacroProvider
                 resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
                     result.Add(resultObject);
+                    countStage3 += 1;
                     continue;
                 }
 
                 // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
                 resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
+                    countStage4 += 1;
                     result.Add(resultObject);
                 }
             }
             catch (Exception e) {
                 messages.Add($"Error: {e.Message}");
+                countErrors += 1;
                 continue;
             }
         }
 
-        // Проверяем, были ли ошибки в процессе выполнения данного метода.
-        // Если ошибки были, выдаем сообщение пользователю
-        string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
-        if (errors != string.Empty)
-            Message("Ошибка", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+        // Вывод статистики и генерация лога
+        // Генерируем строку с статистикой по данному методу
+        string statistics = 
+                $"Всего объектов передано на поиск/создание - {nomenclature.Count.ToString()}. Из них:\n" +
+                $"Получено по связи - {countStage1.ToString()} шт\n" +
+                $"Найдено в ЭСИ - {countStage2.ToString()} шт\n" +
+                $"Найдено в смежных справочниках - {countStage3.ToString()} шт\n" +
+                $"Создано - {countStage4.ToString()} шт\n" +
+                $"Возникли ошибки в процессе обработки - {countErrors.ToString()} шт\n";
 
+        // Получаем текст всех ошибок, которые были перехвачены
+        string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
+
+        // Если ошибки есть, то сначала выводим статистику и спрашиваем у пользователя, отобразить ли ошибки
+        // Иначе просто выводим статистику
+        if (errors != string.Empty) {
+            statistics += "\n\nОтобразить ошибки?";
+            if (Question(statistics))
+                Message("Ошибки", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+        }
+        else
+            Message("Статистика", statistics);
+        
         // Пишем лог
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
 
