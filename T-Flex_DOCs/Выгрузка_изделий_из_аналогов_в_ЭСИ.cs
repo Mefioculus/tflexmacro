@@ -383,7 +383,11 @@ public class Macro : MacroProvider
                 $"Возникли ошибки в процессе обработки - {countErrors.ToString()} шт\n";
 
         // Получаем текст всех ошибок, которые были перехвачены
+                                                                                                                               
+                                                                                                   
         string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
+                                   
+                                                                                                                                                                                                      
 
         // Если ошибки есть, то сначала выводим статистику и спрашиваем у пользователя, отобразить ли ошибки
         // Иначе просто выводим статистику
@@ -401,17 +405,21 @@ public class Macro : MacroProvider
         return result;
     }
 
+
+
     /// <summary>
     /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
     /// </summary>
-    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
+    private ReferenceObject MoveShifrToOKP(RefGuidData referData, ReferenceObject resultObject, string designation, List<string> messages)
     {
         TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
-        var okpEsi = resultObject[ЭСИ.Params["Код ОКП"]].Value.ToString();
-        var obozEsi = resultObject[ЭСИ.Params["Обозначение"]].Value.ToString();
+       
+        var obozEsi = resultObject[referData.Params["Обозначение"]].Value.ToString();
 
         if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
         {
+            var okpEsi = resultObject[referData.Params["Код ОКП"]].Value.ToString();                                                                          
+
             if (!designation.Equals(okpEsi))
             {
                 if (designation.Equals(obozEsi))
@@ -420,8 +428,8 @@ public class Macro : MacroProvider
                     {
                         resultObject.CheckOut();
                         resultObject.BeginChanges();
-                        resultObject[ЭСИ.Params["Код ОКП"]].Value = obozEsi;
-                        resultObject[ЭСИ.Params["Обозначение"]].Value = "";
+                        resultObject[referData.Params["Код ОКП"]].Value = obozEsi;
+                        resultObject[referData.Params["Обозначение"]].Value = "";
                         resultObject.EndChanges();
                         //linkedObject.CheckIn("Перенос Обозначения в поле код ОКП");
                         Desktop.CheckIn(resultObject, "Перенос Обозначения в поле код ОКП", false);
@@ -463,7 +471,7 @@ public class Macro : MacroProvider
         {
             messages.Add("Объект был получен по связи");
             SyncronizeTypes(nom, linkedObject);
-            return MoveShifrToOKP(linkedObject, designation, messages);
+            return MoveShifrToOKP(ЭСИ, linkedObject, designation, messages);
    
         }
         else
@@ -497,7 +505,7 @@ public class Macro : MacroProvider
         if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjects[0]);
-            return MoveShifrToOKP(findedObjects[0], designation, messages);
+            return MoveShifrToOKP(ЭСИ,findedObjects[0], designation, messages);
         }
         else if (findedObjects.Count > 1) {
             messages.Add("Объект найден в ЭСИ");
@@ -546,8 +554,16 @@ public class Macro : MacroProvider
                 messages.Add("Объект не найден в смежных справочниках");
                 return null;
             case 1:
+                RefGuidData refGuidDataResult = null;
                 messages.Add("Объект найден в смежных справочниках");
-                return MoveShifrToOKP(result[0], designation, messages);
+                if (result[0].Reference.Name.Equals("Документы"))
+                    refGuidDataResult = Документы;
+                if (result[0].Reference.Name.Equals("Электронные компоненты"))
+                    refGuidDataResult = ЭлектронныеКомпоненты;
+                if (result[0].Reference.Name.Equals("Материалы"))
+                    refGuidDataResult = Материалы;
+                ConnectRefObjecttoESI(result[0]);
+                return MoveShifrToOKP(refGuidDataResult, result[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -646,11 +662,13 @@ public class Macro : MacroProvider
             refereceObject[guidName].Value = name;
             refereceObject[guidShifr].Value = oboz;
             refereceObject.EndChanges();
-            Desktop.CheckIn(refereceObject, "Объект создан", false);
-            NomenclatureReference nomReference;
-            nomReference = ЭСИ.Ref as NomenclatureReference;
-            ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
-            Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+            //Desktop.CheckIn(refereceObject, "Объект создан", false);
+            /*            NomenclatureReference nomReference;
+                        nomReference = ЭСИ.Ref as NomenclatureReference;
+                        ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
+
+            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+            var newNomenclature = ConnectRefObjecttoESI(refereceObject);
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
             nom.EndChanges();
@@ -664,7 +682,35 @@ public class Macro : MacroProvider
         return null;
     }
 
+    private ReferenceObject ConnectRefObjecttoESI(ReferenceObject refereceObject)
+    {try
+        {
+            NomenclatureReference nomReference;
+            nomReference = ЭСИ.Ref as NomenclatureReference;
+            ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
+            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+            string designation = newNomenclature[СписокНоменклатуры.Params["Обозначение"]].Value.ToString();
+            List<ReferenceObject> findedObjectInSpisokNom = СписокНоменклатуры.Ref
+                .Find(ЭСИ.Params["Обозначение"], designation);
 
+            if (findedObjectInSpisokNom != null && findedObjectInSpisokNom.Count() > 1)
+            {
+                var firstFindObj = findedObjectInSpisokNom.First();
+                firstFindObj.BeginChanges();
+                firstFindObj.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
+                firstFindObj.EndChanges();
+            }
+            return newNomenclature;
+        }
+        catch (Exception e)
+        {
+            throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ {e}");
+        }
+
+
+        return null;
+    }
+     
     /// <summary>
     /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
     /// Входные параметры:
