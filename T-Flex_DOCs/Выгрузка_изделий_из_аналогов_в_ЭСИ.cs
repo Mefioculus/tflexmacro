@@ -401,10 +401,10 @@ public class Macro : MacroProvider
         return result;
     }
 
-
-
-
-    private ReferenceObject MoveShifrtoOKP(ReferenceObject resultObject, string designation, List<string> messages)
+    /// <summary>
+    /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
+    /// </summary>
+    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
     {
         TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
         var okpEsi = resultObject[ЭСИ.Params["Код ОКП"]].Value.ToString();
@@ -463,7 +463,7 @@ public class Macro : MacroProvider
         {
             messages.Add("Объект был получен по связи");
             SyncronizeTypes(nom, linkedObject);
-            return MoveShifrtoOKP(linkedObject, designation, messages);
+            return MoveShifrToOKP(linkedObject, designation, messages);
    
         }
         else
@@ -480,19 +480,28 @@ public class Macro : MacroProvider
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
-        List<ReferenceObject> findedObjectInEsi = ЭСИ.Ref
+
+        List<ReferenceObject> findedObjects = ЭСИ.Ref
             .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
             .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
             .ToList<ReferenceObject>();
 
-        if (findedObjectInEsi.Count == 1) {
+        List<ReferenceObject> findedObjectsOKP = ЭСИ.Ref
+            .Find(ЭСИ.Params["Код ОКП"], designation) // Производим поиск по всему справочнику
+            .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+            .ToList<ReferenceObject>();
+
+        findedObjects.AddRange(findedObjectsOKP);
+
+
+        if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
-            SyncronizeTypes(nom, findedObjectInEsi[0]);
-            return MoveShifrtoOKP(findedObjectInEsi[0], designation, messages);
+            SyncronizeTypes(nom, findedObjects[0]);
+            return MoveShifrToOKP(findedObjects[0], designation, messages);
         }
-        else if (findedObjectInEsi.Count > 1) {
+        else if (findedObjects.Count > 1) {
             messages.Add("Объект найден в ЭСИ");
-            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjectInEsi.Select(obj => obj.ToString()))}");
+            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         }
         else {
             messages.Add("Объект не найден в ЭСИ");
@@ -517,7 +526,7 @@ public class Macro : MacroProvider
         // Производим поиск по справочнику "Документы"
         tempResult = Документы.Ref
             .Find(Документы.Params["Обозначение"], designation)
-            .Where(finded => finded.Class.IsInherit(Документы.Links["Объект состава изделия"]))
+            .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
             .ToList<ReferenceObject>();
         if (tempResult != null)
             result.AddRange(tempResult);
@@ -538,7 +547,7 @@ public class Macro : MacroProvider
                 return null;
             case 1:
                 messages.Add("Объект найден в смежных справочниках");
-                return MoveShifrtoOKP(result[0], designation, messages);
+                return MoveShifrToOKP(result[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -979,7 +988,7 @@ public class Macro : MacroProvider
             public void Add(string key, Guid guid) {
                 string lowerKey = key.ToLower();
                 if (this.Storage.ContainsKey(lowerKey))
-                    throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} уже содержит ключ '{key}'");
+                    throw new Exception($"Хранилище '{this.Name}' объекта RefGuidData для справочника '{Parent.Ref.Name}' уже содержит ключ '{key}'");
                 this.Storage.Add(lowerKey, guid);
             }
 
