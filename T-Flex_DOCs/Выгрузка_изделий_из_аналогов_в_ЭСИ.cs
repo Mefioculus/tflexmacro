@@ -118,7 +118,9 @@ public class Macro : MacroProvider
 
         // Запрашиваем у пользователя перечень изделий, по которым нужно произвести выгрузку
         List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
+        //Test(изделияДляВыгрузки[0]);
 
+        ///*
         // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
         HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(номенклатура, подключения, изделияДляВыгрузки);
 
@@ -127,8 +129,21 @@ public class Macro : MacroProvider
 
         // Производим соединение созданных ДСЕ в иерархию при помощи подключений
         ConnectCreatedObjects(созданныеДСЕ, подключения);
+        //*/
 
         Message("Информация", "Работа макроса завершена");
+    }
+
+
+    private void Test(string изделияДляВыгрузки)
+    {
+        var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
+        //var num = result[0].GetParentLink;
+        //var num = result[0].GetLinkedNomenclatureObject();
+        //MaterialObject mat = (MaterialObject)result[0];
+        //var num = mat.GetLinkedNomenclatureObject();
+
+        ConnectRefObjecttoESI(result[0]);
     }
 
     /// <summary>
@@ -418,7 +433,7 @@ public class Macro : MacroProvider
 
         if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
         {
-            var okpEsi = resultObject[referData.Params["Код ОКП"]].Value.ToString();                                                                          
+            var okpEsi = resultObject[referData.Params["Код ОКП"]].Value.ToString();
 
             if (!designation.Equals(okpEsi))
             {
@@ -532,21 +547,40 @@ public class Macro : MacroProvider
         List<ReferenceObject> tempResult;
 
         // Производим поиск по справочнику "Документы"
+
+
+
         tempResult = Документы.Ref
             .Find(Документы.Params["Обозначение"], designation)
             .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
             .ToList<ReferenceObject>();
-        if (tempResult != null)
+        if (type == TypeOfObject.СтандартноеИзделие)
+        {
+            var okptmpResult = Документы.Ref
+            .Find(Документы.Params["Код ОКП"], designation)
+            .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
+            .ToList<ReferenceObject>();
+            if (tempResult.Count != 0 && tempResult != null && okptmpResult.Count != 0)
+            {
+                throw new Exception($"В справочнике документы найдены 2 объктка {designation}");
+            }
+            else
+            {
+                tempResult = okptmpResult;
+            }
+        }
+
+        if (tempResult != null && tempResult.Count!=0)
             result.AddRange(tempResult);
 
         // Производим поиск по справочнику "Электронные компоненты"
         tempResult = ЭлектронныеКомпоненты.Ref.Find(ЭлектронныеКомпоненты.Params["Обозначение"], designation);
-        if (tempResult != null)
+        if (tempResult != null && tempResult.Count != 0)
             result.AddRange(tempResult);
 
         // Производим поиск по справочнику "Материалы"
         tempResult = Материалы.Ref.Find(Материалы.Params["Обозначение"], designation);
-        if (tempResult != null)
+        if (tempResult != null && tempResult.Count != 0)
             result.AddRange(tempResult);
 
         switch (result.Count) {
@@ -588,23 +622,19 @@ public class Macro : MacroProvider
         string nomTip = getTypeString(type);
         if (type == TypeOfObject.СтандартноеИзделие)
         {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы.Ref,
-                                                    Документы.Params["Наименование"], Документы.Params["Код ОКП"]);
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы);                                                    
         }
         else if (type == TypeOfObject.Материал)
         {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Материалы.Ref,
-                                Материалы.Params["Сводное наименование"], Материалы.Params["Обозначение"]);
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Материалы);
         }
         else if (type == TypeOfObject.ЭлектронныйКомпонент)
         {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, ЭлектронныеКомпоненты.Ref,
-                                            ЭлектронныеКомпоненты.Params["Наименование"], ЭлектронныеКомпоненты.Params["Код ОКП"]);
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, ЭлектронныеКомпоненты);
         }
         else
         {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы.Ref,
-                                                       Документы.Params["Наименование"], Документы.Params["Обозначение"]);
+            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы);
         }
 
         // var createDocument2 = CreateRefObject(nomName, designation, type.ToString(), ЭлектронныеКомпоненты.Ref,ЭлектронныеКомпоненты.Params["Наименование"], ЭлектронныеКомпоненты.Params["Код ОКП"];
@@ -652,6 +682,13 @@ public class Macro : MacroProvider
     /// <summary>
     /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
     /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
+    /// nom, 
+    /// name, 
+    /// oboz
+    /// nomTip
+    /// Документы.Ref
+    /// Документы.Params["Наименование"]
+    /// Документы.Params["Код ОКП"])
     /// </summary>
     private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
     {
@@ -682,22 +719,81 @@ public class Macro : MacroProvider
         return null;
     }
 
+
+    /// <summary>
+    /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
+    /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
+    /// nom, 
+    /// name, 
+    /// oboz
+    /// nomTip
+    /// Документы.Ref
+    /// Документы.Params["Наименование"]
+    /// Документы.Params["Код ОКП"])
+    /// </summary>
+    private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, RefGuidData refname) //, Reference refName, Guid guidName, Guid guidShifr)
+    {
+        try
+        {
+            var type = nom[СписокНоменклатуры.Params["Тип номенклатуры"]].Value.ToString();
+            //string nomTip = getTypeString(type);
+            var refName = refname.Ref;
+            var createdClassObject = refName.Classes.Find(classObjectName);
+            ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
+            
+            if (classObjectName.Equals("Материал"))
+                refereceObject[refname.Params["Сводное обозначение"]].Value = name;
+            else
+                refereceObject[refname.Params["Наименование"]].Value = name;
+
+            if (classObjectName.Equals("Стандартное изделие") || classObjectName.Equals("Электронный компонент") || classObjectName.Equals("Материал"))
+            refereceObject[refname.Params["Код ОКП"]].Value = oboz;
+            else
+            refereceObject[refname.Params["Обозначение"]].Value = oboz;
+            refereceObject.EndChanges();
+
+            //Desktop.CheckIn(refereceObject, "Объект создан", false);
+            /*            NomenclatureReference nomReference;
+                        nomReference = ЭСИ.Ref as NomenclatureReference;
+                        ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
+
+            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+            var newNomenclature = ConnectRefObjecttoESI(refereceObject);
+            nom.BeginChanges();
+            nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
+            nom.EndChanges();
+            return refereceObject;
+        }
+        catch (Exception e)
+        {
+            throw new Exception($"Ошибка при создании объекта {e}");
+        }
+
+        return null;
+    }
+
+
+    /// <summary>
+    /// Подключаем найденый объект в смежных справочниках к ЭСИ    
+    /// </summary>
     private ReferenceObject ConnectRefObjecttoESI(ReferenceObject refereceObject)
-    {try
+    {
+        try
         {
             NomenclatureReference nomReference;
             nomReference = ЭСИ.Ref as NomenclatureReference;
             ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            string designation = newNomenclature[СписокНоменклатуры.Params["Обозначение"]].Value.ToString();
+            string designation = newNomenclature[ЭСИ.Params["Обозначение"]].Value.ToString();
             List<ReferenceObject> findedObjectInSpisokNom = СписокНоменклатуры.Ref
-                .Find(ЭСИ.Params["Обозначение"], designation);
+                .Find(СписокНоменклатуры.Params["Обозначение"], designation);
 
-            if (findedObjectInSpisokNom != null && findedObjectInSpisokNom.Count() > 1)
+            // связываем объект списка номенклатуры с объектом ЭСИ
+            if (findedObjectInSpisokNom != null)
             {
                 var firstFindObj = findedObjectInSpisokNom.First();
                 firstFindObj.BeginChanges();
-                firstFindObj.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
+                firstFindObj.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], newNomenclature);
                 firstFindObj.EndChanges();
             }
             return newNomenclature;
