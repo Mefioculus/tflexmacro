@@ -8,6 +8,7 @@ using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
 using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model;
+using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
 using FoxProShifrsNormalizer;
@@ -848,12 +849,41 @@ public class Macro : MacroProvider
         TypeOfObject typeOfNom = DefineTypeOfObject(nomenclatureRecord);
         TypeOfObject typeOfFinded = DefineTypeOfObject(findedObject);
 
-        if (typeOfNom != typeOfFinded)
+        if (typeOfNom != typeOfFinded) {
             // TODO: Реализовать код, который будет пытаться привести типы к соответствию, и в том случае, если ему это не будет удаваться. будет выдавать исключения
+
+            // Случай, когда в справочнике 'Номенклатура FoxPro' точно указан более общий тип, чем тип у привязанного/найденного объекта.
+            // В этом случае необходимо поправить значение типа в поле записи номенклатурного объекта
+            if ((typeOfNom == TypeOfObject.НеОпределено) || (typeOfNom == TypeOfObject.Другое)) {
+                nomenclatureRecord.BeginChanges();
+                nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = DefineIntFromTypeObject(typeOfFinded);
+                nomenclatureRecord.EndChanges();
+                return;
+            }
+
+            // Случай, когда в найденный объект принадлежит к более общему типу, нежели указанный тип в справочнике "Номенклатура FoxPro"
+            if (typeOfFinded == TypeOfObject.Другое) {
+                // Тип принадлежит справочнику ЭСИ. В этом случае мы создаем его полную копию другого типа
+                if ((typeOfNom != TypeOfObject.Материал) && (typeOfNom != TypeOfObject.ЭлектронныйКомпонент)) {
+                    // TODO: Реализовать код по смене типа в рамках одного справочника
+                    return;
+                }
+                // Тип принадлежит справочнику Материалы или Электронные компоненты.
+                // Это значит, что корректировка типа потребует удаление объекта в ЭСИ и Документах и создание
+                // копии в соответствующем справочнике с сохранением всех связей и параметров
+                else {
+                    // TODO: Реализовать код по смене типа между справочниками
+                    return;
+                }
+            }
+
+
             throw new Exception(
                     $"Обнаружено несоответствие типов объекта {nomenclatureRecord.ToString()} и {findedObject.ToString()}" +
+                    " которое не удалось устранить в автоматическом режиме" +
                     $" ({typeOfNom.ToString()} и {typeOfFinded.ToString()} соответственно)"
                     );
+        }
         else
             return;
     }
@@ -886,28 +916,7 @@ public class Macro : MacroProvider
         // Разбираем случай, если в метод был передан объект справочника 'Список номенклатуры FoxPro'
         if (reference == СписокНоменклатуры.Ref.Name) {
             int intType = (int)nomenclature[СписокНоменклатуры.Params["Тип номенклатуры"]].Value;
-            switch (intType) {
-                case 0: // Не определено
-                    return TypeOfObject.НеОпределено;
-                case 1: // Сборочная единица
-                    return TypeOfObject.СборочнаяЕдиница;
-                case 2: // Стандартное изделие
-                    return TypeOfObject.СтандартноеИзделие;
-                case 3: // Прочее изделие
-                    return TypeOfObject.ПрочееИзделие;
-                case 4: // Изделие
-                    return TypeOfObject.Изделие;
-                case 5: // Деталь
-                    return TypeOfObject.Деталь;
-                case 6: // Электронный компонент
-                    return TypeOfObject.ЭлектронныйКомпонент;
-                case 7: // Материал
-                    return TypeOfObject.Материал;
-                case 8: // Другое
-                    return TypeOfObject.Другое;
-                default:
-                    throw new Exception($"Ошибка при определении типа объекта справочника '{reference}'. Номера {intType.ToString()} не предусмотрено при разборе");
-            }
+            return (TypeOfObject)intType;
         }
 
         // Разбираем случай, если в метод был передан объект справочника 'Электронная структура изделий'
@@ -936,6 +945,18 @@ public class Macro : MacroProvider
         }
 
         throw new Exception($"Метод 'DefineTypeOfObject' не работает с объектами справочника '{reference}'");
+    }
+
+    // Метод для получения из заданного перечисления типа 
+    private int DefineIntFromTypeObject(TypeOfObject type) {
+        return (int)type;
+    }
+
+    private ClassObject DefineClassFromTypeObject(TypeOfObject type, Reference reference) {
+        ClassObject result = reference.Classes.Find("Проверочное значение");
+        if (result == null)
+            throw new Exception($"Не удалось найти объект типа ClassObject в справочнике '{reference.Name}' для типа '{type.ToString()}'");
+        return result;
     }
 
     // Интерфейсы
@@ -969,16 +990,18 @@ public class Macro : MacroProvider
 
     // Перечисления
 
+    // Нумерация задана в соответствии с списком значений поля "Тип номенклатуры".
+    // При любом добавлении новых типов необходимо производить соответствующие изменения в данном перечислении
     private enum TypeOfObject {
-        НеОпределено,
-        Изделие,
-        СборочнаяЕдиница,
-        СтандартноеИзделие,
-        ПрочееИзделие,
-        Деталь,
-        ЭлектронныйКомпонент,
-        Материал,
-        Другое,
+        НеОпределено = 0,
+        Изделие = 4,
+        СборочнаяЕдиница = 1,
+        СтандартноеИзделие = 2,
+        ПрочееИзделие = 3,
+        Деталь = 5,
+        ЭлектронныйКомпонент = 6,
+        Материал = 7,
+        Другое = 8
     }
 
     
