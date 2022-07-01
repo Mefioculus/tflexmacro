@@ -97,6 +97,8 @@ public class Macro : MacroProvider
         // Параметры
         Материалы.AddParam("Обозначение", new Guid("d0441280-01ea-43b5-8726-d2d02e4d996f")); // string
         Материалы.AddParam("Сводное наименование", new Guid("23cfeee6-57f3-4a1e-9cf0-9040fed0e90c")); // string
+        Материалы.AddParam("Наименование", new Guid("23cfeee6-57f3-4a1e-9cf0-9040fed0e90c")); // string
+        Материалы.AddParam("Код ОКП", new Guid("d0441280-01ea-43b5-8726-d2d02e4d996f")); // string
 
         // Создаем директорию для ведения логов
         ДиректорияДляЛогов = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Логи выгрузки из аналогов в ЭСИ");
@@ -515,8 +517,18 @@ public class Macro : MacroProvider
             .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
             .ToList<ReferenceObject>();
 
-        findedObjects.AddRange(findedObjectsOKP);
-
+        // Проверяем совпадают ли по гуиду объекты findedObjects и findedObjectsOKP
+        if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
+            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
+        else if ((findedObjects.Count !=0 && findedObjectsOKP.Count != 0))
+        {
+            if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
+                findedObjects.AddRange(findedObjectsOKP);
+        }
+        else if ((findedObjects.Count == 0 && findedObjectsOKP.Count != 0))
+        {
+            findedObjects.AddRange(findedObjectsOKP);
+        }
 
         if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
