@@ -475,7 +475,10 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код производит пробует получить объект по связи, а так же проверить корректность полученного объекта, если таковой имеется.
-    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Аргументы:
+    /// nom - объект справочника "Список номенклатуры FoxPro"
+    /// designation - обозначение объекта
+    /// messages - список сообщений, который пойдет в общий лог
     /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
     /// ReferenceObject возвращается если объект был получен и он полностью корректен.
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
@@ -488,7 +491,7 @@ public class Macro : MacroProvider
         if (linkedObject != null)
         {
             messages.Add("Объект был получен по связи");
-            SyncronizeTypes(nom, linkedObject);
+            messages.Add(SyncronizeTypes(nom, linkedObject));
             return MoveShifrToOKP(ЭСИ, linkedObject, designation, messages);
    
         }
@@ -500,7 +503,10 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код запускается в том случае, если не удалось получить объект по связи и производит поиск объекта в справочнике ЭСИ, и если таковой имеется, производит проверку его типа.
-    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Аргументы:
+    /// nom - объект справочника "Список номенклатуры FoxPro"
+    /// designation - обозначение объекта
+    /// messages - список сообщений, который пойдет в общий лог
     /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
     /// ReferenceObject возвращается если объект был получен и он полностью корректен.
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
@@ -532,7 +538,7 @@ public class Macro : MacroProvider
 
         if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
-            SyncronizeTypes(nom, findedObjects[0]);
+            messages.Add(SyncronizeTypes(nom, findedObjects[0]));
             return MoveShifrToOKP(ЭСИ,findedObjects[0], designation, messages);
         }
         else if (findedObjects.Count > 1) {
@@ -548,20 +554,22 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код запускается в том случае, если не удалось найти объект в ЭСИ и производит поиск объекта в смежных справочниках, и если такой имеется, производит проверку типа и создание объекта ЭСИ.
-    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
+    /// Аргументы:
+    /// nom - объект справочника "Список номенклатуры FoxPro"
+    /// designation - обозначение объекта
+    /// type - перечисление с типом изделия, которое требуется создать
+    /// messages - список сообщений, который пойдет в общий лог
     /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
     /// ReferenceObject возвращается если объект был получен и он полностью корректен.
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
         // Производим поиск по смежным справочникам
-        List<ReferenceObject> result = new List<ReferenceObject>();
+        List<ReferenceObject> findedObjects = new List<ReferenceObject>();
 
         List<ReferenceObject> tempResult;
 
         // Производим поиск по справочнику "Документы"
-
-
 
         tempResult = Документы.Ref
             .Find(Документы.Params["Обозначение"], designation)
@@ -584,36 +592,38 @@ public class Macro : MacroProvider
         }
 
         if (tempResult != null && tempResult.Count!=0)
-            result.AddRange(tempResult);
+            findedObjects.AddRange(tempResult);
 
         // Производим поиск по справочнику "Электронные компоненты"
         tempResult = ЭлектронныеКомпоненты.Ref.Find(ЭлектронныеКомпоненты.Params["Обозначение"], designation);
         if (tempResult != null && tempResult.Count != 0)
-            result.AddRange(tempResult);
+            findedObjects.AddRange(tempResult);
 
         // Производим поиск по справочнику "Материалы"
         tempResult = Материалы.Ref.Find(Материалы.Params["Обозначение"], designation);
         if (tempResult != null && tempResult.Count != 0)
-            result.AddRange(tempResult);
+            findedObjects.AddRange(tempResult);
 
-        switch (result.Count) {
+        switch (findedObjects.Count) {
             case 0:
                 messages.Add("Объект не найден в смежных справочниках");
                 return null;
             case 1:
-                RefGuidData refGuidDataResult = null;
+                // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
-                if (result[0].Reference.Name.Equals("Документы"))
+                messages.Add(SyncronizeTypes(nom, findedObjects[0]));
+                RefGuidData refGuidDataResult = null;
+                if (findedObjects[0].Reference.Name.Equals("Документы"))
                     refGuidDataResult = Документы;
-                if (result[0].Reference.Name.Equals("Электронные компоненты"))
+                if (findedObjects[0].Reference.Name.Equals("Электронные компоненты"))
                     refGuidDataResult = ЭлектронныеКомпоненты;
-                if (result[0].Reference.Name.Equals("Материалы"))
+                if (findedObjects[0].Reference.Name.Equals("Материалы"))
                     refGuidDataResult = Материалы;
-                ConnectRefObjecttoESI(result[0]);
-                return MoveShifrToOKP(refGuidDataResult, result[0], designation, messages);
+                ConnectRefObjecttoESI(findedObjects[0]);
+                return MoveShifrToOKP(refGuidDataResult, findedObjects[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
-                throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", result.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
+                throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
         }
     }
 
@@ -822,7 +832,8 @@ public class Macro : MacroProvider
      
     /// <summary>
     /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
-    /// Входные параметры:
+    ///
+    /// Аргументы:
     /// nomenclatureRecord - объект справочника 'Список номенклатуры FoxPro'
     /// findedObject - объект справочников ЭСИ, Документы, Материалы, ЭлектронныеКомпоненты
     ///
@@ -830,7 +841,7 @@ public class Macro : MacroProvider
     /// и если ему это удается - меняет тип у одного из объектов.
     /// Если в автоматическом режиме изменить тип не удается, выбрасывается исключение с целью предупредить пользователя
     /// </summary>
-    private void SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject) {
+    private string SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject) {
         // Производим верификацию входных данных
         // Проверка параметра nomenclatureRecord
         if (nomenclatureRecord.Reference.Name != СписокНоменклатуры.Ref.Name)
@@ -860,23 +871,26 @@ public class Macro : MacroProvider
                 nomenclatureRecord.BeginChanges();
                 nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = DefineIntFromTypeObject(typeOfFinded);
                 nomenclatureRecord.EndChanges();
-                return;
+                return $"Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'";
             }
 
             // 2 СЛУЧАЙ
             // Случай, когда в найденный объект принадлежит к более общему типу, нежели указанный тип в справочнике "Номенклатура FoxPro"
             if (typeOfFinded == TypeOfObject.Другое) {
-                // Тип принадлежит справочнику ЭСИ. В этом случае мы создаем его полную копию другого типа
+                // Начальный тип принадлежит справочнику "Документы". В этом случае мы просто производим смену типа
                 if ((typeOfNom != TypeOfObject.Материал) && (typeOfNom != TypeOfObject.ЭлектронныйКомпонент)) {
-                    // TODO: Реализовать код по смене типа в рамках одного справочника
-                    return;
+                    // Производим смену типа
+                    findedObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, findedObject.Reference));
+                    findedObject.EndChanges();
+                    // Пишем лог о результатах
+                    return $"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'";
                 }
-                // Тип принадлежит справочнику Материалы или Электронные компоненты.
-                // Это значит, что корректировка типа потребует удаление объекта в ЭСИ и Документах и создание
-                // копии в соответствующем справочнике с сохранением всех связей и параметров
+                // Начальный тип принадлежит справочнику Материалы или Электронные компоненты.
+                // Это значит, что вместо смены типа нужно перенести объект из одного справочника, где он был создан по ошибке,
+                // в другой.
                 else {
                     // TODO: Реализовать код по смене типа между справочниками
-                    return;
+                    return $"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'";
                 }
             }
 
@@ -894,7 +908,7 @@ public class Macro : MacroProvider
                     );
         }
         else
-            return;
+            return "Синхронизация типов не потребовалась";
     }
 
 
@@ -958,7 +972,8 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Метод для получения из заданного перечисления типа значение int, соответствующее в списке значений поля "Тип номенклатуры"
-    /// На вход принимается перечисление TypeOfObject.
+    /// Аргументы:
+    /// type - перечисление TypeOfObject, которое необходимо конвертировать в соответствующее число.
     /// На выход поступает его цифровое представление.
     /// </summary>
     private int DefineIntFromTypeObject(TypeOfObject type) {
@@ -967,9 +982,9 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Метод для получения из заданного перечисления типа объекта ClassObject, представляющего собой тип объекта в T-Flex DOCs
-    /// На вход принимается два аргумента:
-    /// Первый аргумент - перечисление TypeOfObject, для которого нужно получить ClassObject.
-    /// Второй аргумент - справочник, в котором нужно производить поиск соответствующего типа
+    /// Аргументы:
+    /// type - перечисление TypeOfObject, которое необходимо конвертировать в соответствующий ClassObject.
+    /// reference - справочник, в котором нужно производить поиск соответствующего типа
     /// На выход поступает найденный объект ClassObject. Если объект не удалось найти, выбрасывается сообщение об ошибке.
     /// </summary>
     private ClassObject DefineClassFromTypeObject(TypeOfObject type, Reference reference) {
