@@ -801,7 +801,7 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ {e}");
+            throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ:\n{e}");
         }
 
 
@@ -834,13 +834,15 @@ public class Macro : MacroProvider
         if (!supportedReferences.Contains(findedObject.Reference.Name) && (!findedObject.Reference.Name.Contains("Электронная структура изделий")))
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
 
+        // Определяем указанный тип и тип найденной записи
         TypeOfObject typeOfNom = DefineTypeOfObject(nomenclatureRecord);
         TypeOfObject typeOfFinded = DefineTypeOfObject(findedObject);
 
+        // Если типы не соответствуют друг другу, пытаемся привести их в соответствие
         if (typeOfNom != typeOfFinded) {
-            // TODO: Реализовать код, который будет пытаться привести типы к соответствию, и в том случае, если ему это не будет удаваться. будет выдавать исключения
 
-            // Случай, когда в справочнике 'Номенклатура FoxPro' точно указан более общий тип, чем тип у привязанного/найденного объекта.
+            // 1 СЛУЧАЙ
+            // Случай, когда в справочнике 'Номенклатура FoxPro' указан более общий тип, чем тип у привязанного/найденного объекта.
             // В этом случае необходимо поправить значение типа в поле записи номенклатурного объекта
             if ((typeOfNom == TypeOfObject.НеОпределено) || (typeOfNom == TypeOfObject.Другое)) {
                 nomenclatureRecord.BeginChanges();
@@ -849,6 +851,7 @@ public class Macro : MacroProvider
                 return;
             }
 
+            // 2 СЛУЧАЙ
             // Случай, когда в найденный объект принадлежит к более общему типу, нежели указанный тип в справочнике "Номенклатура FoxPro"
             if (typeOfFinded == TypeOfObject.Другое) {
                 // Тип принадлежит справочнику ЭСИ. В этом случае мы создаем его полную копию другого типа
@@ -865,6 +868,12 @@ public class Macro : MacroProvider
                 }
             }
 
+            // 3 СЛУЧАЙ
+            // У данной разницы в типах нет однозначного варианта для автоматической синхронизации, поэтому для каждого возникающего случая
+            // нужно задавать вопрос пользователю, чтобы он принял решение о том, какой тип в итоге должен остаться.
+
+            // TODO: Реализовать код для опроса пользователя о том, какой тип нужно выбрать.
+            // И так же реализовать тип, который будет производить соответствующие изменения
 
             throw new Exception(
                     $"Обнаружено несоответствие типов объекта {nomenclatureRecord.ToString()} и {findedObject.ToString()}" +
@@ -896,7 +905,7 @@ public class Macro : MacroProvider
     /// Метод для определения типа переданного объекта
     /// На вход передается ReferenceObject, который может относиться к справочникам:
     /// Список номенклатуры FoxPro, ЭСИ, Документы, Материалы, Электронные компоненты
-    /// Если в петод передается объект другого справочника, выдается ошибка
+    /// Если в метод передается объект другого справочника, выдается ошибка
     /// </summary>
     private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
         string reference = nomenclature.Reference.Name;
@@ -935,15 +944,62 @@ public class Macro : MacroProvider
         throw new Exception($"Метод 'DefineTypeOfObject' не работает с объектами справочника '{reference}'");
     }
 
-    // Метод для получения из заданного перечисления типа 
+    /// <summary>
+    /// Метод для получения из заданного перечисления типа значение int, соответствующее в списке значений поля "Тип номенклатуры"
+    /// На вход принимается перечисление TypeOfObject.
+    /// На выход поступает его цифровое представление.
+    /// </summary>
     private int DefineIntFromTypeObject(TypeOfObject type) {
         return (int)type;
     }
 
+    /// <summary>
+    /// Метод для получения из заданного перечисления типа объекта ClassObject, представляющего собой тип объекта в T-Flex DOCs
+    /// На вход принимается два аргумента:
+    /// Первый аргумент - перечисление TypeOfObject, для которого нужно получить ClassObject.
+    /// Второй аргумент - справочник, в котором нужно производить поиск соответствующего типа
+    /// На выход поступает найденный объект ClassObject. Если объект не удалось найти, выбрасывается сообщение об ошибке.
+    /// </summary>
     private ClassObject DefineClassFromTypeObject(TypeOfObject type, Reference reference) {
-        ClassObject result = reference.Classes.Find("Проверочное значение");
+        ClassObject result = null;
+        switch (type) {
+            case TypeOfObject.Изделие:
+                result = reference.Classes.Find("Изделие");
+                break;
+            case TypeOfObject.СборочнаяЕдиница:
+                result = reference.Classes.Find("Сборочная единица");
+                break;
+            case TypeOfObject.СтандартноеИзделие:
+                result = reference.Classes.Find("Стандартное изделие");
+                break;
+            case TypeOfObject.ПрочееИзделие:
+                result = reference.Classes.Find("Прочее изделие");
+                break;
+            case TypeOfObject.Деталь:
+                result = reference.Classes.Find("Деталь");
+                break;
+            case TypeOfObject.ЭлектронныйКомпонент:
+                result = reference.Classes.Find("Электронный компонент");
+                break;
+            case TypeOfObject.Материал:
+                result = reference.Classes.Find("Материал");
+                break;
+            case TypeOfObject.Другое:
+                result = reference.Classes.Find("Другое");
+                break;
+            default:
+                throw new Exception(
+                        "При определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
+                        $" '{type.ToString()}' не поддерживается"
+                        );
+        }
+
         if (result == null)
-            throw new Exception($"Не удалось найти объект типа ClassObject в справочнике '{reference.Name}' для типа '{type.ToString()}'");
+            throw new Exception(
+                    "При определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
+                    $"Не удалось найти объект типа ClassObject в справочнике '{reference.Name}' для типа '{type.ToString()}'"
+                    );
+
         return result;
     }
 
