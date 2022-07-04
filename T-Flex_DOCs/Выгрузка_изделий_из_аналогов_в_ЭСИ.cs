@@ -211,7 +211,7 @@ public class Macro : MacroProvider
         */
 
         ДиалогВвода диалог = СоздатьДиалогВвода("Введите значения");
-        диалог.ДобавитьСтроковое("Введите обозначение изделия", "УЯИС.731353.038\r\nУЯИС.731353.037", многострочное: true, количествоСтрок: 10);
+        диалог.ДобавитьСтроковое("Введите обозначение изделия", "УЯИС.731353.038\nУЯИС.731353.037\nУЯИС794711004", многострочное: true, количествоСтрок: 10);
         ДиалогВыбораОбъектов диалог2 = СоздатьДиалогВыбораОбъектов("Список номенклатуры FoxPro");
         диалог2.Заголовок = "Выбор изделий для импорта";
         диалог2.Вид = "Список";
@@ -646,7 +646,13 @@ public class Macro : MacroProvider
         //string nomTip = nom[СписокНоменклатуры.Params["Тип номенклатуры"]].Value.ToString();
         //var createDocument = CreateDocumentObject(nomName, designation, type.ToString());
         ReferenceObject createDocument = null;
-        string nomTip = getTypeString(type);
+        string nomTip;
+        try {
+            nomTip = getTypeString(type);
+        }
+        catch {
+            throw new Exception($"Ошибка при создании объекта. Невозможно создать объект типа '{type.ToString()}'");
+        }
         if (type == TypeOfObject.СтандартноеИзделие)
         {
             createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы);                                                    
@@ -890,12 +896,12 @@ public class Macro : MacroProvider
                     // Если объект является объектом справочника "ЭСИ", то работаем с ним как с номенклатурным объектом
                     try {
                         if (castObject != null) {
-                            castObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, castObject.Reference));
-                            castObject.EndChanges();
+                            castObject.CheckOut();
+                            castObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, castObject.Reference));
                         }
                         else {
-                            findedObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, findedObject.Reference));
-                            findedObject.EndChanges();
+                            findedObject.CheckOut();
+                            findedObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, findedObject.Reference));
                         }
                     }
                     catch (Exception e) {
