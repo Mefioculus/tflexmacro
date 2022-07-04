@@ -146,7 +146,7 @@ public class Macro : MacroProvider
         //MaterialObject mat = (MaterialObject)result[0];
         //var num = mat.GetLinkedNomenclatureObject();
 
-        ConnectRefObjecttoESI(result[0]);
+        ConnectRefObjectToESI(result[0]);
     }
 
     /// <summary>
@@ -454,7 +454,7 @@ public class Macro : MacroProvider
                     }
                     catch (Exception e)
                     {
-                        messages.Add($"Error: При переносе Обозначения в ОКП  {e.Message}");
+                        throw new Exception($"Во время переноса 'Обозначения' в 'ОКП':\n{e}");
                     }
                 }
                 else
@@ -491,7 +491,7 @@ public class Macro : MacroProvider
         if (linkedObject != null)
         {
             messages.Add("Объект был получен по связи");
-            messages.Add(SyncronizeTypes(nom, linkedObject));
+            SyncronizeTypes(nom, linkedObject, messages);
             return MoveShifrToOKP(ЭСИ, linkedObject, designation, messages);
    
         }
@@ -526,20 +526,24 @@ public class Macro : MacroProvider
         // Проверяем совпадают ли по гуиду объекты findedObjects и findedObjectsOKP
         if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
             throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
-        else if ((findedObjects.Count !=0 && findedObjectsOKP.Count != 0))
-        {
+        else if ((findedObjects.Count !=0 && findedObjectsOKP.Count != 0)) {
             if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
                 findedObjects.AddRange(findedObjectsOKP);
         }
-        else if ((findedObjects.Count == 0 && findedObjectsOKP.Count != 0))
-        {
+        else if ((findedObjects.Count == 0 && findedObjectsOKP.Count != 0)) {
             findedObjects.AddRange(findedObjectsOKP);
         }
 
         if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
-            messages.Add(SyncronizeTypes(nom, findedObjects[0]));
-            return MoveShifrToOKP(ЭСИ,findedObjects[0], designation, messages);
+            SyncronizeTypes(nom, findedObjects[0], messages);
+            ReferenceObject resultObject = MoveShifrToOKP(ЭСИ, findedObjects[0], designation, messages);
+            // Производим привязываение объекта к "Списку номенклатуры FoxPro"
+            nom.BeginChanges();
+            nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], resultObject);
+            nom.EndChanges();
+            // Возвращаем результат
+            return resultObject;
         }
         else if (findedObjects.Count > 1) {
             messages.Add("Объект найден в ЭСИ");
@@ -611,7 +615,7 @@ public class Macro : MacroProvider
             case 1:
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
-                messages.Add(SyncronizeTypes(nom, findedObjects[0]));
+                SyncronizeTypes(nom, findedObjects[0], messages);
                 RefGuidData refGuidDataResult = null;
                 if (findedObjects[0].Reference.Name.Equals("Документы"))
                     refGuidDataResult = Документы;
@@ -619,7 +623,7 @@ public class Macro : MacroProvider
                     refGuidDataResult = ЭлектронныеКомпоненты;
                 if (findedObjects[0].Reference.Name.Equals("Материалы"))
                     refGuidDataResult = Материалы;
-                ConnectRefObjecttoESI(findedObjects[0]);
+                ConnectRefObjectToESI(findedObjects[0]);
                 return MoveShifrToOKP(refGuidDataResult, findedObjects[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
@@ -728,7 +732,7 @@ public class Macro : MacroProvider
                         ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
 
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            var newNomenclature = ConnectRefObjecttoESI(refereceObject);
+            var newNomenclature = ConnectRefObjectToESI(refereceObject);
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
             nom.EndChanges();
@@ -736,7 +740,7 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"Ошибка при создании объекта {e}");
+            throw new Exception($"Ошибка при создании объекта:\n{e}");
         }
 
         return null;
@@ -781,7 +785,7 @@ public class Macro : MacroProvider
                         ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
 
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            var newNomenclature = ConnectRefObjecttoESI(refereceObject);
+            var newNomenclature = ConnectRefObjectToESI(refereceObject);
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
             nom.EndChanges();
@@ -789,7 +793,7 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"Ошибка при создании объекта {e}");
+            throw new Exception($"Ошибка при создании объекта:\n{e}");
         }
 
         return null;
@@ -799,7 +803,7 @@ public class Macro : MacroProvider
     /// <summary>
     /// Подключаем найденый объект в смежных справочниках к ЭСИ    
     /// </summary>
-    private ReferenceObject ConnectRefObjecttoESI(ReferenceObject refereceObject)
+    private ReferenceObject ConnectRefObjectToESI(ReferenceObject refereceObject)
     {
         try
         {
@@ -841,7 +845,7 @@ public class Macro : MacroProvider
     /// и если ему это удается - меняет тип у одного из объектов.
     /// Если в автоматическом режиме изменить тип не удается, выбрасывается исключение с целью предупредить пользователя
     /// </summary>
-    private string SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject) {
+    private void SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject, List<string> messages) {
         // Производим верификацию входных данных
         // Проверка параметра nomenclatureRecord
         if (nomenclatureRecord.Reference.Name != СписокНоменклатуры.Ref.Name)
@@ -863,6 +867,7 @@ public class Macro : MacroProvider
 
         // Если типы не соответствуют друг другу, пытаемся привести их в соответствие
         if (typeOfNom != typeOfFinded) {
+            messages.Add($"Обнаружено несоответствие типов: запись - {typeOfNom.ToString()}, найденный объект - {typeOfFinded.ToString()}");
 
             // 1 СЛУЧАЙ
             // Случай, когда в справочнике 'Номенклатура FoxPro' указан более общий тип, чем тип у привязанного/найденного объекта.
@@ -871,7 +876,8 @@ public class Macro : MacroProvider
                 nomenclatureRecord.BeginChanges();
                 nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = DefineIntFromTypeObject(typeOfFinded);
                 nomenclatureRecord.EndChanges();
-                return $"Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'";
+                messages.Add($"Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'");
+                return;
             }
 
             // 2 СЛУЧАЙ
@@ -880,17 +886,34 @@ public class Macro : MacroProvider
                 // Начальный тип принадлежит справочнику "Документы". В этом случае мы просто производим смену типа
                 if ((typeOfNom != TypeOfObject.Материал) && (typeOfNom != TypeOfObject.ЭлектронныйКомпонент)) {
                     // Производим смену типа
-                    findedObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, findedObject.Reference));
-                    findedObject.EndChanges();
+                    NomenclatureObject castObject = findedObject as NomenclatureObject;
+                    // Если объект является объектом справочника "ЭСИ", то работаем с ним как с номенклатурным объектом
+                    try {
+                        if (castObject != null) {
+                            castObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, castObject.Reference));
+                            castObject.EndChanges();
+                        }
+                        else {
+                            findedObject.BeginChanges(DefineClassFromTypeObject(typeOfFinded, findedObject.Reference));
+                            findedObject.EndChanges();
+                        }
+                    }
+                    catch (Exception e) {
+                        throw new Exception($"Ошибка при смене типа:\n{e}");
+                    }
+
                     // Пишем лог о результатах
-                    return $"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'";
+                    messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
+                    return;
                 }
                 // Начальный тип принадлежит справочнику Материалы или Электронные компоненты.
                 // Это значит, что вместо смены типа нужно перенести объект из одного справочника, где он был создан по ошибке,
                 // в другой.
                 else {
                     // TODO: Реализовать код по смене типа между справочниками
-                    return $"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'";
+                    messages.Add($"Для смены типов требуется перенос объекта из одного справочника в другой");
+                    //messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
+                    return;
                 }
             }
 
@@ -908,7 +931,8 @@ public class Macro : MacroProvider
                     );
         }
         else
-            return "Синхронизация типов не потребовалась";
+            messages.Add("Синхронизация типов не потребовалась");
+            return;
     }
 
 
