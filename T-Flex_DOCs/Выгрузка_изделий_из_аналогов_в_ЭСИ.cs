@@ -755,8 +755,6 @@ public class Macro : MacroProvider
         {
             throw new Exception($"Ошибка при создании объекта:\n{e}");
         }
-
-        return null;
     }
 
 
@@ -789,9 +787,6 @@ public class Macro : MacroProvider
         {
             throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ:\n{e}");
         }
-
-
-        return null;
     }
      
     /// <summary>
