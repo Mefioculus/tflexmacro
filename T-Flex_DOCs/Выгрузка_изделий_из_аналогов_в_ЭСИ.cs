@@ -712,57 +712,14 @@ public class Macro : MacroProvider
         }
     }
 
+   
     /// <summary>
     /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
     /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
-    /// nom, 
-    /// name, 
-    /// oboz
-    /// nomTip
-    /// Документы.Ref
-    /// Документы.Params["Наименование"]
-    /// Документы.Params["Код ОКП"])
-    /// </summary>
-    private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, Reference refName, Guid guidName, Guid guidShifr)
-    {
-        try
-        {
-            var createdClassObject = refName.Classes.Find(classObjectName);
-            ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
-            refereceObject[guidName].Value = name;
-            refereceObject[guidShifr].Value = oboz;
-            refereceObject.EndChanges();
-            //Desktop.CheckIn(refereceObject, "Объект создан", false);
-            /*            NomenclatureReference nomReference;
-                        nomReference = ЭСИ.Ref as NomenclatureReference;
-                        ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
-
-            //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            var newNomenclature = ConnectRefObjectToESI(refereceObject);
-            nom.BeginChanges();
-            nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
-            nom.EndChanges();
-            return refereceObject;
-        }
-        catch (Exception e)
-        {
-            throw new Exception($"Ошибка при создании объекта:\n{e}");
-        }
-
-        return null;
-    }
-
-
-    /// <summary>
-    /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
-    /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
-    /// nom, 
-    /// name, 
-    /// oboz
-    /// nomTip
-    /// Документы.Ref
-    /// Документы.Params["Наименование"]
-    /// Документы.Params["Код ОКП"])
+    /// nom, Объект из справочника "Список номенклатуры"
+    /// name, "Наименование"
+    /// oboz, "Обозначение"
+    /// refname "Справочник в котором создается объект"
     /// </summary>
     private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, RefGuidData refname) //, Reference refName, Guid guidName, Guid guidShifr)
     {
@@ -792,9 +749,6 @@ public class Macro : MacroProvider
 
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
             var newNomenclature = ConnectRefObjectToESI(refereceObject);
-            nom.BeginChanges();
-            nom.SetLinkedObject(СписокНоменклатуры.RefGuid, newNomenclature);
-            nom.EndChanges();
             return refereceObject;
         }
         catch (Exception e)
