@@ -616,13 +616,7 @@ public class Macro : MacroProvider
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
                 SyncronizeTypes(nom, findedObjects[0], messages);
-                RefGuidData refGuidDataResult = null;
-                if (findedObjects[0].Reference.Name.Equals("Документы"))
-                    refGuidDataResult = Документы;
-                if (findedObjects[0].Reference.Name.Equals("Электронные компоненты"))
-                    refGuidDataResult = ЭлектронныеКомпоненты;
-                if (findedObjects[0].Reference.Name.Equals("Материалы"))
-                    refGuidDataResult = Материалы;
+                RefGuidData refGuidDataResult = GetRefGuidDataFrom(findedObjects[0]);
                 ConnectRefObjectToESI(findedObjects[0], designation);
                 return MoveShifrToOKP(refGuidDataResult, findedObjects[0], designation, messages);
             default:
@@ -867,6 +861,7 @@ public class Macro : MacroProvider
                 // в другой.
                 else {
                     // TODO: Реализовать код по смене типа между справочниками
+                    findedObject = MoveObjectToAnotherReference(findedObject, typeOfNom);
                     messages.Add($"Для смены типов требуется перенос объекта из одного справочника в другой");
                     //messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
                     return;
@@ -889,6 +884,25 @@ public class Macro : MacroProvider
         else
             messages.Add("Синхронизация типов не потребовалась");
             return;
+    }
+
+    /// <summary>
+    /// Функция производит изменение типа в том случае, если тип назначения принадлежит справочнику, отличному от исходного
+    ///
+    /// Аргументы:
+    /// initialObject - исходный объект, может принадлежать справочникам "ЭСИ", "Документы", "Материалы", "Электронные компоненты"
+    /// targetType - тип, на который нужно изменить исходный объект
+    ///
+    /// Функция возвращает новый объект
+    /// </summary>
+    private ReferenceObject MoveObjectToAnotherReference(ReferenceObject initialObject, TypeOfObject targetType) {
+
+        // Верификация входных данных
+        // TODO: Реализовать верификацию входных данных
+        
+        // Сбор исходной информации из объекта
+        return initialObject;
+
     }
 
 
@@ -1010,6 +1024,64 @@ public class Macro : MacroProvider
         return result;
     }
 
+    /// <summary>
+    /// Функция для определения типа справочника из переданного объета ReferenceObject
+    /// </summary>
+    private TypeOfReference DefineTypeOfReference(ReferenceObject referenceObject) {
+        switch (referenceObject.Reference.Name.ToLower()) {
+            case "документы":
+                return TypeOfReference.Документы;
+            case "электронные компоненты":
+                return TypeOfReference.ЭлектронныеКомпоненты;
+            case "материалы":
+                return TypeOfReference.Материалы;
+            case "список номенклатуры foxpro":
+                return TypeOfReference.СписокНоменклатуры;
+            case "подключения":
+                return TypeOfReference.Подключения;
+            default:
+                if (referenceObject.Reference.Name.ToLower().Contains("электронная структура изделий"))
+                    return TypeOfReference.ЭСИ;
+                else
+                    return TypeOfReference.Другое;
+        }
+
+    }
+
+    /// <summary>
+    /// Функция для получения соответствующего переданному typeOfReference RefGuidData объекта
+    ///
+    /// Аргументы:
+    /// typeOfReference - перечисление, в котором есть все основные справочники, которые используются данным макросом
+    ///
+    /// Функция возвращает RefGuidData
+    /// </summary>
+    private RefGuidData GetRefGuidDataFrom(TypeOfReference typeOfReference) {
+        switch (typeOfReference) {
+            case TypeOfReference.Документы:
+                return Документы;
+            case TypeOfReference.Материалы:
+                return Материалы;
+            case TypeOfReference.ЭлектронныеКомпоненты:
+                return ЭлектронныеКомпоненты;
+            case TypeOfReference.ЭСИ:
+                return ЭСИ;
+            case TypeOfReference.СписокНоменклатуры:
+                return СписокНоменклатуры;
+            case TypeOfReference.Подключения:
+                return Подключения;
+            default:
+                throw new Exception($"Для типа '{typeOfReference.ToString()}' не предусмотрена обработка в методе GetRefGuidDataFrom");
+        }
+    }
+
+    /// <summary>
+    /// Перегрузка метода, которая вместо типа справочника принимает объект справочника, на основе которого вычисляется нужный RefGuidData объект
+    /// </summary>
+    private RefGuidData GetRefGuidDataFrom(ReferenceObject referenceObject) {
+        return GetRefGuidDataFrom(DefineTypeOfReference(referenceObject));
+    }
+
     // Интерфейсы
     public interface ITree {
         // Название изделия
@@ -1053,6 +1125,17 @@ public class Macro : MacroProvider
         ЭлектронныйКомпонент = 6,
         Материал = 7,
         Другое = 8
+    }
+
+    // Перечисление для работы с справочниками
+    private enum TypeOfReference {
+        Документы,
+        Материалы,
+        ЭлектронныеКомпоненты,
+        ЭСИ,
+        СписокНоменклатуры,
+        Подключения,
+        Другое
     }
 
     
