@@ -146,7 +146,7 @@ public class Macro : MacroProvider
         //MaterialObject mat = (MaterialObject)result[0];
         //var num = mat.GetLinkedNomenclatureObject();
 
-        ConnectRefObjectToESI(result[0]);
+        //ConnectRefObjectToESI(result[0]);
     }
 
     /// <summary>
@@ -623,7 +623,7 @@ public class Macro : MacroProvider
                     refGuidDataResult = ЭлектронныеКомпоненты;
                 if (findedObjects[0].Reference.Name.Equals("Материалы"))
                     refGuidDataResult = Материалы;
-                ConnectRefObjectToESI(findedObjects[0]);
+                ConnectRefObjectToESI(findedObjects[0], designation);
                 return MoveShifrToOKP(refGuidDataResult, findedObjects[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
@@ -748,7 +748,7 @@ public class Macro : MacroProvider
                         ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);*/
 
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            var newNomenclature = ConnectRefObjectToESI(refereceObject);
+            var newNomenclature = ConnectRefObjectToESI(refereceObject,oboz);
             return refereceObject;
         }
         catch (Exception e)
@@ -763,15 +763,16 @@ public class Macro : MacroProvider
     /// <summary>
     /// Подключаем найденый объект в смежных справочниках к ЭСИ    
     /// </summary>
-    private ReferenceObject ConnectRefObjectToESI(ReferenceObject refereceObject)
+    private ReferenceObject ConnectRefObjectToESI(ReferenceObject refereceObject, string designation)
     {
         try
         {
             NomenclatureReference nomReference;
             nomReference = ЭСИ.Ref as NomenclatureReference;
             ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
+            
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
-            string designation = newNomenclature[ЭСИ.Params["Обозначение"]].Value.ToString();
+            //string designation = newNomenclature[ЭСИ.Params["Обозначение"]].Value.ToString();
             List<ReferenceObject> findedObjectInSpisokNom = СписокНоменклатуры.Ref
                 .Find(СписокНоменклатуры.Params["Обозначение"], designation);
 
