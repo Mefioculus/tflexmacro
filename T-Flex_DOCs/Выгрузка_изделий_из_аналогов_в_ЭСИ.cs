@@ -1149,7 +1149,31 @@ public class Macro : MacroProvider
         public List<INode> Children { get; private set; }
         public ReferenceObject NomenclatureObject { get; private set; }
 
+        /// <summary>
+        /// Конструктор новой ноды дерева состава.
+        /// Аргуметны:
+        /// tree - корневой объект
+        /// parent - родительский объект
+        /// nomenclature - словарь с объектами справочника "Список номенклатуры FoxPro", отсортированный по обозначениям
+        /// links - словарь с объектами справочника "Подключения", отсортированный по обозначениям
+        /// shifr - обозначение изделия
+        /// </summary>
         public NomenclatureNode (ITree tree, INode parent, Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
+
+            // Валидация входной информации
+            List<string> errors = new List<string>();
+
+            if (tree == null)
+                errors.Add("Параметр 'tree' имеет значение null");
+            if (nomenclature == null)
+                errors.Add("Параметр 'nomenclature' имеет значение null");
+            if (links == null)
+                errors.Add("Параметр 'links' имеет значение null");
+            if (shifr == null)
+                errors.Add("Параметр 'shifr' имеет значение null");
+            if (errors.Count != 0)
+                throw new Exception($"Во время создания объекта NomenclatureNode возникла ошибка:\n{string.Join("\n", errors)}");
+
             this.Tree = tree;
             this.Parent = parent;
 
@@ -1157,13 +1181,17 @@ public class Macro : MacroProvider
 
             if (nomenclature.ContainsKey(shifr)) {
                 this.NomenclatureObject = nomenclature[shifr];
+                if (this.NomenclatureObject == null)
+                    throw new Exception(
+                            $"При построении дерева для изделия {this.Tree.NameProduct} возникла ошибка:\n" +
+                            "Переданный номенклатурный объект для формирования дочерней ноды содержит null.\n" +
+                            $"Родительская нода - {parent.Name}"
+                            );
                 // Подключаем номенклатурный объект в список осех объектов дерева
                 this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
             }
-            else {
-                this.NomenclatureObject = null;
-                this.Tree.AddError($"В дереве изделия {this.Tree.NameProduct} отсутствует '{shifr}'");
-            }
+            else
+                throw new Exception($"В дереве изделия {this.Tree.NameProduct} отсутствует '{shifr}'");
 
             // Получаем название объекта
             this.Name = (string)this.NomenclatureObject[Tree.Nomenclature.Params["Обозначение"]].Value;
@@ -1174,13 +1202,18 @@ public class Macro : MacroProvider
             // Рекурсивно получаем потомков
             // Отключаем рекурсию при достижении большого уровня вложенности
             if (this.Level > 100) {
-                this.Tree.AddError($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
-                return;
+                throw new Exception($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
             }
 
             if (links.ContainsKey(shifr))
-                foreach (string childShifr in links[shifr].Select(link => (string)link[Tree.Connections.Params["Комплектующая"]].Value))
-                    this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
+                foreach (string childShifr in links[shifr].Select(link => (string)link[Tree.Connections.Params["Комплектующая"]].Value)) {
+                    try {
+                        this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
+                    }
+                    catch (Exception e) {
+                        this.Tree.AddError(e.Message);
+                    }
+                }
         }
 
         public string GetTail(int quantityOfNodes) {
