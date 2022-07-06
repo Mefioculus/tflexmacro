@@ -883,11 +883,40 @@ public class Macro : MacroProvider
     /// Функция возвращает новый объект
     /// </summary>
     private ReferenceObject MoveObjectToAnotherReference(ReferenceObject initialObject, TypeOfObject targetType) {
+        // Получаем информацию о типах справочников, которые будут использоваться в текущем вызове функции
+        TypeOfReference initialReference = DefineTypeOfReference(initialObject);
+        TypeOfReference targetReference = DefineTypeOfReference(targetType);
 
-        // Верификация входных данных
-        // TODO: Реализовать верификацию входных данных
+        // -- Начало верификации --
+        // Проверяем корректность переданного initialObject. Он должен принадлежать к ЭСИ, или исходным справочникам
+        List<TypeOfReference> supportedReferences = new List<TypeOfReference>() {
+            TypeOfReference.ЭСИ,
+            TypeOfReference.Документы,
+            TypeOfReference.Материалы,
+            TypeOfReference.ЭлектронныеКомпоненты
+        };
+
+        if (!supportedReferences.Contains(initialReference))
+            throw new Exception(
+                    "Ошибка при попытке изменения типа.\n" +
+                    $"Метод {nameof(MoveObjectToAnotherReference)} работает только с объектами справочников, которые относятся к ЭСИ" +
+                    $"В метод передан объект '{initialObject.ToString()}', который относится к справочнику '{initialObject.Reference.Name}'."
+                    );
+
+        // Проверяем, что исходный справочник и справочник назначения - это разные справочники
+        if (initialReference == targetReference)
+            throw new Exception(
+                    "Ошибка при попытке изменения типа.\n" +
+                    $"Метод {nameof(MoveObjectToAnotherReference)} работает только с объектами разных исходных справочников" +
+                    $"В метод передан объект '{initialObject.ToString()}' с исходным справочником '{initialReference.ToString()}' для перемещения в справочник '{targetReference.ToString()}'."
+                    );
+        // -- Окончание верификации --
         
-        // Сбор исходной информации из объекта
+        // -- Начало сбора исходной информации --
+        // -- Окончание сбора исходной информации --
+
+        // -- Начало пересоздания объекта
+        // -- Окончание пересоздания объекта
         return initialObject;
 
     }
@@ -1032,7 +1061,32 @@ public class Macro : MacroProvider
                 else
                     return TypeOfReference.Другое;
         }
+    }
 
+    /// <summary>
+    /// Перегрузка функции для определения типа справочника на основе типа объекта.
+    /// Стоит отметить, что данная функция работает только для номенклатурных объектов и
+    /// по сути может вернуть только справочники 'Документы', 'Материалы', 'Электронные компоненты'
+    ///
+    /// Аргументы:
+    /// type - тип объекта, из которого нужно определить тип справочника
+    /// </summary>
+    private TypeOfReference DefineTypeOfReference(TypeOfObject type) {
+        switch (type) {
+            case TypeOfObject.Материал:
+                return TypeOfReference.Материалы;
+            case TypeOfObject.ЭлектронныйКомпонент:
+                return TypeOfReference.ЭлектронныеКомпоненты;
+            case TypeOfObject.Изделие:
+            case TypeOfObject.СборочнаяЕдиница:
+            case TypeOfObject.СтандартноеИзделие:
+            case TypeOfObject.ПрочееИзделие:
+            case TypeOfObject.Деталь:
+            case TypeOfObject.Другое:
+                return TypeOfReference.Документы;
+            default:
+                throw new Exception($"Метод {nameof(DefineTypeOfReference)} не предназначен для работы с '{type.ToString()}'");
+        }
     }
 
     /// <summary>
@@ -1072,21 +1126,7 @@ public class Macro : MacroProvider
     /// type - тип объекта, из которого нужно вывести объект RefGuidData
     /// </summary>
     private RefGuidData GetRefGuidDataFrom(TypeOfObject type) {
-        switch (type) {
-            case TypeOfObject.Материал:
-                return Материалы;
-            case TypeOfObject.ЭлектронныйКомпонент:
-                return ЭлектронныеКомпоненты;
-            case TypeOfObject.Изделие:
-            case TypeOfObject.СборочнаяЕдиница:
-            case TypeOfObject.СтандартноеИзделие:
-            case TypeOfObject.ПрочееИзделие:
-            case TypeOfObject.Деталь:
-            case TypeOfObject.Другое:
-                return Документы;
-            default:
-                throw new Exception($"Метод {nameof(GetRefGuidDataFrom)} не предназначен для работы с '{type.ToString()}'");
-        }
+        return GetRefGuidDataFrom(DefineTypeOfReference(type));
     }
 
     /// <summary>
