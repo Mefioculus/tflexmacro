@@ -428,8 +428,9 @@ public class Macro : MacroProvider
     /// <summary>
     /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
     /// </summary>
-    private ReferenceObject MoveShifrToOKP(RefGuidData referData, ReferenceObject resultObject, string designation, List<string> messages)
+    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
     {
+        RefGuidData referData = GetRefGuidDataFrom(resultObject);
         TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
        
         var obozEsi = resultObject[referData.Params["Обозначение"]].Value.ToString();
@@ -492,7 +493,7 @@ public class Macro : MacroProvider
         {
             messages.Add("Объект был получен по связи");
             SyncronizeTypes(nom, linkedObject, messages);
-            return MoveShifrToOKP(ЭСИ, linkedObject, designation, messages);
+            return MoveShifrToOKP(linkedObject, designation, messages);
    
         }
         else
@@ -537,7 +538,7 @@ public class Macro : MacroProvider
         if (findedObjects.Count == 1) {
             messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjects[0], messages);
-            ReferenceObject resultObject = MoveShifrToOKP(ЭСИ, findedObjects[0], designation, messages);
+            ReferenceObject resultObject = MoveShifrToOKP(findedObjects[0], designation, messages);
             // Производим привязываение объекта к "Списку номенклатуры FoxPro"
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], resultObject);
@@ -616,9 +617,8 @@ public class Macro : MacroProvider
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
                 SyncronizeTypes(nom, findedObjects[0], messages);
-                RefGuidData refGuidDataResult = GetRefGuidDataFrom(findedObjects[0]);
                 ConnectRefObjectToESI(findedObjects[0], designation);
-                return MoveShifrToOKP(refGuidDataResult, findedObjects[0], designation, messages);
+                return MoveShifrToOKP(findedObjects[0], designation, messages);
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -647,22 +647,8 @@ public class Macro : MacroProvider
         catch {
             throw new Exception($"Ошибка при создании объекта. Невозможно создать объект типа '{type.ToString()}'");
         }
-        if (type == TypeOfObject.СтандартноеИзделие)
-        {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы);                                                    
-        }
-        else if (type == TypeOfObject.Материал)
-        {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Материалы);
-        }
-        else if (type == TypeOfObject.ЭлектронныйКомпонент)
-        {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, ЭлектронныеКомпоненты);
-        }
-        else
-        {
-            createDocument = CreateRefObject(nom, nomName, designation, nomTip, Документы);
-        }
+
+        createDocument = CreateRefObject(nom, nomName, designation, nomTip, GetRefGuidDataFrom(type));
 
         // var createDocument2 = CreateRefObject(nomName, designation, type.ToString(), ЭлектронныеКомпоненты.Ref,ЭлектронныеКомпоненты.Params["Наименование"], ЭлектронныеКомпоненты.Params["Код ОКП"];
         // var createDocument = CreateRefObject(nomName, designation, type.ToString(),Документы.Ref,Документы.Params["Наименование"],Документы.Params["Обозначение"]);
@@ -802,13 +788,14 @@ public class Macro : MacroProvider
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр nomenclatureRecord поддерживает только объекты справочника {СписокНоменклатуры.Ref.Name}");
 
         // Проверка параметра findedObject
-        List<string> supportedReferences = new List<string>() {
-            Документы.Ref.Name,
-            ЭлектронныеКомпоненты.Ref.Name,
-            Материалы.Ref.Name,
+        List<TypeOfReference> supportedReferences = new List<TypeOfReference>() {
+            TypeOfReference.ЭСИ,
+            TypeOfReference.Документы,
+            TypeOfReference.Материалы,
+            TypeOfReference.ЭлектронныеКомпоненты,
         };
 
-        if (!supportedReferences.Contains(findedObject.Reference.Name) && (!findedObject.Reference.Name.Contains("Электронная структура изделий")))
+        if (!supportedReferences.Contains(DefineTypeOfReference(findedObject)))
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
 
         // Определяем указанный тип и тип найденной записи
@@ -928,16 +915,16 @@ public class Macro : MacroProvider
     /// Если в метод передается объект другого справочника, выдается ошибка
     /// </summary>
     private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
-        string reference = nomenclature.Reference.Name;
+        TypeOfReference refType = DefineTypeOfReference(nomenclature);
 
         // Разбираем случай, если в метод был передан объект справочника 'Список номенклатуры FoxPro'
-        if (reference == СписокНоменклатуры.Ref.Name) {
+        if (refType == TypeOfReference.СписокНоменклатуры) {
             int intType = (int)nomenclature[СписокНоменклатуры.Params["Тип номенклатуры"]].Value;
             return (TypeOfObject)intType;
         }
 
         // Разбираем случай, если в метод был передан объект справочника 'Электронная структура изделий'
-        if ((reference.Contains("Электронная структура изделий")) || (reference == Документы.Ref.Name) || (reference == ЭлектронныеКомпоненты.Ref.Name) || (reference == Материалы.Ref.Name)) {
+        if ((refType == TypeOfReference.ЭСИ) || (refType == TypeOfReference.Документы) || (refType == TypeOfReference.ЭлектронныеКомпоненты) || (refType == TypeOfReference.Материалы)) {
             string typeName = nomenclature.Class.Name;
             switch (typeName) {
                 case "Сборочная единица":
@@ -957,11 +944,11 @@ public class Macro : MacroProvider
                 case "Другое":
                     return TypeOfObject.Другое;
                 default:
-                    throw new Exception($"Ошибка при определении типа объекта справочника '{reference}'. Разбрт типа объекта '{typeName}' не предусмотрен");
+                    throw new Exception($"Ошибка при определении типа объекта справочника '{nomenclature.Reference.Name}'. Разбор типа объекта '{typeName}' не предусмотрен");
             }
         }
 
-        throw new Exception($"Метод 'DefineTypeOfObject' не работает с объектами справочника '{reference}'");
+        throw new Exception($"Метод '{nameof(DefineTypeOfObject)}' не работает с объектами справочника '{nomenclature.Reference.Name}'");
     }
 
     /// <summary>
@@ -1072,6 +1059,33 @@ public class Macro : MacroProvider
                 return Подключения;
             default:
                 throw new Exception($"Для типа '{typeOfReference.ToString()}' не предусмотрена обработка в методе GetRefGuidDataFrom");
+        }
+    }
+
+    /// <summary>
+    /// Перегрузка метода GetRefGuidDataFrom, реализованная для получения типа RefGuidData из типа текущего объекта.
+    /// Особое внимание стоит обратить на то, что данный метод возвращает только исходные справочники типов, т.е.
+    /// он не будет возвращать справочник ЭСИ, или справочники, которые не относятся к типам DefineTypeOfObject
+    /// (к примеру 'Подключения' или 'Список номенклатуры FoxPro')
+    ///
+    /// Аргументы:
+    /// type - тип объекта, из которого нужно вывести объект RefGuidData
+    /// </summary>
+    private RefGuidData GetRefGuidDataFrom(TypeOfObject type) {
+        switch (type) {
+            case TypeOfObject.Материал:
+                return Материалы;
+            case TypeOfObject.ЭлектронныйКомпонент:
+                return ЭлектронныеКомпоненты;
+            case TypeOfObject.Изделие:
+            case TypeOfObject.СборочнаяЕдиница:
+            case TypeOfObject.СтандартноеИзделие:
+            case TypeOfObject.ПрочееИзделие:
+            case TypeOfObject.Деталь:
+            case TypeOfObject.Другое:
+                return Документы;
+            default:
+                throw new Exception($"Метод {nameof(GetRefGuidDataFrom)} не предназначен для работы с '{type.ToString()}'");
         }
     }
 
