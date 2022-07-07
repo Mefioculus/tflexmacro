@@ -14,6 +14,8 @@ using TFlex.DOCs.Model.Search;
 using FoxProShifrsNormalizer;
 using TFlex.DOCs.Model.Desktop;
 using TFlex.DOCs.Model.References.Nomenclature;
+using TFlex.DOCs.Model.References.Files;
+
 
 public class Macro : MacroProvider
 {
@@ -23,6 +25,11 @@ public class Macro : MacroProvider
     private RefGuidData Документы { get; set; }
     private RefGuidData ЭлектронныеКомпоненты { get; set; }
     private RefGuidData Материалы { get; set; }
+    private RefGuidData ЖурналВыгрузокИзFoxPro { get; set; }
+    private Log log_save_ref = new Log();
+                                                                            
+                                         
+
     private string ДиректорияДляЛогов { get; set; }
 
     // Для лога
@@ -32,6 +39,7 @@ public class Macro : MacroProvider
 
     public Macro(MacroContext context)
         : base(context) {
+     
 
         #if DEBUG
         System.Diagnostics.Debugger.Launch();
@@ -39,7 +47,17 @@ public class Macro : MacroProvider
         #endif
 
         // Инициализируем объекты с уникальными идентификаторами
-        
+       // Справочник "Журнал выгрузок из FoxPro"
+        ЖурналВыгрузокИзFoxPro = new RefGuidData(context, new Guid("85ed8179-1714-4b63-9030-b41c82451cc0"));
+        ЖурналВыгрузокИзFoxPro.AddParam("number", new Guid("5e20f92d-c433-4f99-bde9-63a7a843058a")); // int
+        ЖурналВыгрузокИзFoxPro.AddParam("shifrIzd", new Guid("562c1053-94a5-4268-ac78-b3fcf1f896b2")); // string
+        ЖурналВыгрузокИзFoxPro.AddLink("Файл выгрузки", new Guid("422ae8ea-318b-4973-b4fd-e9732eb331cf")); // string
+                                                                                                                            
+                                                                                                                           
+                                                                                                                                
+                                                                                                                                                
+
+
         // Справочник "Список номенклатуры FoxPro"
         СписокНоменклатуры = new RefGuidData(Context, new Guid("c9d26b3c-b318-4160-90ae-b9d4dd7565b6"));
         // Параметры
@@ -115,6 +133,7 @@ public class Macro : MacroProvider
     }
 
     public override void Run() {
+     
         // Производим загрузку всей необходимой информации
         Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
         Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
@@ -133,21 +152,57 @@ public class Macro : MacroProvider
         // Производим соединение созданных ДСЕ в иерархию при помощи подключений
         ConnectCreatedObjects(созданныеДСЕ, подключения);
         //*/
-
+        SaveLogtoRef(изделияДляВыгрузки);
         Message("Информация", "Работа макроса завершена");
     }
 
+    /// <summary>
+    /// Создает новую запись в справочнике "Журнал выгрузок из FoxPro"
+    /// </summary>
+    private void SaveLogtoRef(List<string> изделияДляВыгрузки)
+    {
+        log_save_ref.getparam(ЖурналВыгрузокИзFoxPro);
+        log_save_ref.Shifr_izd = String.Join("\n",изделияДляВыгрузки);
+        var createdClassObject = ЖурналВыгрузокИзFoxPro.Ref.Classes.Find("Журнал выгрузок из FoxPro");
+        ReferenceObject refereceObject = ЖурналВыгрузокИзFoxPro.Ref.CreateReferenceObject(createdClassObject);
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["number"]].Value = log_save_ref.Number + 1;
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["shifrIzd"]].Value = log_save_ref.Shifr_izd;
+        LoadFilesLog(refereceObject);
+        refereceObject.EndChanges();
+    }
 
+    /// <summary>
+    /// Прикрепляет файлы логов к записе в справочнике "Журнал выгрузок из FoxPro"
+    /// </summary>
+    private void LoadFilesLog(ReferenceObject refereceObject)
+    {
+        try
+        {
+            var fileReference = new FileReference(Context.Connection);
+            var parentFolder = fileReference.FindByRelativePath("Логи выгрузки из аналогов в ЭСИ") as TFlex.DOCs.Model.References.Files.FolderObject;
+            var file1 = fileReference.AddFile(log_save_ref.file_name_error_log, parentFolder);
+            var file2 = fileReference.AddFile(log_save_ref.file_name_tree, parentFolder);
+            Desktop.CheckIn(file1, "Объект создан", false);
+            Desktop.CheckIn(file2, "Объект создан", false);
+
+            refereceObject.AddLinkedObject(ЖурналВыгрузокИзFoxPro.Links["Файл выгрузки"], file1);
+            refereceObject.AddLinkedObject(ЖурналВыгрузокИзFoxPro.Links["Файл выгрузки"], file2);
+        }
+        catch (Exception e)
+        {
+            // Выводим сообщение об ошибке
+            Сообщение("Ошибка", e.Message);
+        }
+
+    }
+
+                  
     private void Test(string изделияДляВыгрузки)
     {
         var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
-        //var num = result[0].GetParentLink;
-        //var num = result[0].GetLinkedNomenclatureObject();
-        //MaterialObject mat = (MaterialObject)result[0];
-        //var num = mat.GetLinkedNomenclatureObject();
-
-        //ConnectRefObjectToESI(result[0]);
     }
+
+
 
     /// <summary>
     /// Функция возвращает словарь с изделиями
@@ -158,6 +213,7 @@ public class Macro : MacroProvider
         var dictListNum = ListNum.ToDictionary(objref => (objref[СписокНоменклатуры.Params["Обозначение"]].Value.ToString()));
         return dictListNum;
     }
+
 
     /// <summary>
     /// Функция возвращает словарь с подключениями, сгруппированными по параметру 'Сборка'
@@ -225,7 +281,7 @@ public class Macro : MacroProvider
             Normalizer normalizer = new Normalizer();
             normalizer.setprefix = false;
 
-            var list_oboz = oboz.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var list_oboz = oboz.Split(new string[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
             var list_oboz_insert_dot = list_oboz.Select(oboz => normalizer.NormalizeShifrsFromFox(oboz.Replace(".", "")));
             if (list_oboz.Length == 1)
             {
@@ -263,6 +319,7 @@ public class Macro : MacroProvider
     /// Он производит присвоение строки определенного формата переменной NameOfImport
     /// </summary>
     private void SetNameOfExport(List<string> nomenclature) {
+     
         if (nomenclature.Count == 0)
             return;
 
@@ -279,6 +336,7 @@ public class Macro : MacroProvider
     /// На выход предоставляет HashSet объектов справочника 'Список номенклатуры FoxPro', выгрузку которых необходимо произвести
     /// </summary>
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
+     
         // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
         // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
         if (nomenclature == null || links == null || shifrs == null)
@@ -292,6 +350,7 @@ public class Macro : MacroProvider
         List<string> errors = new List<string>();
         // Формируем деревья и получаем все объекты
         foreach (string shifr in shifrs) {
+         
             NomenclatureTree tree = new NomenclatureTree(nomenclature, links, shifr, СписокНоменклатуры, Подключения);
             result.UnionWith(tree.AllReferenceObjects);
             log += $"Дерево изделия {shifr}:\n\n{tree.GenerateLog()}\n\n";
@@ -301,6 +360,7 @@ public class Macro : MacroProvider
 
         // Пишем лог
         File.WriteAllText(pathToLogFile, log);
+        log_save_ref.file_name_tree = pathToLogFile;
 
         // Выдаем пользователю сообщение об ошибках в дереве и спрашиваем, продолжать ли выгрузку
         if (errors.Count != 0)
@@ -317,6 +377,7 @@ public class Macro : MacroProvider
     /// Функция поделена на четыре стадии для удобства, в качестве входных параметров принимает объекты справочника "Список номенклатуры FoxPro", которые необходимо выгрузить
     /// </summary>
     private List<ReferenceObject> FindOrCreateNomenclatureObjects(HashSet<ReferenceObject> nomenclature) {
+     
         // Функция принимает записи справочника "Список номенклатуры FoxPro" для создания объектов с справочнике ЭСИ и смежных справочников
         // Функция возвращает найденные или созданные записи справочника ЭСИ
         //
@@ -340,6 +401,7 @@ public class Macro : MacroProvider
         int countErrors = 0;
 
         foreach (ReferenceObject nom in nomenclature) {
+         
             // Получаем обозначение текущего объекта и его тип
             ReferenceObject resultObject;
             string nomDesignation = (string)nom[СписокНоменклатуры.Params["Обозначение"]].Value; // обозначение
@@ -352,9 +414,11 @@ public class Macro : MacroProvider
 
 
             try {
+             
                 // СТАДИЯ 1: Пытаемся получить объект по связи на справочник ЭСИ
                 resultObject = ProcessFirstStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
+                 
                     result.Add(resultObject);
                     countStage1 += 1;
                     continue;
@@ -363,6 +427,7 @@ public class Macro : MacroProvider
                 // СТАДИЯ 2: Пытаемся найти объект в справочнике ЭСИ
                 resultObject = ProcessSecondStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
+                 
                     result.Add(resultObject);
                     countStage2 += 1;
                     continue;
@@ -371,6 +436,7 @@ public class Macro : MacroProvider
                 // СТАДИЯ 3: Пытаемся найти объект в смежных справочниках
                 resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
+                 
                     result.Add(resultObject);
                     countStage3 += 1;
                     continue;
@@ -379,11 +445,13 @@ public class Macro : MacroProvider
                 // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
                 resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
+                 
                     countStage4 += 1;
                     result.Add(resultObject);
                 }
             }
             catch (Exception e) {
+             
                 messages.Add($"Error: {e.Message}");
                 countErrors += 1;
                 continue;
@@ -407,9 +475,12 @@ public class Macro : MacroProvider
                                    
                                                                                                                                                                                                       
 
+
+
         // Если ошибки есть, то сначала выводим статистику и спрашиваем у пользователя, отобразить ли ошибки
         // Иначе просто выводим статистику
         if (errors != string.Empty) {
+         
             statistics += "\n\nОтобразить ошибки?";
             if (Question(statistics))
                 Message("Ошибки", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
@@ -419,7 +490,7 @@ public class Macro : MacroProvider
         
         // Пишем лог
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
-
+        log_save_ref.file_name_error_log = pathToLogFile;
         return result;
     }
 
@@ -486,6 +557,7 @@ public class Macro : MacroProvider
     /// Исключение выбрасывается если объект был найден, но при его проверке возникли проблемы (об этом нужно оповестить пользователя и пока что не включать объект в выгрузку).
     /// </summary>
     private ReferenceObject ProcessFirstStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+     
         // Получаем объект по связи и, если он есть, производим его проверку
         ReferenceObject linkedObject = nom.GetObject(СписокНоменклатуры.Links["Связь на ЭСИ"]);
 
@@ -513,6 +585,7 @@ public class Macro : MacroProvider
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+     
 
         List<ReferenceObject> findedObjects = ЭСИ.Ref
             .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
@@ -528,14 +601,17 @@ public class Macro : MacroProvider
         if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
             throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         else if ((findedObjects.Count !=0 && findedObjectsOKP.Count != 0)) {
+         
             if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
                 findedObjects.AddRange(findedObjectsOKP);
         }
         else if ((findedObjects.Count == 0 && findedObjectsOKP.Count != 0)) {
+         
             findedObjects.AddRange(findedObjectsOKP);
         }
 
         if (findedObjects.Count == 1) {
+         
             messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjects[0], messages);
             ReferenceObject resultObject = MoveShifrToOKP(findedObjects[0], designation, messages);
@@ -547,10 +623,12 @@ public class Macro : MacroProvider
             return resultObject;
         }
         else if (findedObjects.Count > 1) {
+         
             messages.Add("Объект найден в ЭСИ");
             throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         }
         else {
+         
             messages.Add("Объект не найден в ЭСИ");
             return null;
         }
@@ -569,6 +647,7 @@ public class Macro : MacroProvider
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+     
         // Производим поиск по смежным справочникам
         List<ReferenceObject> findedObjects = new List<ReferenceObject>();
 
@@ -610,6 +689,7 @@ public class Macro : MacroProvider
             findedObjects.AddRange(tempResult);
 
         switch (findedObjects.Count) {
+         
             case 0:
                 messages.Add("Объект не найден в смежных справочниках");
                 return null;
@@ -617,6 +697,7 @@ public class Macro : MacroProvider
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
                 SyncronizeTypes(nom, findedObjects[0], messages);
+                                                                                     
                 ConnectRefObjectToESI(findedObjects[0], designation);
                 return MoveShifrToOKP(findedObjects[0], designation, messages);
             default:
@@ -635,6 +716,7 @@ public class Macro : MacroProvider
     /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
     private ReferenceObject ProcessFinalStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+     
         // Производим создание объекта
         string nomName = (string)nom[СписокНоменклатуры.Params["Наименование"]].Value;
         //string nomTip = nom[СписокНоменклатуры.Params["Тип номенклатуры"]].Value.ToString();
@@ -642,13 +724,29 @@ public class Macro : MacroProvider
         ReferenceObject createDocument = null;
         string nomTip;
         try {
+         
             nomTip = getTypeString(type);
         }
         catch {
+         
             throw new Exception($"Ошибка при создании объекта. Невозможно создать объект типа '{type.ToString()}'");
         }
 
+         
         createDocument = CreateRefObject(nom, nomName, designation, nomTip, GetRefGuidDataFrom(type));
+         
+                                                       
+         
+                                                                                                    
+         
+                                                                               
+         
+                                                                                                                            
+         
+            
+         
+                                                                                                    
+         
 
         // var createDocument2 = CreateRefObject(nomName, designation, type.ToString(), ЭлектронныеКомпоненты.Ref,ЭлектронныеКомпоненты.Params["Наименование"], ЭлектронныеКомпоненты.Params["Код ОКП"];
         // var createDocument = CreateRefObject(nomName, designation, type.ToString(),Документы.Ref,Документы.Params["Наименование"],Документы.Params["Обозначение"]);
@@ -750,6 +848,7 @@ public class Macro : MacroProvider
             ReferenceObject newNomenclature = nomReference.CreateNomenclatureObject(refereceObject);
             
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
+
             //string designation = newNomenclature[ЭСИ.Params["Обозначение"]].Value.ToString();
             List<ReferenceObject> findedObjectInSpisokNom = СписокНоменклатуры.Ref
                 .Find(СписокНоменклатуры.Params["Обозначение"], designation);
@@ -782,6 +881,7 @@ public class Macro : MacroProvider
     /// Если в автоматическом режиме изменить тип не удается, выбрасывается исключение с целью предупредить пользователя
     /// </summary>
     private void SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject, List<string> messages) {
+     
         // Производим верификацию входных данных
         // Проверка параметра nomenclatureRecord
         if (nomenclatureRecord.Reference.Name != СписокНоменклатуры.Ref.Name)
@@ -793,6 +893,7 @@ public class Macro : MacroProvider
             TypeOfReference.Документы,
             TypeOfReference.Материалы,
             TypeOfReference.ЭлектронныеКомпоненты,
+                                        
         };
 
         if (!supportedReferences.Contains(DefineTypeOfReference(findedObject)))
@@ -804,12 +905,14 @@ public class Macro : MacroProvider
 
         // Если типы не соответствуют друг другу, пытаемся привести их в соответствие
         if (typeOfNom != typeOfFinded) {
+         
             messages.Add($"Обнаружено несоответствие типов: запись - {typeOfNom.ToString()}, найденный объект - {typeOfFinded.ToString()}");
 
             // 1 СЛУЧАЙ
             // Случай, когда в справочнике 'Номенклатура FoxPro' указан более общий тип, чем тип у привязанного/найденного объекта.
             // В этом случае необходимо поправить значение типа в поле записи номенклатурного объекта
             if ((typeOfNom == TypeOfObject.НеОпределено) || (typeOfNom == TypeOfObject.Другое)) {
+             
                 nomenclatureRecord.BeginChanges();
                 nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = DefineIntFromTypeObject(typeOfFinded);
                 nomenclatureRecord.EndChanges();
@@ -820,22 +923,28 @@ public class Macro : MacroProvider
             // 2 СЛУЧАЙ
             // Случай, когда в найденный объект принадлежит к более общему типу, нежели указанный тип в справочнике "Номенклатура FoxPro"
             if (typeOfFinded == TypeOfObject.Другое) {
+             
                 // Начальный тип принадлежит справочнику "Документы". В этом случае мы просто производим смену типа
                 if ((typeOfNom != TypeOfObject.Материал) && (typeOfNom != TypeOfObject.ЭлектронныйКомпонент)) {
+                 
                     // Производим смену типа
                     NomenclatureObject castObject = findedObject as NomenclatureObject;
                     // Если объект является объектом справочника "ЭСИ", то работаем с ним как с номенклатурным объектом
                     try {
+                     
                         if (castObject != null) {
+                         
                             castObject.CheckOut();
                             castObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, castObject.Reference));
                         }
                         else {
+                         
                             findedObject.CheckOut();
                             findedObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, findedObject.Reference));
                         }
                     }
                     catch (Exception e) {
+                     
                         throw new Exception($"Ошибка при смене типа:\n{e}");
                     }
 
@@ -847,6 +956,7 @@ public class Macro : MacroProvider
                 // Это значит, что вместо смены типа нужно перенести объект из одного справочника, где он был создан по ошибке,
                 // в другой.
                 else {
+                 
                     // TODO: Реализовать код по смене типа между справочниками
                     findedObject = MoveObjectToAnotherReference(findedObject, typeOfNom);
                     messages.Add($"Для смены типов требуется перенос объекта из одного справочника в другой");
@@ -929,6 +1039,7 @@ public class Macro : MacroProvider
     /// links - словарь с всеми подключениями в виде словаря по ключу с обозначением ДСЕ
     /// </summary>
     private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
+     
         // Функция принимает созданные номенклатурный объекты, а так же объекты справочника "Подключения"
         // 
         // Необходимо реализовать:
@@ -945,17 +1056,21 @@ public class Macro : MacroProvider
     /// </summary>
     private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
         TypeOfReference refType = DefineTypeOfReference(nomenclature);
+                                                       
 
         // Разбираем случай, если в метод был передан объект справочника 'Список номенклатуры FoxPro'
         if (refType == TypeOfReference.СписокНоменклатуры) {
+         
             int intType = (int)nomenclature[СписокНоменклатуры.Params["Тип номенклатуры"]].Value;
             return (TypeOfObject)intType;
         }
 
         // Разбираем случай, если в метод был передан объект справочника 'Электронная структура изделий'
         if ((refType == TypeOfReference.ЭСИ) || (refType == TypeOfReference.Документы) || (refType == TypeOfReference.ЭлектронныеКомпоненты) || (refType == TypeOfReference.Материалы)) {
+         
             string typeName = nomenclature.Class.Name;
             switch (typeName) {
+             
                 case "Сборочная единица":
                     return TypeOfObject.СборочнаяЕдиница;
                 case "Стандартное изделие":
@@ -987,6 +1102,7 @@ public class Macro : MacroProvider
     /// На выход поступает его цифровое представление.
     /// </summary>
     private int DefineIntFromTypeObject(TypeOfObject type) {
+     
         return (int)type;
     }
 
@@ -998,8 +1114,10 @@ public class Macro : MacroProvider
     /// На выход поступает найденный объект ClassObject. Если объект не удалось найти, выбрасывается сообщение об ошибке.
     /// </summary>
     private ClassObject DefineClassFromTypeObject(TypeOfObject type, Reference reference) {
+     
         ClassObject result = null;
         switch (type) {
+         
             case TypeOfObject.Изделие:
                 result = reference.Classes.Find("Изделие");
                 break;
@@ -1044,7 +1162,9 @@ public class Macro : MacroProvider
     /// Функция для определения типа справочника из переданного объета ReferenceObject
     /// </summary>
     private TypeOfReference DefineTypeOfReference(ReferenceObject referenceObject) {
+     
         switch (referenceObject.Reference.Name.ToLower()) {
+         
             case "документы":
                 return TypeOfReference.Документы;
             case "электронные компоненты":
@@ -1098,7 +1218,9 @@ public class Macro : MacroProvider
     /// Функция возвращает RefGuidData
     /// </summary>
     private RefGuidData GetRefGuidDataFrom(TypeOfReference typeOfReference) {
+     
         switch (typeOfReference) {
+         
             case TypeOfReference.Документы:
                 return Документы;
             case TypeOfReference.Материалы:
@@ -1133,11 +1255,13 @@ public class Macro : MacroProvider
     /// Перегрузка метода, которая вместо типа справочника принимает объект справочника, на основе которого вычисляется нужный RefGuidData объект
     /// </summary>
     private RefGuidData GetRefGuidDataFrom(ReferenceObject referenceObject) {
+     
         return GetRefGuidDataFrom(DefineTypeOfReference(referenceObject));
     }
 
     // Интерфейсы
     public interface ITree {
+     
         // Название изделия
         string NameProduct { get; } // Шифр корневой ноды дерева
         INode RootObject { get; } // Корневая нода дерева
@@ -1155,6 +1279,7 @@ public class Macro : MacroProvider
     }
 
     public interface INode {
+     
         string Name { get; }
         int Level { get; }
         ITree Tree { get; }
@@ -1170,6 +1295,7 @@ public class Macro : MacroProvider
     // Нумерация задана в соответствии с списком значений поля "Тип номенклатуры".
     // При любом добавлении новых типов необходимо производить соответствующие изменения в данном перечислении
     private enum TypeOfObject {
+     
         НеОпределено = 0,
         Изделие = 4,
         СборочнаяЕдиница = 1,
@@ -1183,6 +1309,7 @@ public class Macro : MacroProvider
 
     // Перечисление для работы с справочниками
     private enum TypeOfReference {
+     
         Документы,
         Материалы,
         ЭлектронныеКомпоненты,
@@ -1196,6 +1323,7 @@ public class Macro : MacroProvider
 
     // Классы
     private class NomenclatureTree : ITree {
+     
         public string NameProduct { get; private set; }
         public INode RootObject { get; private set; }
         public HashSet<ReferenceObject> AllReferenceObjects { get; set; }
@@ -1207,6 +1335,7 @@ public class Macro : MacroProvider
         public string ErrString => this.HaveErrors ? $"Ошибки в дереве {this.NameProduct}:\n{string.Join("\n", this.Errors)}" : string.Empty;
 
         public NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr, RefGuidData nom, RefGuidData conn) {
+         
             if (nomenclature == null || links == null || shifr == null)
                 throw new Exception("В конструктор создания NomenclatureTree были поданы отсутствующие значения");
 
@@ -1220,15 +1349,18 @@ public class Macro : MacroProvider
         }
 
         public string GenerateLog() {
+         
             return RootObject.ToString();
         }
 
         public void AddError(string error) {
+         
             this.Errors.Add(error);
         }
     }
 
     private class NomenclatureNode : INode {
+     
         public string Name { get; private set; }
         public int Level { get; private set; }
         public ITree Tree { get; private set; }
@@ -1246,6 +1378,7 @@ public class Macro : MacroProvider
         /// shifr - обозначение изделия
         /// </summary>
         public NomenclatureNode (ITree tree, INode parent, Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr) {
+         
 
             // Валидация входной информации
             List<string> errors = new List<string>();
@@ -1267,6 +1400,7 @@ public class Macro : MacroProvider
             this.Level = parent == null ? 0 : parent.Level + 1;
 
             if (nomenclature.ContainsKey(shifr)) {
+             
                 this.NomenclatureObject = nomenclature[shifr];
                 if (this.NomenclatureObject == null)
                     throw new Exception(
@@ -1289,24 +1423,30 @@ public class Macro : MacroProvider
             // Рекурсивно получаем потомков
             // Отключаем рекурсию при достижении большого уровня вложенности
             if (this.Level > 100) {
+             
                 throw new Exception($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
             }
 
             if (links.ContainsKey(shifr))
                 foreach (string childShifr in links[shifr].Select(link => (string)link[Tree.Connections.Params["Комплектующая"]].Value)) {
+                 
                     try {
+                     
                         this.Children.Add(new NomenclatureNode(this.Tree, this, nomenclature, links, childShifr));
                     }
                     catch (Exception e) {
+                     
                         this.Tree.AddError(e.Message);
                     }
                 }
         }
 
         public string GetTail(int quantityOfNodes) {
+         
             string result = this.Name;
             INode currentNode = this;
             while (true) {
+             
                 currentNode = currentNode.Parent;
                 if (currentNode != null)
                     result = $"{currentNode.Name} -> {result}";
@@ -1322,6 +1462,7 @@ public class Macro : MacroProvider
 
 
         public override string ToString() {
+         
             string prefix = string.Empty;
             if (this.Level == 1)
                 prefix = "└";
@@ -1332,6 +1473,7 @@ public class Macro : MacroProvider
     }
 
     public class RefGuidData {
+     
         public Reference Ref { get; private set; }
         public Guid RefGuid { get; private set; }
         public Container Types { get; private set; }
@@ -1341,6 +1483,7 @@ public class Macro : MacroProvider
 
         // Конструктор
         public RefGuidData (MacroContext context, Guid guidOfReference) {
+         
             this.RefGuid = guidOfReference;
             ReferenceInfo refInfo = context.Connection.ReferenceCatalog.Find(guidOfReference);
             // Проверка на то, что удалось найти в базе справочник с таким Guid
@@ -1369,11 +1512,13 @@ public class Macro : MacroProvider
             this.Objects.Add(name, guid);
 
         public class Container {
+         
             public string Name { get; private set; }
             private Dictionary<string, Guid> Storage { get; set; }
             private RefGuidData Parent { get; set; }
 
             public Container(RefGuidData parent, string name) {
+             
                 this.Parent = parent;
                 this.Name = name;
                 this.Storage = new Dictionary<string, Guid>();
@@ -1384,6 +1529,7 @@ public class Macro : MacroProvider
             public bool ContainsKey(string key) => this.Storage.ContainsKey(key);
 
             public void Add(string key, Guid guid) {
+             
                 string lowerKey = key.ToLower();
                 if (this.Storage.ContainsKey(lowerKey))
                     throw new Exception($"Хранилище '{this.Name}' объекта RefGuidData для справочника '{Parent.Ref.Name}' уже содержит ключ '{key}'");
@@ -1391,7 +1537,9 @@ public class Macro : MacroProvider
             }
 
             public Guid this[string key] {
+             
                 get {
+                 
                     string lowerKey = key.ToLower();
                     if (!this.Storage.ContainsKey(lowerKey))
                         throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} не содержит ключа '{key}'");
@@ -1399,10 +1547,30 @@ public class Macro : MacroProvider
                 }
 
                 set {
+                 
                     throw new Exception("Для добавления объекта используйте методы класса RefGuidData");
                 }
             }
         }
     }
+
+        public class Log
+    {
+        public int Number { get; private set; }
+        public string Shifr_izd { get; set; }
+        public string file_name_tree { get; set; }
+        public string file_name_error_log { get; set; }
+
+
+        public void getparam(RefGuidData refdata)
+        {
+            var logRefObj = refdata.Ref.Objects;
+            int lognumberMax = logRefObj.Max(x => (Int32)x.GetObjectValue("Номер выгрузки").Value);
+            this.Number = lognumberMax;
+        }
+    }
+
+
+
 
 }
