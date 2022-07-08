@@ -51,11 +51,14 @@ public class Macro : MacroProvider
         ЖурналВыгрузокИзFoxPro = new RefGuidData(context, new Guid("85ed8179-1714-4b63-9030-b41c82451cc0"));
         ЖурналВыгрузокИзFoxPro.AddParam("number", new Guid("5e20f92d-c433-4f99-bde9-63a7a843058a")); // int
         ЖурналВыгрузокИзFoxPro.AddParam("shifrIzd", new Guid("562c1053-94a5-4268-ac78-b3fcf1f896b2")); // string
+        ЖурналВыгрузокИзFoxPro.AddParam("time_work", new Guid("a0bd05d3-d698-482b-b19d-8abfbfe0bd09")); //int
+        ЖурналВыгрузокИзFoxPro.AddParam("count_object", new Guid("e5223c20-f2e5-4726-9f31-b14605bf71dd")); //int
+        ЖурналВыгрузокИзFoxPro.AddParam("count_error", new Guid("9d79c7c8-3870-4feb-b301-a53a9bbe9b13")); //int
         ЖурналВыгрузокИзFoxPro.AddLink("Файл выгрузки", new Guid("422ae8ea-318b-4973-b4fd-e9732eb331cf")); // string
-                                                                                                                            
-                                                                                                                           
-                                                                                                                                
-                                                                                                                                                
+        
+
+
+
 
 
         // Справочник "Список номенклатуры FoxPro"
@@ -133,7 +136,7 @@ public class Macro : MacroProvider
     }
 
     public override void Run() {
-     
+        
         // Производим загрузку всей необходимой информации
         Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
         Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
@@ -141,7 +144,7 @@ public class Macro : MacroProvider
         // Запрашиваем у пользователя перечень изделий, по которым нужно произвести выгрузку
         List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
         //Test(изделияДляВыгрузки[0]);
-
+        log_save_ref.timeStart = DateTime.Now;
         ///*
         // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
         HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(номенклатура, подключения, изделияДляВыгрузки);
@@ -151,8 +154,10 @@ public class Macro : MacroProvider
 
         // Производим соединение созданных ДСЕ в иерархию при помощи подключений
         ConnectCreatedObjects(созданныеДСЕ, подключения);
-        //*/
+        //*/       
+        
         SaveLogtoRef(изделияДляВыгрузки);
+
         Message("Информация", "Работа макроса завершена");
     }
 
@@ -163,10 +168,14 @@ public class Macro : MacroProvider
     {
         log_save_ref.getparam(ЖурналВыгрузокИзFoxPro);
         log_save_ref.Shifr_izd = String.Join("\n",изделияДляВыгрузки);
+        int second_work = (log_save_ref.timeStop - log_save_ref.timeStart).Seconds;
         var createdClassObject = ЖурналВыгрузокИзFoxPro.Ref.Classes.Find("Журнал выгрузок из FoxPro");
         ReferenceObject refereceObject = ЖурналВыгрузокИзFoxPro.Ref.CreateReferenceObject(createdClassObject);
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["number"]].Value = log_save_ref.Number + 1;
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["shifrIzd"]].Value = log_save_ref.Shifr_izd;
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["time_work"]].Value = second_work;
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["count_object"]].Value = log_save_ref.count_object;
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["count_error"]].Value = log_save_ref.count_error;
         LoadFilesLog(refereceObject);
         refereceObject.EndChanges();
     }
@@ -469,8 +478,10 @@ public class Macro : MacroProvider
                 $"Возникли ошибки в процессе обработки - {countErrors.ToString()} шт\n";
 
         // Получаем текст всех ошибок, которые были перехвачены
-                                                                                                                               
-                                                                                                   
+        log_save_ref.count_error = countErrors;
+        log_save_ref.count_object = nomenclature.Count;
+        log_save_ref.timeStop = DateTime.Now;
+
         string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
                                    
                                                                                                                                                                                                       
@@ -1554,12 +1565,16 @@ public class Macro : MacroProvider
         }
     }
 
-        public class Log
+    public class Log
     {
         public int Number { get; private set; }
         public string Shifr_izd { get; set; }
         public string file_name_tree { get; set; }
         public string file_name_error_log { get; set; }
+        public DateTime timeStart { get; set; }
+        public DateTime timeStop { get; set; }
+        public int count_object { get; set; }
+        public int count_error { get; set; }
 
 
         public void getparam(RefGuidData refdata)
