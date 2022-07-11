@@ -54,6 +54,7 @@ public class Macro : MacroProvider
         ЖурналВыгрузокИзFoxPro.AddParam("time_work", new Guid("a0bd05d3-d698-482b-b19d-8abfbfe0bd09")); //int
         ЖурналВыгрузокИзFoxPro.AddParam("count_object", new Guid("e5223c20-f2e5-4726-9f31-b14605bf71dd")); //int
         ЖурналВыгрузокИзFoxPro.AddParam("count_error", new Guid("9d79c7c8-3870-4feb-b301-a53a9bbe9b13")); //int
+        ЖурналВыгрузокИзFoxPro.AddParam("create_object", new Guid("2e355047-8b38-4995-bfe8-b7a15c54f0f2")); //int
         ЖурналВыгрузокИзFoxPro.AddLink("Файл выгрузки", new Guid("422ae8ea-318b-4973-b4fd-e9732eb331cf")); // string
         
 
@@ -168,7 +169,7 @@ public class Macro : MacroProvider
     {
         log_save_ref.getparam(ЖурналВыгрузокИзFoxPro);
         log_save_ref.Shifr_izd = String.Join("\n",изделияДляВыгрузки);
-        int second_work = (log_save_ref.timeStop - log_save_ref.timeStart).Seconds;
+        int second_work = ((log_save_ref.timeStop - log_save_ref.timeStart).Hours * 60 * 60) + ((log_save_ref.timeStop - log_save_ref.timeStart).Minutes * 60) + (log_save_ref.timeStop - log_save_ref.timeStart).Seconds;
         var createdClassObject = ЖурналВыгрузокИзFoxPro.Ref.Classes.Find("Журнал выгрузок из FoxPro");
         ReferenceObject refereceObject = ЖурналВыгрузокИзFoxPro.Ref.CreateReferenceObject(createdClassObject);
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["number"]].Value = log_save_ref.Number + 1;
@@ -176,6 +177,7 @@ public class Macro : MacroProvider
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["time_work"]].Value = second_work;
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["count_object"]].Value = log_save_ref.count_object;
         refereceObject[ЖурналВыгрузокИзFoxPro.Params["count_error"]].Value = log_save_ref.count_error;
+        refereceObject[ЖурналВыгрузокИзFoxPro.Params["create_object"]].Value = log_save_ref.create_object;
         LoadFilesLog(refereceObject);
         refereceObject.EndChanges();
     }
@@ -480,6 +482,7 @@ public class Macro : MacroProvider
         // Получаем текст всех ошибок, которые были перехвачены
         log_save_ref.count_error = countErrors;
         log_save_ref.count_object = nomenclature.Count;
+        log_save_ref.create_object = countStage4;
         log_save_ref.timeStop = DateTime.Now;
 
         string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
@@ -1574,7 +1577,9 @@ public class Macro : MacroProvider
         public DateTime timeStart { get; set; }
         public DateTime timeStop { get; set; }
         public int count_object { get; set; }
+        public int create_object { get; set; }
         public int count_error { get; set; }
+        
 
 
         public void getparam(RefGuidData refdata)
