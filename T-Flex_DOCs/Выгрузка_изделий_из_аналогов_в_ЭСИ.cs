@@ -435,7 +435,7 @@ public class Macro : MacroProvider
             // Получаем обозначение текущего объекта и его тип
             ReferenceObject resultObject;
             string nomDesignation = (string)nom[СписокНоменклатуры.Params["Обозначение"]].Value; // обозначение
-            TypeOfObject nomType = DefineTypeOfObject(nom); // тип
+            TypeOfObject nomType = GetTypeOfObjectFrom(nom); // тип
             // Пишем информацию в лог
             messages.Add(new String('-', 30));
             messages.Add($"{nomDesignation}:");
@@ -535,7 +535,7 @@ public class Macro : MacroProvider
     private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
     {
         RefGuidData referData = GetRefGuidDataFrom(resultObject);
-        TypeOfObject esiType = DefineTypeOfObject(resultObject); // тип
+        TypeOfObject esiType = GetTypeOfObjectFrom(resultObject); // тип
        
         var obozEsi = resultObject[referData.Params["Обозначение"]].Value.ToString();
 
@@ -758,7 +758,7 @@ public class Macro : MacroProvider
         string nomTip;
         try {
          
-            nomTip = getTypeString(type);
+            nomTip = GetStringFrom(type);
         }
         catch {
          
@@ -796,7 +796,7 @@ public class Macro : MacroProvider
     /// Метод для преобразования перечисления TypeOfObject в его строковое представление, понятное DOCs
     /// На вход принимает объект TypeOfObject, текстовую репрезентакию которого необходимо получить, на выходе - строку
     /// </summary>
-    private string getTypeString(TypeOfObject type)
+    private string GetStringFrom(TypeOfObject type)
     {
 
         switch (type)
@@ -837,7 +837,7 @@ public class Macro : MacroProvider
         try
         {
             var type = nom[СписокНоменклатуры.Params["Тип номенклатуры"]].Value.ToString();
-            //string nomTip = getTypeString(type);
+            //string nomTip = GetStringFrom(type);
             var refName = refname.Ref;
             var createdClassObject = refName.Classes.Find(classObjectName);
             ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
@@ -929,12 +929,12 @@ public class Macro : MacroProvider
                                         
         };
 
-        if (!supportedReferences.Contains(DefineTypeOfReference(findedObject)))
+        if (!supportedReferences.Contains(GetTypeOfReferenceFrom(findedObject)))
             throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
 
         // Определяем указанный тип и тип найденной записи
-        TypeOfObject typeOfNom = DefineTypeOfObject(nomenclatureRecord);
-        TypeOfObject typeOfFinded = DefineTypeOfObject(findedObject);
+        TypeOfObject typeOfNom = GetTypeOfObjectFrom(nomenclatureRecord);
+        TypeOfObject typeOfFinded = GetTypeOfObjectFrom(findedObject);
 
         // Если типы не соответствуют друг другу, пытаемся привести их в соответствие
         if (typeOfNom != typeOfFinded) {
@@ -947,7 +947,7 @@ public class Macro : MacroProvider
             if ((typeOfNom == TypeOfObject.НеОпределено) || (typeOfNom == TypeOfObject.Другое)) {
              
                 nomenclatureRecord.BeginChanges();
-                nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = DefineIntFromTypeObject(typeOfFinded);
+                nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(typeOfFinded);
                 nomenclatureRecord.EndChanges();
                 messages.Add($"Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'");
                 return;
@@ -968,7 +968,7 @@ public class Macro : MacroProvider
                         if (castObject != null) {
                          
                             castObject.CheckOut();
-                            findedObject = castObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, castObject.Reference));
+                            findedObject = castObject.BeginChanges(GetClassFrom(typeOfNom, castObject.Reference));
                             findedObject.EndChanges();
                             if (findedObject == null)
                                 throw new Exception("Возникла ошибка в процессе смены типа объекта");
@@ -976,7 +976,7 @@ public class Macro : MacroProvider
                         else {
                          
                             findedObject.CheckOut();
-                            findedObject = findedObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, findedObject.Reference));
+                            findedObject = findedObject.BeginChanges(GetClassFrom(typeOfNom, findedObject.Reference));
                             findedObject.EndChanges();
                         }
                     }
@@ -1031,11 +1031,11 @@ public class Macro : MacroProvider
     /// </summary>
     private ReferenceObject MoveObjectToAnotherReference(ReferenceObject initialObject, TypeOfObject targetType) {
         // Получаем информацию о типах справочников, которые будут использоваться в текущем вызове функции
-        TypeOfReference initialReference = DefineTypeOfReference(initialObject);
-        TypeOfReference targetReference = DefineTypeOfReference(targetType);
+        TypeOfReference initialReference = GetTypeOfReferenceFrom(initialObject);
+        TypeOfReference targetReference = GetTypeOfReferenceFrom(targetType);
 
         // Получаем информацию о типе исходного объекта
-        TypeOfObject initialType = DefineTypeOfObject(initialObject);
+        TypeOfObject initialType = GetTypeOfObjectFrom(initialObject);
 
         // -- Начало верификации --
         // Проверяем корректность переданного initialObject. Он должен принадлежать к ЭСИ, или исходным справочникам
@@ -1054,7 +1054,7 @@ public class Macro : MacroProvider
                     );
 
         // Проверяем, что начальные справочники исходного объекта и типа назначения - разные
-        TypeOfReference initialObjectSourceReference = DefineTypeOfReference(DefineTypeOfObject(initialObject));
+        TypeOfReference initialObjectSourceReference = GetTypeOfReferenceFrom(GetTypeOfObjectFrom(initialObject));
         if (targetReference == initialObjectSourceReference) {
             throw new Exception(
                     "Ошибка при попытке изменения типа.\n" +
@@ -1109,7 +1109,7 @@ public class Macro : MacroProvider
 
         // -- Начало пересоздания объекта
         // Создаем новый объект
-        ReferenceObject newObject = targetRefGuidData.Ref.CreateReferenceObject(DefineClassFromTypeObject(targetType, targetRefGuidData.Ref));
+        ReferenceObject newObject = targetRefGuidData.Ref.CreateReferenceObject(GetClassFrom(targetType, targetRefGuidData.Ref));
 
         newObject[targetRefGuidData.Params["Наименование"]].Value = name;
         
@@ -1228,8 +1228,8 @@ public class Macro : MacroProvider
     /// Список номенклатуры FoxPro, ЭСИ, Документы, Материалы, Электронные компоненты
     /// Если в метод передается объект другого справочника, выдается ошибка
     /// </summary>
-    private TypeOfObject DefineTypeOfObject(ReferenceObject nomenclature) {
-        TypeOfReference refType = DefineTypeOfReference(nomenclature);
+    private TypeOfObject GetTypeOfObjectFrom(ReferenceObject nomenclature) {
+        TypeOfReference refType = GetTypeOfReferenceFrom(nomenclature);
                                                        
 
         // Разбираем случай, если в метод был передан объект справочника 'Список номенклатуры FoxPro'
@@ -1266,7 +1266,7 @@ public class Macro : MacroProvider
             }
         }
 
-        throw new Exception($"Метод '{nameof(DefineTypeOfObject)}' не работает с объектами справочника '{nomenclature.Reference.Name}'");
+        throw new Exception($"Метод '{nameof(GetTypeOfObjectFrom)}' не работает с объектами справочника '{nomenclature.Reference.Name}'");
     }
 
     /// <summary>
@@ -1275,7 +1275,7 @@ public class Macro : MacroProvider
     /// type - перечисление TypeOfObject, которое необходимо конвертировать в соответствующее число.
     /// На выход поступает его цифровое представление.
     /// </summary>
-    private int DefineIntFromTypeObject(TypeOfObject type) {
+    private int GetIntFrom(TypeOfObject type) {
      
         return (int)type;
     }
@@ -1287,7 +1287,7 @@ public class Macro : MacroProvider
     /// reference - справочник, в котором нужно производить поиск соответствующего типа
     /// На выход поступает найденный объект ClassObject. Если объект не удалось найти, выбрасывается сообщение об ошибке.
     /// </summary>
-    private ClassObject DefineClassFromTypeObject(TypeOfObject type, Reference reference) {
+    private ClassObject GetClassFrom(TypeOfObject type, Reference reference) {
      
         ClassObject result = null;
         switch (type) {
@@ -1335,7 +1335,7 @@ public class Macro : MacroProvider
     /// <summary>
     /// Функция для определения типа справочника из переданного объета ReferenceObject
     /// </summary>
-    private TypeOfReference DefineTypeOfReference(ReferenceObject referenceObject) {
+    private TypeOfReference GetTypeOfReferenceFrom(ReferenceObject referenceObject) {
      
         switch (referenceObject.Reference.Name.ToLower()) {
          
@@ -1365,7 +1365,7 @@ public class Macro : MacroProvider
     /// Аргументы:
     /// type - тип объекта, из которого нужно определить тип справочника
     /// </summary>
-    private TypeOfReference DefineTypeOfReference(TypeOfObject type) {
+    private TypeOfReference GetTypeOfReferenceFrom(TypeOfObject type) {
         switch (type) {
             case TypeOfObject.Материал:
                 return TypeOfReference.Материалы;
@@ -1379,7 +1379,7 @@ public class Macro : MacroProvider
             case TypeOfObject.Другое:
                 return TypeOfReference.Документы;
             default:
-                throw new Exception($"Метод {nameof(DefineTypeOfReference)} не предназначен для работы с '{type.ToString()}'");
+                throw new Exception($"Метод {nameof(GetTypeOfReferenceFrom)} не предназначен для работы с '{type.ToString()}'");
         }
     }
 
@@ -1415,14 +1415,14 @@ public class Macro : MacroProvider
     /// <summary>
     /// Перегрузка метода GetRefGuidDataFrom, реализованная для получения типа RefGuidData из типа текущего объекта.
     /// Особое внимание стоит обратить на то, что данный метод возвращает только исходные справочники типов, т.е.
-    /// он не будет возвращать справочник ЭСИ, или справочники, которые не относятся к типам DefineTypeOfObject
+    /// он не будет возвращать справочник ЭСИ, или справочники, которые не относятся к типам GetTypeOfObjectFrom
     /// (к примеру 'Подключения' или 'Список номенклатуры FoxPro')
     ///
     /// Аргументы:
     /// type - тип объекта, из которого нужно вывести объект RefGuidData
     /// </summary>
     private RefGuidData GetRefGuidDataFrom(TypeOfObject type) {
-        return GetRefGuidDataFrom(DefineTypeOfReference(type));
+        return GetRefGuidDataFrom(GetTypeOfReferenceFrom(type));
     }
 
     /// <summary>
@@ -1430,7 +1430,7 @@ public class Macro : MacroProvider
     /// </summary>
     private RefGuidData GetRefGuidDataFrom(ReferenceObject referenceObject) {
      
-        return GetRefGuidDataFrom(DefineTypeOfReference(referenceObject));
+        return GetRefGuidDataFrom(GetTypeOfReferenceFrom(referenceObject));
     }
 
     // Интерфейсы
