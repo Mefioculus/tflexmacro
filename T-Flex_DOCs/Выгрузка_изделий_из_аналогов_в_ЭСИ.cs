@@ -1130,33 +1130,31 @@ public class Macro : MacroProvider
             // Завершаем перенос родительских подключений
             List<string> errors = new List<string>();
             foreach (HLinkTransferData linkData in parentLinks) {
-                ComplexHierarchyLink newLink = newNomObject.CreateParentLink(linkData.LinkedObject);
-                foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters) {
-                    try {
+                try {
+                    ComplexHierarchyLink newLink = newNomObject.CreateParentLink(linkData.LinkedObject);
+                    foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters)
                         newLink[kvp.Key].Value = kvp.Value;
-                    }
-                    catch (Exception e) {
-                        errors.Add($"ошибка заполнения параметра '{kvp.Key}' ({e.Message})");
-                    }
+                    newLink.EndChanges();
                 }
-                newLink.EndChanges();
+                catch (Exception e) {
+                    errors.Add($"ошибка подключения к родительскому объекту ({e.Message})");
+                }
             }
             // Завершаем перенос дочерних подключений
             foreach (HLinkTransferData linkData in childLinks) {
-                ComplexHierarchyLink newLink = newNomObject.CreateChildLink(linkData.LinkedObject);
-                foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters) {
-                    try {
+                try {
+                    ComplexHierarchyLink newLink = newNomObject.CreateChildLink(linkData.LinkedObject);
+                    foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters)
                         newLink[kvp.Key].Value = kvp.Value;
-                    }
-                    catch (Exception e) {
-                        errors.Add($"ошибка заполнения параметра '{kvp.Key}' ({e.Message})");
-                    }
+                    newLink.EndChanges();
                 }
-                newLink.EndChanges();
+                catch (Exception e) {
+                    errors.Add($"ошибка подключения к дочернему объекту ({e.Message})");
+                }
             }
 
             if (errors.Count != 0)
-                Message("Информация", $"Ошибки в процессе подключения связей:\n{string.Join("\n", errors)}");
+                Message("Предупреждение", $"В процессе изменения типа объекта {designation} возникли ошибки. Часть данных было утрачено в процессе:\n{string.Join("\n", errors)}");
 
             Desktop.CheckIn(newNomObject, "Создание номенклатурного объекта при смене типа", false);
             newObject = newNomObject as ReferenceObject;
