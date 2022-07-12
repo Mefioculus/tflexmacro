@@ -4,10 +4,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Macros;
 using TFlex.DOCs.Model.References;
+using TFlex.DOCs.Model.Parameters;
 using TFlex.DOCs.Model.Macros.ObjectModel;
-using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.Structure;
 using TFlex.DOCs.Model.Search;
@@ -72,9 +73,18 @@ public class Macro : MacroProvider
         ЭСИ = new RefGuidData(Context, new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"));
         // Параметры
         ЭСИ.AddParam("Обозначение", new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")); // string
+        ЭСИ.AddParam("Наименование", new Guid("45e0d244-55f3-4091-869c-fcf0bb643765")); // string
         ЭСИ.AddParam("Код ОКП", new Guid("b39cc740-93cc-476d-bfed-114fe9b0740c")); // string
         // Типы
         ЭСИ.AddType("Материальный объект", new Guid("0ba28451-fb4d-47d0-b8f6-af0967468959"));
+        // Параметры подключений
+        ЭСИ.AddHlink("Количество", new Guid("3f5fc6c8-d1bf-4c3d-b7ff-f3e636603818")); // double
+        ЭСИ.AddHlink("Позиция", new Guid("ab34ef56-6c68-4e23-a532-dead399b2f2e")); // int
+        ЭСИ.AddHlink("Возвратные отходы", new Guid("a750a217-32f2-4438-bb32-60a547da50df")); // double
+        ЭСИ.AddHlink("Потери", new Guid("3245305b-d5b6-419c-ad4d-17b317357272")); // double
+        ЭСИ.AddHlink("Чистый вес", new Guid("67732ea3-d9a3-448f-bdf9-6b2dee0c2403")); // double
+        ЭСИ.AddHlink("Площадь покрытия", new Guid("45df5f0b-dc53-494c-ae2e-54dfb8d64bd9")); // double
+        ЭСИ.AddHlink("Толщина покрытия", new Guid("c024de94-d58c-4a15-b9a9-ccb2e57b246e")); // double
 
         // Справочник "Документы"
         Документы = new RefGuidData(Context, new Guid("ac46ca13-6649-4bbb-87d5-e7d570783f26"));
@@ -147,6 +157,15 @@ public class Macro : MacroProvider
         //var num = mat.GetLinkedNomenclatureObject();
 
         //ConnectRefObjectToESI(result[0]);
+    }
+
+    /// <summary>
+    /// Метод для проведения тестирования
+    /// </summary>
+    public void TestGukov() {
+        //ReferenceObject currentObject = Context.ReferenceObject;
+        ReferenceObject currentObject = ЭСИ.Ref.Find(new Guid("ae6e8d15-cec5-4849-aee5-f5ffd8c80b56")); 
+        MoveObjectToAnotherReference(currentObject, TypeOfObject.Материал);
     }
 
     /// <summary>
@@ -828,11 +847,15 @@ public class Macro : MacroProvider
                     try {
                         if (castObject != null) {
                             castObject.CheckOut();
-                            castObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, castObject.Reference));
+                            findedObject = castObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, castObject.Reference));
+                            findedObject.EndChanges();
+                            if (findedObject == null)
+                                throw new Exception("Возникла ошибка в процессе смены типа объекта");
                         }
                         else {
                             findedObject.CheckOut();
-                            findedObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, findedObject.Reference));
+                            findedObject = findedObject.BeginChanges(DefineClassFromTypeObject(typeOfNom, findedObject.Reference));
+                            findedObject.EndChanges();
                         }
                     }
                     catch (Exception e) {
@@ -887,6 +910,9 @@ public class Macro : MacroProvider
         TypeOfReference initialReference = DefineTypeOfReference(initialObject);
         TypeOfReference targetReference = DefineTypeOfReference(targetType);
 
+        // Получаем информацию о типе исходного объекта
+        TypeOfObject initialType = DefineTypeOfObject(initialObject);
+
         // -- Начало верификации --
         // Проверяем корректность переданного initialObject. Он должен принадлежать к ЭСИ, или исходным справочникам
         List<TypeOfReference> supportedReferences = new List<TypeOfReference>() {
@@ -903,22 +929,124 @@ public class Macro : MacroProvider
                     $"В метод передан объект '{initialObject.ToString()}', который относится к справочнику '{initialObject.Reference.Name}'."
                     );
 
-        // Проверяем, что исходный справочник и справочник назначения - это разные справочники
-        if (initialReference == targetReference)
+        // Проверяем, что начальные справочники исходного объекта и типа назначения - разные
+        TypeOfReference initialObjectSourceReference = DefineTypeOfReference(DefineTypeOfObject(initialObject));
+        if (targetReference == initialObjectSourceReference) {
             throw new Exception(
                     "Ошибка при попытке изменения типа.\n" +
                     $"Метод {nameof(MoveObjectToAnotherReference)} работает только с объектами разных исходных справочников" +
-                    $"В метод передан объект '{initialObject.ToString()}' с исходным справочником '{initialReference.ToString()}' для перемещения в справочник '{targetReference.ToString()}'."
+                    $"В метод передан объект '{initialObject.ToString()}' с исходным справочником '{initialObjectSourceReference.ToString()}' для перемещения в справочник '{targetReference.ToString()}'."
                     );
+        }
         // -- Окончание верификации --
         
         // -- Начало сбора исходной информации --
+        // Получаем RefGuidData для исходного справочника и справочника назначения
+        RefGuidData initialRefGuidData = GetRefGuidDataFrom(initialObject);
+        RefGuidData targetRefGuidData = GetRefGuidDataFrom(targetReference);
+
+        // Копируем основные параметры номенклатурного объекта
+        object designation = initialObject[initialRefGuidData.Params["Обозначение"]].Value; // Обозначение
+        object name = initialObject[initialRefGuidData.Params["Наименование"]].Value; // Наименование
+        object okp = initialObject[initialRefGuidData.Params["Код ОКП"]].Value; // Код ОКП
+
+        List<HLinkTransferData> parentLinks = null;
+        List<HLinkTransferData> childLinks = null;
+        // Если переданный объект - объект справочника ЭСИ, то так же производим копирование подключений
+        if (initialReference == TypeOfReference.ЭСИ) {
+            // Получаем информацию о всех родительских подключениях
+            parentLinks = new List<HLinkTransferData>();
+            foreach (ComplexHierarchyLink link in initialObject.Parents.GetHierarchyLinks()) {
+                HLinkTransferData linkData = new HLinkTransferData();
+                linkData.LinkedObject = link.ParentObject;
+
+                foreach (Parameter param in link) {
+                    if (!param.IsReadOnly)
+                        linkData.Parameters.Add(param.ParameterInfo.Guid, param.Value);
+                }
+                parentLinks.Add(linkData);
+            }
+
+            // Получаем информацию о всех дочерних подключениях
+            childLinks = new List<HLinkTransferData>();
+            foreach (ComplexHierarchyLink link in initialObject.Children.GetHierarchyLinks()) {
+                HLinkTransferData linkData = new HLinkTransferData();
+                linkData.LinkedObject = link.ChildObject;
+
+                foreach (Parameter param in link) {
+                    if (!param.IsReadOnly)
+                        linkData.Parameters.Add(param.ParameterInfo.Guid, param.Value);
+                }
+                childLinks.Add(linkData);
+            }
+        }
+
         // -- Окончание сбора исходной информации --
 
         // -- Начало пересоздания объекта
-        // -- Окончание пересоздания объекта
-        return initialObject;
+        // Создаем новый объект
+        ReferenceObject newObject = targetRefGuidData.Ref.CreateReferenceObject(DefineClassFromTypeObject(targetType, targetRefGuidData.Ref));
 
+        newObject[targetRefGuidData.Params["Наименование"]].Value = name;
+        
+        // Производим проверку на то, не сменилось ли место расположения поля SHIFR у нового типа
+        bool needSwap = IsShifrOKP(initialType) == IsShifrOKP(initialType);
+        newObject[targetRefGuidData.Params["Обозначение"]].Value = needSwap ?  okp : designation;
+        newObject[targetRefGuidData.Params["Код ОКП"]].Value = needSwap ? designation : okp;
+
+        newObject.EndChanges();
+        Desktop.CheckIn(newObject, "Создание объекта при смене типа", false);
+
+
+
+        if (initialReference == TypeOfReference.ЭСИ) {
+            // Производим создание нового номенклатурного объекта
+            NomenclatureObject newNomObject = ((NomenclatureReference)initialRefGuidData.Ref).CreateNomenclatureObject(newObject);
+            // Переносим на объект подключения со старого объекта
+            // Завершаем перенос родительских подключений
+            List<string> errors = new List<string>();
+            foreach (HLinkTransferData linkData in parentLinks) {
+                ComplexHierarchyLink newLink = newNomObject.CreateParentLink(linkData.LinkedObject);
+                foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters) {
+                    try {
+                        newLink[kvp.Key].Value = kvp.Value;
+                    }
+                    catch (Exception e) {
+                        errors.Add($"ошибка заполнения параметра '{kvp.Key}' ({e.Message})");
+                    }
+                }
+                newLink.EndChanges();
+            }
+            // Завершаем перенос дочерних подключений
+            foreach (HLinkTransferData linkData in childLinks) {
+                ComplexHierarchyLink newLink = newNomObject.CreateChildLink(linkData.LinkedObject);
+                foreach (KeyValuePair<Guid, object> kvp in linkData.Parameters) {
+                    try {
+                        newLink[kvp.Key].Value = kvp.Value;
+                    }
+                    catch (Exception e) {
+                        errors.Add($"ошибка заполнения параметра '{kvp.Key}' ({e.Message})");
+                    }
+                }
+                newLink.EndChanges();
+            }
+
+            if (errors.Count != 0)
+                Message("Информация", $"Ошибки в процессе подключения связей:\n{string.Join("\n", errors)}");
+
+            Desktop.CheckIn(newNomObject, "Создание номенклатурного объекта при смене типа", false);
+            newObject = newNomObject as ReferenceObject;
+        }
+
+        if (newObject == null)
+            throw new Exception($"При выполнении метода {nameof(MoveObjectToAnotherReference)} возникла ошибка. Переменная 'newObject' содержит null");
+
+        // Производим удаление объекта в момент, когда новый объект полностью создан
+        initialObject.CheckOut(true); // Берем объект на изменение с целью удаления
+        Desktop.CheckIn(initialObject, "Удаление объекта при смене типа", false); // Применение удаления объекта
+        Desktop.ClearRecycleBin(initialObject);
+
+        return newObject;
     }
 
 
@@ -935,6 +1063,38 @@ public class Macro : MacroProvider
         // - Анализ полученных объектов (у них уже могут быть связи, так как там будут и найденные позиции)
         // - Создание/Корректировка/Удаление связей при необходимости
         // - Вывод лога о всех произведенных действиях
+    }
+
+    /// <summary>
+    /// Метод для определения, относиться ли данный тип объекта к объекту, у которого SHIFR - Код ОКП
+    /// Аргументы:
+    /// type - тип проверяемого объекта
+    /// </summary>
+    private bool IsShifrOKP(TypeOfObject type) {
+        switch(type) {
+            case TypeOfObject.Материал:
+            case TypeOfObject.ЭлектронныйКомпонент:
+            case TypeOfObject.СтандартноеИзделие:
+                return true;
+            case TypeOfObject.Изделие:
+            case TypeOfObject.Деталь:
+            case TypeOfObject.СборочнаяЕдиница:
+            case TypeOfObject.ПрочееИзделие:
+            case TypeOfObject.Другое:
+                return false;
+            default:
+                throw new Exception($"Функция '{nameof(IsShifrOKP)}' не предназначена для обработки типа {type.ToString()}");
+        }
+
+    }
+
+    /// <summary>
+    /// Метод для определения, относится ли данный тип объекта к объекту, у которого SHIFR - обозначение
+    /// Аргументы:
+    /// type - тип проверяемого объекта
+    /// </summary>
+    private bool IsShifrDesignation(TypeOfObject type) {
+        return !IsShifrOKP(type);
     }
 
     /// <summary>
@@ -1337,6 +1497,7 @@ public class Macro : MacroProvider
         public Container Types { get; private set; }
         public Container Params { get; private set; }
         public Container Links { get; private set; }
+        public Container Hlinks { get; private set; }
         public Container Objects { get; private set; }
 
         // Конструктор
@@ -1352,6 +1513,7 @@ public class Macro : MacroProvider
             this.Types = new Container(this, "Types");
             this.Params = new Container(this, "Params");
             this.Links = new Container(this, "Links");
+            this.Hlinks = new Container(this, "Hlinks");
             this.Objects = new Container(this, "Objects");
         }
 
@@ -1361,6 +1523,9 @@ public class Macro : MacroProvider
 
         public void AddLink(string name, Guid guid) =>
             this.Links.Add(name, guid);
+
+        public void AddHlink(string name, Guid guid) =>
+            this.Hlinks.Add(name, guid);
 
         public void AddParam(string name, Guid guid) =>
             this.Params.Add(name, guid);
@@ -1405,4 +1570,8 @@ public class Macro : MacroProvider
         }
     }
 
+    public class HLinkTransferData {
+        public ReferenceObject LinkedObject { get; set; } = null;
+        public Dictionary<Guid, object> Parameters { get; set; } = new Dictionary<Guid, object>();
+    }
 }
