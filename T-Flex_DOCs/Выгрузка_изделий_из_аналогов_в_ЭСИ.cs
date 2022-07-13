@@ -448,36 +448,36 @@ public class Macro : MacroProvider
                 // СТАДИЯ 1: Пытаемся получить объект по связи на справочник ЭСИ
                 resultObject = ProcessFirstStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
-                 
-                    result.Add(resultObject);
-                    countStage1 += 1;
+                    CheckAndLink(nom, resultObject, messages); // Подключаем объект к списку номенклатуры
+                    result.Add(resultObject); // Добавляем объект в результат
+                    countStage1 += 1; // Обновляем счетчик успешного выполнения стадии
                     continue;
                 }
 
                 // СТАДИЯ 2: Пытаемся найти объект в справочнике ЭСИ
                 resultObject = ProcessSecondStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
-                 
-                    result.Add(resultObject);
-                    countStage2 += 1;
+                    CheckAndLink(nom, resultObject, messages); // Подключаем объект к списку номенклатуры
+                    result.Add(resultObject); // Добавляем объект в результат
+                    countStage2 += 1; // Обновляем счетчик успешного выполнения стадии
                     continue;
                 }
 
                 // СТАДИЯ 3: Пытаемся найти объект в смежных справочниках
                 resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
-                 
-                    result.Add(resultObject);
-                    countStage3 += 1;
+                    CheckAndLink(nom, resultObject, messages); // Подключаем объект к списку номенклатуры
+                    result.Add(resultObject); // Добавляем объект в результат
+                    countStage3 += 1; // Обновляем счетчик успешного выполнения стадии
                     continue;
                 }
 
                 // СТАДИЯ 4: Создаем объект исходя из того, какой был определен тип в справочнике "Список номенклатуры FoxPro"
                 resultObject = ProcessFinalStageFindOrCreate(nom, nomDesignation, nomType, messages);
                 if (resultObject != null) {
-                 
-                    countStage4 += 1;
-                    result.Add(resultObject);
+                    CheckAndLink(nom, resultObject, messages); // Подключаем объект к списку номенклатуры
+                    result.Add(resultObject); // Добавляем объект в результат
+                    countStage4 += 1; // Обновляем счетчик успешного выполнения стадии
                 }
             }
             catch (Exception e) {
@@ -648,10 +648,12 @@ public class Macro : MacroProvider
             messages.Add("Объект найден в ЭСИ");
             SyncronizeTypes(nom, findedObjects[0], messages);
             ReferenceObject resultObject = MoveShifrToOKP(findedObjects[0], designation, messages);
+            /*
             // Производим привязываение объекта к "Списку номенклатуры FoxPro"
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], resultObject);
             nom.EndChanges();
+            */
             // Возвращаем результат
             return resultObject;
         }
@@ -793,6 +795,47 @@ public class Macro : MacroProvider
     }
 
     /// <summary>
+    /// Метод для проверки подключения данного объекта к соответствующей записи в справочнике 'Список номенклатуры FoxPro'
+    /// Аргументы:
+    /// nom - объект справочника 'Список номенклатуры FoxPro'
+    /// findedOrCreated - объект справочника 'ЭСИ' который необходимо подключить к 'Списку номенклатуры'
+    /// </summary>
+    private void CheckAndLink(ReferenceObject nom, ReferenceObject findedOrCreated, List<string> messages) {
+        // -- Начало верификации информации
+
+        // Проверяем корректность объекта nom
+        if (GetTypeOfReferenceFrom(nom) != TypeOfReference.СписокНоменклатуры)
+            throw new Exception(
+                    $"Ошибка в процессе работы метода '{nameof(CheckAndLink)}':\n" +
+                    $"объект, переданный в качестве аргумента '{nameof(nom)}' должен принадлежать справочнику 'Список номенклатуры FoxPro'" +
+                    $"(передан: {GetTypeOfReferenceFrom(nom).ToString()})"
+                    );
+        
+        // Проверяем корректность объекта findedOrCreated
+        if (GetTypeOfReferenceFrom(findedOrCreated) != TypeOfReference.ЭСИ)
+            throw new Exception(
+                    $"Ошибка в процессе работы метода '{nameof(CheckAndLink)}':\n" +
+                    $"объект, переданный в качестве аргумента '{nameof(findedOrCreated)}' должен принадлежать справочнику 'ЭСИ' " +
+                    $"(передан: {GetTypeOfReferenceFrom(findedOrCreated).ToString()})"
+                    );
+
+        // Проверяем, что данный объект уже не подключен
+        ReferenceObject linkedObject = nom.GetObject(СписокНоменклатуры.Links["Связь на ЭСИ"]);
+        if ((linkedObject != null) && (linkedObject.Guid == findedOrCreated.Guid)) {
+            messages.Add("Подключение объекта к 'Списку номенклатуры FoxPro' не потребовалось");
+            return;
+        }
+        // -- Конец верификации информации
+
+        // -- Начало подключения объекта
+        findedOrCreated.BeginChanges();
+        findedOrCreated.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], nom);
+        findedOrCreated.EndChanges();
+        messages.Add("Произведено подключение объекта к 'Списку номенклатуры FoxPro'");
+        // -- Конец подключения объекта
+    }
+
+    /// <summary>
     /// Метод для преобразования перечисления TypeOfObject в его строковое представление, понятное DOCs
     /// На вход принимает объект TypeOfObject, текстовую репрезентакию которого необходимо получить, на выходе - строку
     /// </summary>
@@ -887,6 +930,7 @@ public class Macro : MacroProvider
                 .Find(СписокНоменклатуры.Params["Обозначение"], designation);
 
             // связываем объект списка номенклатуры с объектом ЭСИ
+            /*
             if (findedObjectInSpisokNom != null)
             {
                 var firstFindObj = findedObjectInSpisokNom.First();
@@ -894,6 +938,7 @@ public class Macro : MacroProvider
                 firstFindObj.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], newNomenclature);
                 firstFindObj.EndChanges();
             }
+            */
             return newNomenclature;
         }
         catch (Exception e)
