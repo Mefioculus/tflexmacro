@@ -173,6 +173,43 @@ public class Macro : MacroProvider
     }
 
     /// <summary>
+    /// Создает каждого объекта в списке создает отдельный лог.
+    /// </summary>
+    public void RunOne()
+    {
+        
+        // Производим загрузку всей необходимой информации
+        Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
+        Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
+
+        // Запрашиваем у пользователя перечень изделий, по которым нужно произвести выгрузку
+        List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
+        //Test(изделияДляВыгрузки[0]);
+        //log_save_ref.messageOff = true;
+        log_save_ref.timeStart = DateTime.Now;
+        ///*
+        foreach (var изделиеПоОдному in изделияДляВыгрузки)
+        {
+            log_save_ref.timeStart = DateTime.Now;
+
+            List<string> изделиеВыгружаемое = new List<string>() { изделиеПоОдному };
+            SetNameOfExport(изделиеВыгружаемое);
+            // Определяем позиции справочника "Список номенклатуры FoxPro", которые необходимо обрабатывать во время выгрузки
+            HashSet<ReferenceObject> номенклатураДляСоздания = GetNomenclatureToProcess(номенклатура, подключения, изделиеВыгружаемое);
+
+            // Производим поиск и (при необходимости) создание объектов в ЭСИ и смежных справочниках
+            List<ReferenceObject> созданныеДСЕ = FindOrCreateNomenclatureObjects(номенклатураДляСоздания);
+
+            // Производим соединение созданных ДСЕ в иерархию при помощи подключений
+            ConnectCreatedObjects(созданныеДСЕ, подключения);
+            //*/       
+
+            SaveLogtoRef(изделиеВыгружаемое);
+        }
+        Message("Информация", "Работа макроса завершена");
+    }
+
+    /// <summary>
     /// Создает новую запись в справочнике "Журнал выгрузок из FoxPro"
     /// </summary>
     private void SaveLogtoRef(List<string> изделияДляВыгрузки)
@@ -220,7 +257,16 @@ public class Macro : MacroProvider
                   
     private void Test(string изделияДляВыгрузки)
     {
-        var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
+        string ss1 = "ШАЙБА 4           КД           509АТ";
+        while (ss1.Contains("  "))
+        {
+            ss1 = ss1.Replace("  ", " ");
+        }
+
+        ss1 = char.ToUpper(ss1[0]) + ss1.Substring(1);
+        
+
+        //var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
     }
 
 
@@ -505,22 +551,25 @@ public class Macro : MacroProvider
         log_save_ref.timeStop = DateTime.Now;
 
         string errors = string.Join("\n\n", messages.Where(message => message.StartsWith("Error")));
-                                   
-                                                                                                                                                                                                      
+
+
 
 
 
         // Если ошибки есть, то сначала выводим статистику и спрашиваем у пользователя, отобразить ли ошибки
         // Иначе просто выводим статистику
-        if (errors != string.Empty) {
-         
-            statistics += "\n\nОтобразить ошибки?";
-            if (Question(statistics))
-                Message("Ошибки", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+        if (!log_save_ref.messageOff)
+        {
+            if (errors != string.Empty)
+            {
+
+                statistics += "\n\nОтобразить ошибки?";
+                if (Question(statistics))
+                    Message("Ошибки", $"В процессе поиска и создания номенклатурных объектов возникли следующие ошибки\n{errors}");
+            }
+            else
+                Message("Статистика", statistics);
         }
-        else
-            Message("Статистика", statistics);
-        
         // Пишем лог
         File.WriteAllText(pathToLogFile, string.Join("\n", messages));
         log_save_ref.file_name_error_log = pathToLogFile;
@@ -549,7 +598,8 @@ public class Macro : MacroProvider
                 {
                     try
                     {
-                        resultObject.CheckOut();
+                        if (!resultObject.IsCheckedOut)
+                            resultObject.CheckOut();
                         resultObject.BeginChanges();
                         resultObject[referData.Params["Код ОКП"]].Value = obozEsi;
                         resultObject[referData.Params["Обозначение"]].Value = "";
@@ -732,9 +782,9 @@ public class Macro : MacroProvider
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
                 SyncronizeTypes(nom, findedObjects[0], messages);
-                                                                                     
-                ConnectRefObjectToESI(findedObjects[0], designation);
-                return MoveShifrToOKP(findedObjects[0], designation, messages);
+                MoveShifrToOKP(findedObjects[0], designation, messages);
+                var EsiObj = ConnectRefObjectToESI(findedObjects[0], designation);
+                return EsiObj;
             default:
                 messages.Add("Объект найден в смежных справочниках");
                 throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
@@ -877,10 +927,12 @@ public class Macro : MacroProvider
     /// </summary>
     private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, RefGuidData refname) //, Reference refName, Guid guidName, Guid guidShifr)
     {
+
         try
         {
             var type = nom[СписокНоменклатуры.Params["Тип номенклатуры"]].Value.ToString();
             //string nomTip = GetStringFrom(type);
+            name = NormalizeNameObject(name);
             var refName = refname.Ref;
             var createdClassObject = refName.Classes.Find(classObjectName);
             ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
@@ -903,12 +955,24 @@ public class Macro : MacroProvider
 
             //Desktop.CheckIn(newNomenclature, "Объект в создан", false);
             var newNomenclature = ConnectRefObjectToESI(refereceObject,oboz);
-            return refereceObject;
+            return newNomenclature;
         }
         catch (Exception e)
         {
             throw new Exception($"Ошибка при создании объекта:\n{e}");
         }
+    }
+
+    private String NormalizeNameObject(string name)
+    {
+        while (name.Contains("  "))
+        {
+            name = name.Replace("  ", " ");
+        }
+        var nameArr = name.Split(' ');        
+        nameArr[0] = nameArr[0].ToLower();
+        nameArr[0] = char.ToUpper(nameArr[0][0]) + nameArr[0].Substring(1);
+        return String.Join(" ", nameArr);
     }
 
 
@@ -1792,8 +1856,7 @@ public class Macro : MacroProvider
         public int count_object { get; set; }
         public int create_object { get; set; }
         public int count_error { get; set; }
-        
-
+        public bool messageOff { get; set; } = false;
 
         public void getparam(RefGuidData refdata)
         {
