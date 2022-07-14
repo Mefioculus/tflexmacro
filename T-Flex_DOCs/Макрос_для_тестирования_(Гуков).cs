@@ -6,11 +6,14 @@ using System.Collections.Generic;
 using TFlex.DOCs.Model;
 using TFlex.DOCs.Model.Classes;
 using TFlex.DOCs.Model.Macros;
+using TFlex.DOCs.Model.Macros.ObjectModel;
 using TFlex.DOCs.Model.References;
 using TFlex.Model.Technology.References.SetOfDocuments;
 using TFlex.DOCs.Model.References.Files;
 using TFlex.DOCs.Model.References.Nomenclature;
 using TFlex.DOCs.Model.References.Users;
+using TFlex.DOCs.Model.References.Revisions;
+using TFlex.DOCs.Model.Desktop;
 
 // Макрос для тестовых задач
 // Для работы данного макроса так же потребуется добавление ссылки TFlex.Model.Technology.dll
@@ -183,7 +186,7 @@ public class Macro : MacroProvider {
             .Where(refObj => refObj.Class.IsInherit(classObject))
             //.Select(refObj => (FileObject)refObj)
             //.Select(file => file.Path.ToString())
-            .Select(refObj => refObj.ToString())
+            //.Select(refObj => refObj.ToString())
             .Select(refObj => refObj is FileObject ? $"{((FileObject)refObj).Path.ToString()}" : refObj.ToString())
             .ToList<string>();
 
@@ -226,6 +229,40 @@ public class Macro : MacroProvider {
 
         if (Question($"Типов с аттрибутами: {resultsWithAttr.Count}\nТипов без аттрибутов: {resultsWithoutAttr.Count}\nОтобразить результаты?"))
             Message("Результаты", $"{string.Join("\n", resultsWithAttr)}\n\n{string.Join("\n", resultsWithoutAttr)}");
+    }
+
+    public void ТестированиеСозданияРевизии() {
+        InputDialog dialog = new InputDialog(Context, "Изменение ревизии");
+        string guidField = "Введите GUID объекта";
+        string nameRevisionField = "Целевое название ревизии";
+        dialog.AddString(guidField);
+        dialog.AddString(nameRevisionField);
+
+        if (dialog.Show()) {
+            ReferenceObject currentObject = Context.Connection.ReferenceCatalog
+                .Find(new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"))
+                .CreateReference()
+                .Find(new Guid(dialog[guidField]));
+            if (currentObject == null) {
+                Message("Ошибка", $"Не удалось найти номенклатурный объект с уникальным идентификатором '{dialog[guidField]}'");
+                return;
+            }
+
+            NomenclatureObject nomObject = currentObject as NomenclatureObject;
+            
+            // Производим смену названия ревизии
+            nomObject.CheckOut();
+            nomObject.BeginChanges();
+            nomObject.SystemFields.RevisionName = dialog[nameRevisionField];
+            nomObject.EndChanges();
+            Desktop.CheckIn(nomObject, "Изменение названия ревизии", false);
+            nomObject.LinkedObject.CheckOut();
+            nomObject.LinkedObject.BeginChanges();
+            nomObject.LinkedObject.SystemFields.RevisionName = dialog[nameRevisionField];
+            nomObject.LinkedObject.EndChanges();
+            Desktop.CheckIn(nomObject.LinkedObject, "Изменение названия ревизии", false);
+            
+        }
     }
 }
 
