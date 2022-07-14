@@ -1012,7 +1012,8 @@ public class Macro : MacroProvider
                      
                         if (castObject != null) {
                          
-                            castObject.CheckOut();
+                            if (!castObject.IsCheckedOut)
+                                castObject.CheckOut();
                             findedObject = castObject.BeginChanges(GetClassFrom(typeOfNom, castObject.Reference));
                             findedObject.EndChanges();
                             if (findedObject == null)
@@ -1020,7 +1021,8 @@ public class Macro : MacroProvider
                         }
                         else {
                          
-                            findedObject.CheckOut();
+                            if (!findedObject.IsCheckedOut)
+                                findedObject.CheckOut();
                             findedObject = findedObject.BeginChanges(GetClassFrom(typeOfNom, findedObject.Reference));
                             findedObject.EndChanges();
                         }
