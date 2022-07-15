@@ -251,17 +251,39 @@ public class Macro : MacroProvider {
             NomenclatureObject nomObject = currentObject as NomenclatureObject;
             
             // Производим смену названия ревизии
-            nomObject.CheckOut();
+            if (!nomObject.IsCheckedOut)
+                nomObject.CheckOut();
             nomObject.BeginChanges();
             nomObject.SystemFields.RevisionName = dialog[nameRevisionField];
             nomObject.EndChanges();
             Desktop.CheckIn(nomObject, "Изменение названия ревизии", false);
-            nomObject.LinkedObject.CheckOut();
-            nomObject.LinkedObject.BeginChanges();
-            nomObject.LinkedObject.SystemFields.RevisionName = dialog[nameRevisionField];
-            nomObject.LinkedObject.EndChanges();
-            Desktop.CheckIn(nomObject.LinkedObject, "Изменение названия ревизии", false);
+
+            ReferenceObject linkedObject = nomObject.LinkedObject;
+            if (!linkedObject.IsCheckedOut)
+                linkedObject.CheckOut();
+            linkedObject.BeginChanges();
+            linkedObject.SystemFields.RevisionName = dialog[nameRevisionField];
+            linkedObject.EndChanges();
+            Desktop.CheckIn(linkedObject, "Изменение названия ревизии", false);
             
+        }
+    }
+
+    public void ПолучитьНазванияВсехРевизийДляОбъекта() {
+        InputDialog dialog = new InputDialog(Context, "Выбор объекта");
+        string guidField = "Укажите Guid объекта";
+        dialog.AddString(guidField);
+
+        if (dialog.Show()) {
+            ReferenceObject currentObject = Context.Connection.ReferenceCatalog
+                .Find(new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"))
+                .CreateReference()
+                .Find(new Guid(dialog[guidField]));
+            if (currentObject == null)
+                throw new Exception($"Во время работы метода {nameof(ПолучитьНазванияВсехРевизийДляОбъекта)} возникла ошибка. Не получилось найти объект с Guid {dialog[guidField]}");
+
+            // Выводим список всех имен ревизий
+            Message($"Ревизии объекта {currentObject.ToString()}", string.Join(Environment.NewLine, currentObject.GetExistingRevisionNames()));
         }
     }
 }
