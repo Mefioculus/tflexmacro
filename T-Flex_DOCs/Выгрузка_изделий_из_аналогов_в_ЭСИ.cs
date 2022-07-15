@@ -186,7 +186,7 @@ public class Macro : MacroProvider
         List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
         //Test(изделияДляВыгрузки[0]);
         //log_save_ref.messageOff = true;
-        log_save_ref.timeStart = DateTime.Now;
+       
         ///*
         foreach (var изделиеПоОдному in изделияДляВыгрузки)
         {
@@ -255,16 +255,20 @@ public class Macro : MacroProvider
     }
 
                   
-    private void Test(string изделияДляВыгрузки)
+    public void Test()
     {
-        string ss1 = "ШАЙБА 4           КД           509АТ";
-        while (ss1.Contains("  "))
-        {
-            ss1 = ss1.Replace("  ", " ");
-        }
+        /*Dictionary<string, ReferenceObject> номенклатура = GetNomenclature();
+        Dictionary<string, List<ReferenceObject>> подключения = GetLinks();
+        List<string> изделияДляВыгрузки = GetShifrsFromUserToImport(номенклатура);
+        GetFilterRefObj(изделияДляВыгрузки, ЭСИ.RefGuid, ЭСИ.Params["Обозначение"]);
+        */
+        ReferenceObject currentObject = ЭСИ.Ref.Find(new Guid("a57c6880-bba8-4f52-9788-e5e5cf86b51a"));
+        MoveShifrToOKP(currentObject, "7594105844", TypeOfObject.СтандартноеИзделие, new List<string> { "" });
+        //MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
+        //MoveShifrToOKP(currentObject, "7594105844", new List<string> { "" });
 
-        ss1 = char.ToUpper(ss1[0]) + ss1.Substring(1);
-        
+
+
 
         //var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
     }
@@ -576,19 +580,22 @@ public class Macro : MacroProvider
         return result;
     }
 
-
+   
 
     /// <summary>
     /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
     /// </summary>
-    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, List<string> messages)
+    private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, TypeOfObject nomtype, List<string> messages)
     {
+        
+        //resultObject = ProcessThirdStageFindOrCreate(nom, nomDesignation, nomType, messages);
         RefGuidData referData = GetRefGuidDataFrom(resultObject);
         TypeOfObject esiType = GetTypeOfObjectFrom(resultObject); // тип
        
         var obozEsi = resultObject[referData.Params["Обозначение"]].Value.ToString();
 
-        if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент)
+        if (esiType == TypeOfObject.СтандартноеИзделие || esiType == TypeOfObject.Материал || esiType == TypeOfObject.ЭлектронныйКомпонент
+           || (esiType == TypeOfObject.Другое && (nomtype == TypeOfObject.СтандартноеИзделие || nomtype == TypeOfObject.Материал || nomtype == TypeOfObject.ЭлектронныйКомпонент)))
         {
             var okpEsi = resultObject[referData.Params["Код ОКП"]].Value.ToString();
 
@@ -602,14 +609,15 @@ public class Macro : MacroProvider
                             resultObject.CheckOut();
                         resultObject.BeginChanges();
                         resultObject[referData.Params["Код ОКП"]].Value = obozEsi;
-                        resultObject[referData.Params["Обозначение"]].Value = "";
+                        resultObject[referData.Params["Обозначение"]].Value = " ";
                         resultObject.EndChanges();
                         //linkedObject.CheckIn("Перенос Обозначения в поле код ОКП");
                         Desktop.CheckIn(resultObject, "Перенос Обозначения в поле код ОКП", false);
+                        messages.Add("Перенос обозначения в код ОКП прошёл успешно");
                     }
                     catch (Exception e)
                     {
-                        throw new Exception($"Во время переноса 'Обозначения' в 'ОКП':\n{e}");
+                        throw new Exception($"Error во время переноса 'Обозначения' в 'ОКП':\n{e}");
                     }
                 }
                 else
@@ -647,8 +655,9 @@ public class Macro : MacroProvider
         if (linkedObject != null)
         {
             messages.Add("Объект был получен по связи");
+            MoveShifrToOKP(linkedObject, designation, type, messages);
             SyncronizeTypes(nom, linkedObject, messages);
-            return MoveShifrToOKP(linkedObject, designation, messages);
+            return linkedObject;
    
         }
         else
@@ -683,21 +692,27 @@ public class Macro : MacroProvider
         // Проверяем совпадают ли по гуиду объекты findedObjects и findedObjectsOKP
         if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
             throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
-        else if ((findedObjects.Count !=0 && findedObjectsOKP.Count != 0)) {
-         
-            if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
+        if (findedObjectsOKP.Count != 0)
+        {
+            if (findedObjects.Count != 0)
+            {
+                if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
+                    findedObjects.AddRange(findedObjectsOKP);
+            }
+            else
+            {
                 findedObjects.AddRange(findedObjectsOKP);
+            }
         }
-        else if ((findedObjects.Count == 0 && findedObjectsOKP.Count != 0)) {
-         
-            findedObjects.AddRange(findedObjectsOKP);
-        }
+
+        
 
         if (findedObjects.Count == 1) {
          
             messages.Add("Объект найден в ЭСИ");
+            MoveShifrToOKP(findedObjects[0], designation, type, messages);
             SyncronizeTypes(nom, findedObjects[0], messages);
-            ReferenceObject resultObject = MoveShifrToOKP(findedObjects[0], designation, messages);
+            
             /*
             // Производим привязываение объекта к "Списку номенклатуры FoxPro"
             nom.BeginChanges();
@@ -705,7 +720,7 @@ public class Macro : MacroProvider
             nom.EndChanges();
             */
             // Возвращаем результат
-            return resultObject;
+            return findedObjects[0];
         }
         else if (findedObjects.Count > 1) {
          
@@ -754,7 +769,7 @@ public class Macro : MacroProvider
             {
                 throw new Exception($"В справочнике документы найдены 2 объктка {designation}");
             }
-            else
+            else if (tempResult != null && okptmpResult.Count != 0)
             {
                 tempResult = okptmpResult;
             }
@@ -781,8 +796,8 @@ public class Macro : MacroProvider
             case 1:
                 // Производим синхронизацию типов
                 messages.Add("Объект найден в смежных справочниках");
+                MoveShifrToOKP(findedObjects[0], designation, type, messages);
                 SyncronizeTypes(nom, findedObjects[0], messages);
-                MoveShifrToOKP(findedObjects[0], designation, messages);
                 var EsiObj = ConnectRefObjectToESI(findedObjects[0], designation);
                 return EsiObj;
             default:
