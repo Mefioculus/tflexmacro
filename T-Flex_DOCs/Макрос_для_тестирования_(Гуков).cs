@@ -286,5 +286,37 @@ public class Macro : MacroProvider {
             Message($"Ревизии объекта {currentObject.ToString()}", string.Join(Environment.NewLine, currentObject.GetExistingRevisionNames()));
         }
     }
+
+    public void ПолучитьВсеОбъектыПоИмениРевизии() {
+        InputDialog dialog = new InputDialog(Context, "Введите название ревизии");
+        string revisionNameField = "Укажите название ревизии";
+        dialog.AddString(revisionNameField);
+
+        if (dialog.Show()) {
+            List<ReferenceObject> findedObjects = Context.Connection.ReferenceCatalog
+                .Find(new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"))
+                .CreateReference()
+                .Find(new Guid("8d69bd40-0fe0-4bb1-9d1a-2e728f6cdc68"), dialog[revisionNameField]);
+
+            if (findedObjects.Count == 0)
+                Message("Информация", $"По запросу '{dialog[revisionNameField]}' ничего не было найдено");
+            else
+                Message("Информация", string.Join(Environment.NewLine, findedObjects.Select(obj => $"{obj.ToString()}")));
+        }
+    }
+
+    public void ВывестиУникальныеИдентификаторыСистемныхПараметров() {
+        // Получаем справочник, для которого будет получать системные параметры
+        Reference reference = Context.Connection.ReferenceCatalog
+            .Find(new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"))
+            .CreateReference();
+
+        List<string> messages = new List<string>();
+        foreach (var parameterInfo in reference.ParameterGroup.SystemParameters) {
+            messages.Add($"Параметр: {parameterInfo.ToString()}; GUID: {parameterInfo.Guid.ToString()}");
+        }
+
+        Message("Системные параметры справочника ЭСИ", string.Join(Environment.NewLine, messages));
+    }
 }
 
