@@ -334,7 +334,7 @@ public class Macro : MacroProvider {
                 throw new Exception($"Для переданного guid ({dialog[guidField]}) не было найдено совпадения в справочнике ЭСИ");
 
             // Пробуем получить все ревизии
-            List<ReferenceObject> allRevision = reference.Find(new Guid("49c7b3ec-fa35-4bb1-92a5-01d4d3a40d16"), initialObject.SystemFields.LogicalObjectGuid);
+            List<ReferenceObject> allRevision = initialObject.Reference.Find(new Guid("49c7b3ec-fa35-4bb1-92a5-01d4d3a40d16"), initialObject.SystemFields.LogicalObjectGuid);
 
             Message("Информация", string.Join(Environment.NewLine, allRevision.Select(rev => rev.ToString())));
 
