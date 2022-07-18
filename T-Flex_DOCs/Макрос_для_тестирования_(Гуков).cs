@@ -318,5 +318,27 @@ public class Macro : MacroProvider {
 
         Message("Системные параметры справочника ЭСИ", string.Join(Environment.NewLine, messages));
     }
+
+    public void ПолучитьВсеРевизииНаОбъект() {
+        InputDialog dialog = new InputDialog(Context, "Поиск ревизий объекта");
+        string guidField = "Введите guid объекта";
+        dialog.AddString(guidField);
+
+        if (dialog.Show()) {
+            Reference reference = Context.Connection.ReferenceCatalog
+                .Find(new Guid("853d0f07-9632-42dd-bc7a-d91eae4b8e83"))
+                .CreateReference();
+
+            ReferenceObject initialObject = reference.Find(new Guid(dialog[guidField]));
+            if (initialObject == null)
+                throw new Exception($"Для переданного guid ({dialog[guidField]}) не было найдено совпадения в справочнике ЭСИ");
+
+            // Пробуем получить все ревизии
+            List<ReferenceObject> allRevision = reference.Find(new Guid("49c7b3ec-fa35-4bb1-92a5-01d4d3a40d16"), initialObject.SystemFields.LogicalObjectGuid);
+
+            Message("Информация", string.Join(Environment.NewLine, allRevision.Select(rev => rev.ToString())));
+
+        }
+    }
 }
 
