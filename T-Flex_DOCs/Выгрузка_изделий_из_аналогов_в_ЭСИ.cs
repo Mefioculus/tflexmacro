@@ -38,6 +38,9 @@ public class Macro : MacroProvider
     private string NameOfImport { get; set; }
     private string StringForLog => $"{NameOfImport} ({TimeStamp})";
 
+    // Для ревизий
+    private string RevisionNameTemplate { get; set; }
+
     public Macro(MacroContext context)
         : base(context) {
      
@@ -47,8 +50,11 @@ public class Macro : MacroProvider
         System.Diagnostics.Debugger.Break();
         #endif
 
+        // Инициализируем переменную, в которой будет храниться шаблон для наименования ревизий
+        RevisionNameTemplate = "ФОКС-";
+
         // Инициализируем объекты с уникальными идентификаторами
-       // Справочник "Журнал выгрузок из FoxPro"
+        // Справочник "Журнал выгрузок из FoxPro"
         ЖурналВыгрузокИзFoxPro = new RefGuidData(context, new Guid("85ed8179-1714-4b63-9030-b41c82451cc0"));
         ЖурналВыгрузокИзFoxPro.AddParam("number", new Guid("5e20f92d-c433-4f99-bde9-63a7a843058a")); // int
         ЖурналВыгрузокИзFoxPro.AddParam("shifrIzd", new Guid("562c1053-94a5-4268-ac78-b3fcf1f896b2")); // string
@@ -58,11 +64,6 @@ public class Macro : MacroProvider
         ЖурналВыгрузокИзFoxPro.AddParam("create_object", new Guid("2e355047-8b38-4995-bfe8-b7a15c54f0f2")); //int
         ЖурналВыгрузокИзFoxPro.AddLink("Файл выгрузки", new Guid("422ae8ea-318b-4973-b4fd-e9732eb331cf")); // string
         
-
-
-
-
-
         // Справочник "Список номенклатуры FoxPro"
         СписокНоменклатуры = new RefGuidData(Context, new Guid("c9d26b3c-b318-4160-90ae-b9d4dd7565b6"));
         // Параметры
@@ -97,6 +98,8 @@ public class Macro : MacroProvider
         ЭСИ.AddParam("Обозначение", new Guid("ae35e329-15b4-4281-ad2b-0e8659ad2bfb")); // string
         ЭСИ.AddParam("Наименование", new Guid("45e0d244-55f3-4091-869c-fcf0bb643765")); // string
         ЭСИ.AddParam("Код ОКП", new Guid("b39cc740-93cc-476d-bfed-114fe9b0740c")); // string
+        ЭСИ.AddParam("Наименование ревизии", new Guid("8d69bd40-0fe0-4bb1-9d1a-2e728f6cdc68")); // string
+        ЭСИ.AddParam("Guid логического объекта", new Guid("49c7b3ec-fa35-4bb1-92a5-01d4d3a40d16")); // guid
         // Типы
         ЭСИ.AddType("Материальный объект", new Guid("0ba28451-fb4d-47d0-b8f6-af0967468959"));
         // Параметры подключений
@@ -273,15 +276,50 @@ public class Macro : MacroProvider
         //var result = GetFilterRefObj(изделияДляВыгрузки, Материалы.RefGuid, Материалы.Params["Обозначение"]);
     }
 
+    public void TestGukov() {
+        List<ReferenceObject> refObjs = GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5")));
+
+        string message = string.Join(Environment.NewLine, refObjs.Select(ro => $"{ro.ToString()} ({ro.SystemFields.LogicalObjectGuid.ToString()})"));
+
+        Message(
+                "Тестирование функции IsOneLogicalObject",
+                $"Объекты {Environment.NewLine}{message}{Environment.NewLine}являются одним логическим объектом: {IsOneLogicalObject(refObjs)}");
+    }
 
 
     /// <summary>
-    /// Метод для проведения тестирования
+    /// Метод для проведения тестирования отдельно первой стадии
     /// </summary>
-    public void TestGukov() {
-        //ReferenceObject currentObject = Context.ReferenceObject;
-        ReferenceObject currentObject = ЭСИ.Ref.Find(new Guid("ae6e8d15-cec5-4849-aee5-f5ffd8c80b56")); 
-        MoveObjectToAnotherReference(currentObject, TypeOfObject.Материал);
+    public void TestFirstStage() {
+        // Список шифров объектов для тестирования
+        List<string> shifrs  = new List<string>() {
+            "6С8220232",
+        };
+
+        List<string> messages = new List<string>();
+
+        // Получаем соответствующие объекты в справочнике
+        List<ReferenceObject> findedObjects = new List<ReferenceObject>();
+        
+        foreach (string shifr in shifrs) {
+            findedObjects.Add(СписокНоменклатуры.Ref.Find(СписокНоменклатуры.Params["Обозначение"], shifr).FirstOrDefault());
+        }
+
+        foreach (ReferenceObject nomenclature in findedObjects) {
+            if (nomenclature == null)
+                messages.Add("Нулевой объект");
+            else {
+                try {
+                    ReferenceObject result = ProcessFirstStageFindOrCreate(nomenclature, (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value, GetTypeOfObjectFrom(nomenclature), messages);
+                    CheckAndLink(nomenclature, result, messages);
+                }
+                catch (Exception e) {
+                    messages.Add($"Error: {e.Message}");
+                }
+            }
+        }
+
+        Message("Результат теста", string.Join(Environment.NewLine, messages));
     }
 
     /// <summary>
@@ -334,6 +372,8 @@ public class Macro : MacroProvider
     /// Если введенное пользователем изделие отсутствует среди всех изделий, должно выдаваться об этом сообщение
     /// Так же должна быть возможность снова ввести данные.
     /// </summary>
+    /// <param name="nomenclature">Принимает индексированные по обозначениям данные из справочника "Список номенклатуры FoxPro"</param>
+    /// <returns>Возвращает список изделий, для которых необходимо произвести выгрузку</returns>
     private List<string> GetShifrsFromUserToImport(Dictionary<string, ReferenceObject> nomenclature)
     {
         List<string> result = new List<string>();
@@ -395,9 +435,9 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательная функция для определения названия импотра для использования этих данных в названиях
     /// лог файлов.
-    /// Метод ничего не принимает и не возвращает.
-    /// Он производит присвоение строки определенного формата переменной NameOfImport
+    /// Функция производит присвоение строки определенного формата переменной NameOfImport
     /// </summary>
+    /// <param name="nomenclature">Список изделий, переданных на выгрузку</param>
     private void SetNameOfExport(List<string> nomenclature) {
      
         if (nomenclature.Count == 0)
@@ -409,18 +449,17 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Функция для определения перечня ДСЕ, которые необходимо обработать во время загрузки данных из FoxPro
-    /// На вход принимает:
-    /// nomenclature - словарь с всеми объектами справочника 'Список номеклатуры FoxPro' проиндексированный по обозначению
-    /// links - словарь с всеми объектами справочника 'Подключения', проиндексированный и сгруппированный по родительской сборке
-    /// shifs - список с обозначениями изделий, которые необходимо выгрузить
-    /// На выход предоставляет HashSet объектов справочника 'Список номенклатуры FoxPro', выгрузку которых необходимо произвести
     /// </summary>
+    /// <param name="nomenclature">Словарь со всеми объектами справочника "Список номенклатуры FoxPro", проиндексированный по обозначениям</param>
+    /// <param name="links">Словарь со всеми объектами справочника "Подключения", проиндексированный и сгруппированный по родительсвой сборке</param>
+    /// <param name="shifrs">Список с обозначениями изделий, которые необходимо выгрузить</param>
+    /// <returns>Объект типа HashSet, содержащий в себе перечень всех объектов справочника "Список номенклатуры FoxPro, выгрузку которых необходимо произвести"</returns>
     private HashSet<ReferenceObject> GetNomenclatureToProcess(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, List<string> shifrs) {
      
         // Для каждого шифра создаем объект, реализующий интерфейс ITree, получаем входящие объекты, добавляем их в HashSet (для исключения дубликатов)
         // В конце пишем лог, в котором записываем информацию о сгенерированном дереве, количестве входящих объектов и их структуре
         if (nomenclature == null || links == null || shifrs == null)
-            throw new Exception("На вход функции GetNomenclatureToProcess были поданы отсутствующие значения");
+            throw new Exception($"{nameof(GetNomenclatureToProcess)}: На вход функции GetNomenclatureToProcess были поданы отсутствующие значения");
         HashSet<ReferenceObject> result = new HashSet<ReferenceObject>();
 
         // Для лога
@@ -456,6 +495,8 @@ public class Macro : MacroProvider
     /// Если объект находится, то он возвращается, если нет - создается новый и возвращается уже он.
     /// Функция поделена на четыре стадии для удобства, в качестве входных параметров принимает объекты справочника "Список номенклатуры FoxPro", которые необходимо выгрузить
     /// </summary>
+    /// <param name="nomenclature">HashSet с перечнем объектов справочника "Список номенклатуры FoxPro", для которых необходимо произвести выгрузку</param>
+    /// <returns>Список найденных или созданных объектов справочника ЭСИ</returns>
     private List<ReferenceObject> FindOrCreateNomenclatureObjects(HashSet<ReferenceObject> nomenclature) {
      
         // Функция принимает записи справочника "Список номенклатуры FoxPro" для создания объектов с справочнике ЭСИ и смежных справочников
@@ -532,7 +573,7 @@ public class Macro : MacroProvider
             }
             catch (Exception e) {
              
-                messages.Add($"Error: {e.Message}");
+                messages.Add($"ERROR: {e.Message}");
                 countErrors += 1;
                 continue;
             }
@@ -580,8 +621,6 @@ public class Macro : MacroProvider
         return result;
     }
 
-   
-
     /// <summary>
     /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
     /// </summary>
@@ -613,15 +652,15 @@ public class Macro : MacroProvider
                         resultObject.EndChanges();
                         //linkedObject.CheckIn("Перенос Обозначения в поле код ОКП");
                         Desktop.CheckIn(resultObject, "Перенос Обозначения в поле код ОКП", false);
-                        messages.Add("Перенос обозначения в код ОКП прошёл успешно");
+                        messages.Add($"{nameof(MoveShifrToOKP)}: Перенос обозначения в код ОКП прошёл успешно");
                     }
                     catch (Exception e)
                     {
-                        throw new Exception($"Error во время переноса 'Обозначения' в 'ОКП':\n{e}");
+                        throw new Exception($"{nameof(MoveShifrToOKP)}: ошибка во время переноса 'Обозначения' в 'ОКП':\n{e}");
                     }
                 }
                 else
-                    throw new Exception($"У привязанного объекта отличается код ОКП (указан: '{okpEsi}', должен быть: {designation})");
+                    throw new Exception($"{nameof(MoveShifrToOKP)}: у привязанного объекта отличается код ОКП (указан: '{okpEsi}', должен быть: {designation})");
 
             }
             return resultObject;
@@ -629,7 +668,7 @@ public class Macro : MacroProvider
         else
         {
             if (!designation.Equals(obozEsi))
-                throw new Exception($"У привязанного объекта отличается обозначенние (указано: '{obozEsi}', должно быть: {designation})");
+                throw new Exception($"{nameof(MoveShifrToOKP)}: У привязанного объекта отличается обозначенние (указано: '{obozEsi}', должно быть: {designation})");
             return resultObject;
         }
 
@@ -638,15 +677,12 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код производит пробует получить объект по связи, а так же проверить корректность полученного объекта, если таковой имеется.
-    /// Аргументы:
-    /// nom - объект справочника "Список номенклатуры FoxPro"
-    /// designation - обозначение объекта
-    /// messages - список сообщений, который пойдет в общий лог
-    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
-    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
-    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
-    /// Исключение выбрасывается если объект был найден, но при его проверке возникли проблемы (об этом нужно оповестить пользователя и пока что не включать объект в выгрузку).
     /// </summary>
+    /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
+    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
+    /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
     private ReferenceObject ProcessFirstStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
      
         // Получаем объект по связи и, если он есть, производим его проверку
@@ -654,28 +690,46 @@ public class Macro : MacroProvider
 
         if (linkedObject != null)
         {
-            messages.Add("Объект был получен по связи");
-            MoveShifrToOKP(linkedObject, designation, type, messages);
-            SyncronizeTypes(nom, linkedObject, messages);
-            return linkedObject;
+            messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: Обнаружен связанный объект");
+            // Производим проверку подключенного объекта.
+            ReferenceObject resultObject = null;
+            if (IsFoxRevisionCorrect(linkedObject, designation)) {
+                // Если он имеет корректную ревизию, производим дальнейшие корректировки и возвращаем его
+                messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: объект имеет корректную ревизию ({linkedObject.SystemFields.RevisionName})");
+                resultObject = linkedObject;
+            }
+            else {
+                // На основе подключенного объекта создаем новую ревизию, производим соответствующие корректировки и возвращаем его
+                messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: Ревизия подключенного объекта ({linkedObject.SystemFields.RevisionName}) не соответствует корректному наименованию.");
+                resultObject = FindFoxRevision(linkedObject, designation, messages); // Пробуем найти уже существующую корректную ревизию
+                // Пробуем найти нужную ревизию, и если нам это не удается, создаем новую
+                if (resultObject == null) {
+                    resultObject = CreateFoxRevision(linkedObject, designation);
+                    messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: создание ревизии");
+                }
+                else
+                    messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: переподключение корректной ревизии");
+            }
+
+            MoveShifrToOKP(resultObject, designation, type, messages);
+            SyncronizeTypes(nom, resultObject, messages);
+            return resultObject;
    
         }
         else
-            messages.Add("Связанный объект отсутствовал");
+            messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: Связанный объект отсутствовал");
         return null;
     }
 
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код запускается в том случае, если не удалось получить объект по связи и производит поиск объекта в справочнике ЭСИ, и если таковой имеется, производит проверку его типа.
-    /// Аргументы:
-    /// nom - объект справочника "Список номенклатуры FoxPro"
-    /// designation - обозначение объекта
-    /// messages - список сообщений, который пойдет в общий лог
-    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
-    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
-    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
+    /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
+    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
+    /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
     private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
      
 
@@ -691,7 +745,7 @@ public class Macro : MacroProvider
 
         // Проверяем совпадают ли по гуиду объекты findedObjects и findedObjectsOKP
         if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
-            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
+            throw new Exception($"{nameof(ProcessSecondStageFindOrCreate)}: В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         if (findedObjectsOKP.Count != 0)
         {
             if (findedObjects.Count != 0)
@@ -725,7 +779,7 @@ public class Macro : MacroProvider
         else if (findedObjects.Count > 1) {
          
             messages.Add("Объект найден в ЭСИ");
-            throw new Exception($"В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
+            throw new Exception($"{nameof(ProcessSecondStageFindOrCreate)}: В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
         }
         else {
          
@@ -737,15 +791,12 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код запускается в том случае, если не удалось найти объект в ЭСИ и производит поиск объекта в смежных справочниках, и если такой имеется, производит проверку типа и создание объекта ЭСИ.
-    /// Аргументы:
-    /// nom - объект справочника "Список номенклатуры FoxPro"
-    /// designation - обозначение объекта
-    /// type - перечисление с типом изделия, которое требуется создать
-    /// messages - список сообщений, который пойдет в общий лог
-    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
-    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
-    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
+    /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
+    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
+    /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
     private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
      
         // Производим поиск по смежным справочникам
@@ -767,7 +818,7 @@ public class Macro : MacroProvider
             .ToList<ReferenceObject>();
             if (tempResult.Count != 0 && tempResult != null && okptmpResult.Count != 0)
             {
-                throw new Exception($"В справочнике документы найдены 2 объктка {designation}");
+                throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: В справочнике документы найдены 2 объктка {designation}");
             }
             else if (tempResult != null && okptmpResult.Count != 0)
             {
@@ -791,18 +842,18 @@ public class Macro : MacroProvider
         switch (findedObjects.Count) {
          
             case 0:
-                messages.Add("Объект не найден в смежных справочниках");
+                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект не найден в смежных справочниках");
                 return null;
             case 1:
                 // Производим синхронизацию типов
-                messages.Add("Объект найден в смежных справочниках");
+                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект найден в смежных справочниках");
                 MoveShifrToOKP(findedObjects[0], designation, type, messages);
                 SyncronizeTypes(nom, findedObjects[0], messages);
                 var EsiObj = ConnectRefObjectToESI(findedObjects[0], designation);
                 return EsiObj;
             default:
-                messages.Add("Объект найден в смежных справочниках");
-                throw new Exception($"Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
+                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект найден в смежных справочниках");
+                throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
         }
     }
 
@@ -810,11 +861,12 @@ public class Macro : MacroProvider
     /// <summary>
     /// Вспомогательный код для функции FindOrCreateNomenclatureObjects.
     /// Данный код запускается только в том случае, если объет найти не получилось и производит создание объекта сначала в смежном справчонике, а затем в ЭСИ.
-    /// В качестве исходных данных принимает объект справочника "Список номенклатуры FoxPro", обозначение и тип объекта, а так же список строк messages, который пойдет в лог.
-    /// Функия может завершиться одним из трех вариантов: вернуть ReferenceObject, null и выбросить исключение.
-    /// ReferenceObject возвращается если объект был получен и он полностью корректен.
-    /// null возвращается, если объект не был получен и требуется произвети поиск при помощи следующих стадий.
     /// </summary>
+    /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
+    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
+    /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
     private ReferenceObject ProcessFinalStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
      
         // Производим создание объекта
@@ -829,7 +881,7 @@ public class Macro : MacroProvider
         }
         catch {
          
-            throw new Exception($"Ошибка при создании объекта. Невозможно создать объект типа '{type.ToString()}'");
+            throw new Exception($"{nameof(ProcessFinalStageFindOrCreate)}: Ошибка при создании объекта. Невозможно создать объект типа '{type.ToString()}'");
         }
 
          
@@ -853,50 +905,234 @@ public class Macro : MacroProvider
 
         if (createDocument != null)
         {
-            messages.Add($"В справочнике {createDocument.Reference.Name.ToString()} создан объект {designation}");
+            messages.Add($"{nameof(ProcessFinalStageFindOrCreate)}: В справочнике {createDocument.Reference.Name.ToString()} создан объект {designation}");
             return createDocument;
         }
         return null;
     }
 
     /// <summary>
-    /// Метод для проверки подключения данного объекта к соответствующей записи в справочнике 'Список номенклатуры FoxPro'
-    /// Аргументы:
-    /// nom - объект справочника 'Список номенклатуры FoxPro'
-    /// findedOrCreated - объект справочника 'ЭСИ' который необходимо подключить к 'Списку номенклатуры'
+    /// Метод для создание ревизии ФОКС для объекта
     /// </summary>
+    /// <param name="initialObject">Исходный объект, на основе которого будет создаваться новая ревизия</param>
+    /// <param name="designation">Обозначение изделия из Fox, для которого нужно создать новую ревизию</param>
+    /// <returns>Созданная ревизия</returns>
+    private ReferenceObject CreateFoxRevision(ReferenceObject initialObject, string designation) {
+        // -- Начало валидации
+        // Производим проверку входного объекта
+        if (GetTypeOfReferenceFrom(initialObject) != TypeOfReference.ЭСИ)
+            throw new Exception(
+                    $"{nameof(CreateFoxRevision)}: в функцию передан объект " +
+                    $"неподдерживаемого справочника '{GetTypeOfReferenceFrom(initialObject).ToString()}.{Environment.NewLine}'" +
+                    "Для корректной работы метода передавать в него следует объект справочника ЭСИ"
+                    );
+
+        // Производим проверку на то, что данной ревизии у объекта еще нет
+        string nameOfRevision = GetRevisionName(designation);
+        if (!IsRevisionNameFree(initialObject, nameOfRevision))
+            throw new Exception($"{nameof(CreateFoxRevision)}: У объекта {initialObject.ToString()} уже есть ревизия с названием {nameOfRevision}");
+        // -- Окончание валидации
+
+        // -- Начало создания ревизии
+        // Создаем ревизию
+        var level = initialObject.Class.RevisionNamingRule.RevisionLevels[1]; // Получаем уровень мажорной ревизии для ее повышения
+        ReferenceObject newRevision = (initialObject as NomenclatureObject).CreateRevision(revisionLevel: level, recursive: false); // Создаем новую ревизию, не подключая к ней связанных объектов
+
+        // Переименовываем ревизию в номенклатурном объекте
+        newRevision.BeginChanges();
+        newRevision.SystemFields.RevisionName = nameOfRevision;
+        newRevision.EndChanges();
+        // Переименовываем ревизию в связанном объекте
+        ReferenceObject linkedObject = (newRevision as NomenclatureObject).LinkedObject;
+        linkedObject.BeginChanges();
+        linkedObject.SystemFields.RevisionName = nameOfRevision;
+        linkedObject.EndChanges();
+
+        // Автоматическое применение изменений, если потребуется
+        // TODO: Подключить настройки, когда они появятся
+        Desktop.CheckIn(newRevision, "Создание ревизии FoxPro", false);
+        // -- Окончание создания ревизии
+        return newRevision;
+    }
+
+    /// <summary>
+    /// Метод для получения всех ревизий, существующих для конкретного объекта
+    /// </summary>
+    /// <param name="sourceObject">Объект, для которого нужно получить все связанные ревизии</param>
+    /// <returns>Список ревизий</returns>
+    private List<ReferenceObject> GetAllRevisionOf(ReferenceObject sourceObject) {
+        return ЭСИ.Ref.Find(ЭСИ.Params["Guid логического объекта"], sourceObject.SystemFields.LogicalObjectGuid);
+    }
+
+    /// <summary>
+    /// Функция для проверки на то, что все объекты являются ревизиями одного объекта
+    /// </summary>
+    /// <param name="findedObjects">Список объектов, которые проверяются на принадлежность одному логическому объекту</param>
+    /// <returns>true - если все объекты являются одним логическим объектом, false - если нет</returns>
+    public bool IsOneLogicalObject(List<ReferenceObject> findedObjects) {
+        // -- Начало валидации данных
+        if ((findedObjects == null) || (findedObjects.Count == 0))
+            throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} не содержит данных");
+        if (findedObjects.Count == 1)
+            throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} содержит только одно значение (должно быть как минимум два)");
+        // -- Окончание валидации данных
+
+        // Проверка
+        Guid logicalGuid = findedObjects[0].SystemFields.LogicalObjectGuid;
+        for (int i = 1; i < findedObjects.Count; i++) {
+            if (findedObjects[i].SystemFields.LogicalObjectGuid != logicalGuid)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Метод для поиска корректной ревизии у объекта на основании обозначения, полученного из FoxPro
+    /// </summary>
+    /// <param name="initialObject">Объект, для которого производится поиск ревизии</param>
+    /// <param name="designation">Обозначение, переданное из FoxPro, которое в себе может содержать название варианта</param>
+    /// <returns>ReferenceObject, если получилось найти искомый объект, null, если не получилось его найти, Exception, если совпадений оказалось больше одного</returns>
+    private ReferenceObject FindFoxRevision(ReferenceObject initialObject, string designation, List<string> messages) {
+        // На основе обозначения, полученного из FoxPro определяем, какая ревизия должна быть у объекта
+        string revisionName = GetRevisionName(designation);
+        List<ReferenceObject> findedRevisions = GetAllRevisionOf(initialObject)
+            .Where(rev => rev.SystemFields.RevisionName == revisionName)
+            .ToList<ReferenceObject>();
+
+        switch (findedRevisions.Count) {
+            case 1:
+                messages.Add($"{nameof(FindFoxRevision)}: была найдена корректная ревизия");
+                return findedRevisions[0];
+            case 0:
+                messages.Add($"{nameof(FindFoxRevision)}: корректная ревизия отсутствовала");
+                return null;
+            default:
+                throw new Exception($"{nameof(FindFoxRevision)}: у объекта '{initialObject.ToString()}' было обнаружено {findedRevisions.Count} ревизий с названием '{revisionName}'");
+        }
+    }
+
+    /// <summary>
+    /// Метод для определения, свободно ли данное название ревизии
+    /// </summary>
+    /// <param name="sourceObject">Исходный объект, для которого проверяется доступность названия ревизии</param>
+    /// <param name="revisionName">Проверяемое имя</param>
+    /// <returns>Возвращает true, если название свободно, false - если название уже используется</returns>
+    private bool IsRevisionNameFree(ReferenceObject sourceObject, string revisionName) {
+        List<ReferenceObject> revisions = GetAllRevisionOf(sourceObject).Where(rev => rev.SystemFields.RevisionName.ToLower() == revisionName.ToLower()).ToList<ReferenceObject>();
+        switch (revisions.Count) {
+            case 0:
+                return true;
+            case 1:
+                return false;
+            default:
+                throw new Exception($"{nameof(IsRevisionNameFree)}: Обнаружено больше одной ревизии с одним названием (объект: {sourceObject.ToString()})");
+        }
+    }
+
+    /// <summary>
+    /// Функция для определения корректности названия ревизии по известному обозначению
+    /// (по большей части данная функция просто по обозначению определяет, какой номер у данной ревизии должен быть)
+    /// и сравнивает обозначение ревизии текущего объекта с той, которой она должна быть
+    /// </summary
+    /// <param name="sourceObject">Исходный объект, который мы проверяем на то, является ли он корректной ревизией для данного обозначения ДСЕ</param>
+    /// <param name="shifr">Обозначение ДСЕ, полученное из FoxPro, для которого мы определяем корректное название ревизии</param>
+    /// <returns>Возвращает true, если наименование ревизии sourceObject правильное, или false - если не правильное</returns>
+    private bool IsFoxRevisionCorrect(ReferenceObject sourceObject, string shifr) {
+        return sourceObject.SystemFields.RevisionName == GetRevisionName(shifr);
+    }
+
+    // <summary>
+    // Метод возвращает название ревизии в зависимости от полученного шифра объекта из FoxPro
+    // </summary>
+    // <param name="shifr">Обозначение объекта в FoxPro</param>
+    // <returns>Наименование соответствующей ревизии</returns>
+    private string GetRevisionName(string shifr) {
+        return $"{RevisionNameTemplate}{GetNumRevisionFrom(shifr)}";
+    }
+
+    /// <summary>
+    /// Метод для определения номера ревизии из обозначения объекта
+    /// </summary>
+    /// <param name="shifr">Строка с обозначением, полученным из FoxPro, на основании которого следует сделать предположение о номере ревизии</param>
+    /// <returns>Номер ревизии</returns>
+    private int GetNumRevisionFrom(string shifr) {
+        // -- Начало верификации входных данных
+        if (string.IsNullOrWhiteSpace(shifr))
+            throw new Exception($"{nameof(GetNumRevisionFrom)}: переданное обозначение не содержит значения");
+        // -- Окончание верификации входных данных
+
+        int result;
+        shifr = shifr.ToUpper();
+        try {
+            if (!shifr.Contains("ВАР"))
+                result = 1;
+            else {
+                string num = shifr.Replace("ВАР", "~").Split('~')[1];
+                result = string.IsNullOrWhiteSpace(num) ? 1 : int.Parse(num);
+            }
+        }
+        catch (Exception e) {
+            throw new Exception($"{nameof(GetNumRevisionFrom)}: в процессе определения номера ревизии для обозначение '{shifr}' возникла ошибка:{Environment.NewLine}{e.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Метод предназначен для удаления из обозначения не относящейся к обозначению части (это относится к названию вариантов изделия)
+    /// </summary>
+    /// <param name="shifr">Обозначение из FoxPro</param>
+    /// <returns>Возвращает обозначение для работы с изделиями в T-Flex</returns>
+    private string GetDesignationFrom(string shifr) {
+        return shifr.Replace("ВАР", "~").Split('~')[0].TrimEnd(new Char[] {'-'});
+    }
+
+    /// <summary>
+    /// Метод для проверки подключения данного объекта к соответствующей записи в справочнике 'Список номенклатуры FoxPro'
+    /// </summary>
+    /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится связывание</param>
+    /// <param name="findedOrCreated">Найденный или созданный объект, который необходимо подключить к "Списку номерклатуры FoxPro"</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
     private void CheckAndLink(ReferenceObject nom, ReferenceObject findedOrCreated, List<string> messages) {
         // -- Начало верификации информации
 
         // Проверяем корректность объекта nom
         if (GetTypeOfReferenceFrom(nom) != TypeOfReference.СписокНоменклатуры)
             throw new Exception(
-                    $"Ошибка в процессе работы метода '{nameof(CheckAndLink)}':\n" +
-                    $"объект, переданный в качестве аргумента '{nameof(nom)}' должен принадлежать справочнику 'Список номенклатуры FoxPro'" +
+                    $"{nameof(CheckAndLink)}: объект, переданный в качестве аргумента '{nameof(nom)}' должен принадлежать справочнику 'Список номенклатуры FoxPro'" +
                     $"(передан: {GetTypeOfReferenceFrom(nom).ToString()})"
                     );
         
         // Проверяем корректность объекта findedOrCreated
         if (GetTypeOfReferenceFrom(findedOrCreated) != TypeOfReference.ЭСИ)
             throw new Exception(
-                    $"Ошибка в процессе работы метода '{nameof(CheckAndLink)}':\n" +
-                    $"объект, переданный в качестве аргумента '{nameof(findedOrCreated)}' должен принадлежать справочнику 'ЭСИ' " +
+                    $"{nameof(CheckAndLink)}: объект, переданный в качестве аргумента '{nameof(findedOrCreated)}' должен принадлежать справочнику 'ЭСИ' " +
                     $"(передан: {GetTypeOfReferenceFrom(findedOrCreated).ToString()})"
                     );
 
         // Проверяем, что данный объект уже не подключен
         ReferenceObject linkedObject = nom.GetObject(СписокНоменклатуры.Links["Связь на ЭСИ"]);
         if ((linkedObject != null) && (linkedObject.Guid == findedOrCreated.Guid)) {
-            messages.Add("Подключение объекта к 'Списку номенклатуры FoxPro' не потребовалось");
+            messages.Add($"{nameof(CheckAndLink)}: Подключение объекта к 'Списку номенклатуры FoxPro' не потребовалось");
             return;
         }
         // -- Конец верификации информации
 
         // -- Начало подключения объекта
+        // TODO: Удалить код, если тестирование пройдет гладко
+        /*
         findedOrCreated.BeginChanges();
         findedOrCreated.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], nom);
         findedOrCreated.EndChanges();
-        messages.Add("Произведено подключение объекта к 'Списку номенклатуры FoxPro'");
+        */
+        try {
+            nom.BeginChanges();
+            nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], findedOrCreated);
+            nom.EndChanges();
+        }
+        catch (Exception e) {
+            throw new Exception($"{nameof(CheckAndLink)}: В процессе присоединения объекта '{findedOrCreated.ToString()}' к списку номенклатуры возникла ошибка:{Environment.NewLine}{e.ToString()}");
+        }
+        messages.Add($"{nameof(CheckAndLink)}: Произведено подключение объекта к 'Списку номенклатуры FoxPro'");
         // -- Конец подключения объекта
     }
 
@@ -926,7 +1162,7 @@ public class Macro : MacroProvider
             case TypeOfObject.Другое:
                 return "Другое";
             default:
-                throw new Exception($"Ошибка при определении типа объекта справочника ");
+                throw new Exception($"{nameof(GetStringFrom)}: Ошибка при определении типа объекта справочника ");
 
         }
     }
@@ -974,7 +1210,7 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"Ошибка при создании объекта:\n{e}");
+            throw new Exception($"{nameof(CreateRefObject)}: ошибка при создании объекта:\n{e}");
         }
     }
 
@@ -1022,27 +1258,25 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"Ошибка при подключении {refereceObject} в ЭСИ:\n{e}");
+            throw new Exception($"{nameof(ConnectRefObjectToESI)}: ошибка при подключении {refereceObject} в ЭСИ:\n{e}");
         }
     }
      
     /// <summary>
     /// Метод для проверки соответствия типов объекта справочника 'Список номенклатуры FoxPro' и объектов остальных участвующих в выгрузке справочников
-    ///
-    /// Аргументы:
-    /// nomenclatureRecord - объект справочника 'Список номенклатуры FoxPro'
-    /// findedObject - объект справочников ЭСИ, Документы, Материалы, ЭлектронныеКомпоненты
-    ///
     /// При нахождении разницы в типах, или при нахождении неопределенных типов данный метод пробует в автоматическом режиме сделать предположение о правильном типа,
     /// и если ему это удается - меняет тип у одного из объектов.
     /// Если в автоматическом режиме изменить тип не удается, выбрасывается исключение с целью предупредить пользователя
     /// </summary>
+    /// <param name="nomenclatureRecord">Объект справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="findedObject">Найденный объект справочника ЭСИ</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
     private void SyncronizeTypes(ReferenceObject nomenclatureRecord, ReferenceObject findedObject, List<string> messages) {
      
         // Производим верификацию входных данных
         // Проверка параметра nomenclatureRecord
         if (nomenclatureRecord.Reference.Name != СписокНоменклатуры.Ref.Name)
-            throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр nomenclatureRecord поддерживает только объекты справочника {СписокНоменклатуры.Ref.Name}");
+            throw new Exception($"{nameof(SyncronizeTypes)}: Параметр nomenclatureRecord поддерживает только объекты справочника {СписокНоменклатуры.Ref.Name}");
 
         // Проверка параметра findedObject
         List<TypeOfReference> supportedReferences = new List<TypeOfReference>() {
@@ -1054,7 +1288,7 @@ public class Macro : MacroProvider
         };
 
         if (!supportedReferences.Contains(GetTypeOfReferenceFrom(findedObject)))
-            throw new Exception($"Неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
+            throw new Exception($"{nameof(SyncronizeTypes)}: неправильное использование метода SyncronizeTypes. Параметр findedObject не поддерживает объекты справочника {findedObject.Reference.Name}");
 
         // Определяем указанный тип и тип найденной записи
         TypeOfObject typeOfNom = GetTypeOfObjectFrom(nomenclatureRecord);
@@ -1063,7 +1297,7 @@ public class Macro : MacroProvider
         // Если типы не соответствуют друг другу, пытаемся привести их в соответствие
         if (typeOfNom != typeOfFinded) {
          
-            messages.Add($"Обнаружено несоответствие типов: запись - {typeOfNom.ToString()}, найденный объект - {typeOfFinded.ToString()}");
+            messages.Add($"{nameof(SyncronizeTypes)}: Обнаружено несоответствие типов: запись - {typeOfNom.ToString()}, найденный объект - {typeOfFinded.ToString()}");
 
             // 1 СЛУЧАЙ
             // Случай, когда в справочнике 'Номенклатура FoxPro' указан более общий тип, чем тип у привязанного/найденного объекта.
@@ -1073,7 +1307,7 @@ public class Macro : MacroProvider
                 nomenclatureRecord.BeginChanges();
                 nomenclatureRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(typeOfFinded);
                 nomenclatureRecord.EndChanges();
-                messages.Add($"Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'");
+                messages.Add($"{nameof(SyncronizeTypes)}: Произведена синхронизация типов. В поле 'Тип номенклатуры' вписан тип '{typeOfFinded.ToString()}'");
                 return;
             }
 
@@ -1096,7 +1330,7 @@ public class Macro : MacroProvider
                             findedObject = castObject.BeginChanges(GetClassFrom(typeOfNom, castObject.Reference));
                             findedObject.EndChanges();
                             if (findedObject == null)
-                                throw new Exception("Возникла ошибка в процессе смены типа объекта");
+                                throw new Exception($"{nameof(SyncronizeTypes)}: Возникла ошибка в процессе смены типа объекта");
                         }
                         else {
                          
@@ -1108,11 +1342,11 @@ public class Macro : MacroProvider
                     }
                     catch (Exception e) {
                      
-                        throw new Exception($"Ошибка при смене типа:\n{e}");
+                        throw new Exception($"{nameof(SyncronizeTypes)}: Ошибка при смене типа:\n{e}");
                     }
 
                     // Пишем лог о результатах
-                    messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
+                    messages.Add($"{nameof(SyncronizeTypes)}: Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
                     return;
                 }
                 // Начальный тип принадлежит справочнику Материалы или Электронные компоненты.
@@ -1122,7 +1356,7 @@ public class Macro : MacroProvider
                  
                     // TODO: Реализовать код по смене типа между справочниками
                     findedObject = MoveObjectToAnotherReference(findedObject, typeOfNom);
-                    messages.Add($"Для смены типов требуется перенос объекта из одного справочника в другой");
+                    messages.Add($"{nameof(SyncronizeTypes)}: Для смены типов требуется перенос объекта из одного справочника в другой");
                     //messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
                     return;
                 }
@@ -1136,13 +1370,13 @@ public class Macro : MacroProvider
             // И так же реализовать тип, который будет производить соответствующие изменения
 
             throw new Exception(
-                    $"Обнаружено несоответствие типов объекта {nomenclatureRecord.ToString()} и {findedObject.ToString()}" +
+                    $"{nameof(SyncronizeTypes)}: обнаружено несоответствие типов объекта {nomenclatureRecord.ToString()} и {findedObject.ToString()}" +
                     " которое не удалось устранить в автоматическом режиме" +
                     $" ({typeOfNom.ToString()} и {typeOfFinded.ToString()} соответственно)"
                     );
         }
         else
-            messages.Add("Синхронизация типов не потребовалась");
+            messages.Add($"{nameof(SyncronizeTypes)}: Синхронизация типов не потребовалась");
             return;
     }
 
@@ -1174,7 +1408,7 @@ public class Macro : MacroProvider
 
         if (!supportedReferences.Contains(initialReference))
             throw new Exception(
-                    "Ошибка при попытке изменения типа.\n" +
+                    $"{nameof(MoveObjectToAnotherReference)}: ошибка при попытке изменения типа.\n" +
                     $"Метод {nameof(MoveObjectToAnotherReference)} работает только с объектами справочников, которые относятся к ЭСИ" +
                     $"В метод передан объект '{initialObject.ToString()}', который относится к справочнику '{initialObject.Reference.Name}'."
                     );
@@ -1287,7 +1521,7 @@ public class Macro : MacroProvider
         }
 
         if (newObject == null)
-            throw new Exception($"При выполнении метода {nameof(MoveObjectToAnotherReference)} возникла ошибка. Переменная 'newObject' содержит null");
+            throw new Exception($"{nameof(MoveObjectToAnotherReference)}: Переменная 'newObject' содержит null");
 
         // Производим удаление объекта в момент, когда новый объект полностью создан
         initialObject.CheckOut(true); // Берем объект на изменение с целью удаления
@@ -1300,10 +1534,9 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Функция для создания связей между созданными в процессе выгрузки номенклатурными объектами
-    /// Входные данные:
-    /// createdObjects - список созданных объектов
-    /// links - словарь с всеми подключениями в виде словаря по ключу с обозначением ДСЕ
     /// </summary>
+    /// <param name="createdObjects">Список созданных объектов</param>
+    /// <param name="links">Перечень всех подключений в виде словаря по ключу с обознчением ДСЕ</param>
     private void ConnectCreatedObjects(List<ReferenceObject> createdObjects, Dictionary<string, List<ReferenceObject>> links) {
      
         // Функция принимает созданные номенклатурный объекты, а так же объекты справочника "Подключения"
@@ -1316,9 +1549,9 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Метод для определения, относиться ли данный тип объекта к объекту, у которого SHIFR - Код ОКП
-    /// Аргументы:
-    /// type - тип проверяемого объекта
     /// </summary>
+    /// <param name="type">Тип объекта, для которого нужно определить, является ли его обозначение кодом ОКП</param>
+    /// <returns>Возаращает true, если в качестве обозначения для этого типа используется код ОКП, false - в противном случае</returns>
     private bool IsShifrOKP(TypeOfObject type) {
         switch(type) {
             case TypeOfObject.Материал:
@@ -1332,26 +1565,25 @@ public class Macro : MacroProvider
             case TypeOfObject.Другое:
                 return false;
             default:
-                throw new Exception($"Функция '{nameof(IsShifrOKP)}' не предназначена для обработки типа {type.ToString()}");
+                throw new Exception($"{nameof(IsShifrOKP)}: функция не предназначена для обработки типа {type.ToString()}");
         }
 
     }
 
     /// <summary>
     /// Метод для определения, относится ли данный тип объекта к объекту, у которого SHIFR - обозначение
-    /// Аргументы:
-    /// type - тип проверяемого объекта
     /// </summary>
+    /// <param name="type">Тип объекта, для которого нужно определить, является ли его обозначение кодом ОКП</param>
+    /// <returns>Возаращает false, если в качестве обозначения для этого типа используется код ОКП, true - в противном случае</returns>
     private bool IsShifrDesignation(TypeOfObject type) {
         return !IsShifrOKP(type);
     }
 
     /// <summary>
     /// Метод для определения типа переданного объекта
-    /// На вход передается ReferenceObject, который может относиться к справочникам:
-    /// Список номенклатуры FoxPro, ЭСИ, Документы, Материалы, Электронные компоненты
-    /// Если в метод передается объект другого справочника, выдается ошибка
     /// </summary>
+    /// <param name="nomenclature">Объект ReferenceObject, который должен принадлежать к одному из используемых для работы с номенклатурой справочников</param>
+    /// <returns>Возвращает тип объекта или выбрасывает ошибку, если передан некорректный объект справочника</returns>
     private TypeOfObject GetTypeOfObjectFrom(ReferenceObject nomenclature) {
         TypeOfReference refType = GetTypeOfReferenceFrom(nomenclature);
                                                        
@@ -1386,19 +1618,18 @@ public class Macro : MacroProvider
                 case "Другое":
                     return TypeOfObject.Другое;
                 default:
-                    throw new Exception($"Ошибка при определении типа объекта справочника '{nomenclature.Reference.Name}'. Разбор типа объекта '{typeName}' не предусмотрен");
+                    throw new Exception($"{nameof(GetTypeOfObjectFrom)}: ошибка при определении типа объекта справочника '{nomenclature.Reference.Name}'. Разбор типа объекта '{typeName}' не предусмотрен");
             }
         }
 
-        throw new Exception($"Метод '{nameof(GetTypeOfObjectFrom)}' не работает с объектами справочника '{nomenclature.Reference.Name}'");
+        throw new Exception($"{nameof(GetTypeOfObjectFrom)}: функция не работает с объектами справочника '{nomenclature.Reference.Name}'");
     }
 
     /// <summary>
     /// Метод для получения из заданного перечисления типа значение int, соответствующее в списке значений поля "Тип номенклатуры"
-    /// Аргументы:
-    /// type - перечисление TypeOfObject, которое необходимо конвертировать в соответствующее число.
-    /// На выход поступает его цифровое представление.
     /// </summary>
+    /// <param name="type">Тип, для которого нужно получить его числовое представление</param>
+    /// <returns>Числовое представление типа</returns>
     private int GetIntFrom(TypeOfObject type) {
      
         return (int)type;
@@ -1406,11 +1637,10 @@ public class Macro : MacroProvider
 
     /// <summary>
     /// Метод для получения из заданного перечисления типа объекта ClassObject, представляющего собой тип объекта в T-Flex DOCs
-    /// Аргументы:
-    /// type - перечисление TypeOfObject, которое необходимо конвертировать в соответствующий ClassObject.
-    /// reference - справочник, в котором нужно производить поиск соответствующего типа
-    /// На выход поступает найденный объект ClassObject. Если объект не удалось найти, выбрасывается сообщение об ошибке.
     /// </summary>
+    /// <param name="type">Искомый тип объекта, заданный перечислением</param>
+    /// <param name="reference">Справочник, для которого необходимо получить ClassObject для искомого типа</param>
+    /// <returns>Возвращает тип объекта в виде ClassObject данного справочника. В случае, если объекта не получилось найти, выбрасывается исключение</returns>
     private ClassObject GetClassFrom(TypeOfObject type, Reference reference) {
      
         ClassObject result = null;
@@ -1442,14 +1672,14 @@ public class Macro : MacroProvider
                 break;
             default:
                 throw new Exception(
-                        "При определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
+                        $"{nameof(GetClassFrom)}: при определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
                         $" '{type.ToString()}' не поддерживается"
                         );
         }
 
         if (result == null)
             throw new Exception(
-                    "При определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
+                    $"{nameof(GetClassFrom)}: при определении соответствующего типа ClassObject для TypeOfObject возникла ошибка." +
                     $"Не удалось найти объект типа ClassObject в справочнике '{reference.Name}' для типа '{type.ToString()}'"
                     );
 
@@ -1459,6 +1689,8 @@ public class Macro : MacroProvider
     /// <summary>
     /// Функция для определения типа справочника из переданного объета ReferenceObject
     /// </summary>
+    /// <param name="referenceObject">Объект справочника, для которого нужно получить тип справочника, к которому он принадлежит</param>
+    /// <returns>Тип справочника, представленный в виде перечисления</returns>
     private TypeOfReference GetTypeOfReferenceFrom(ReferenceObject referenceObject) {
      
         switch (referenceObject.Reference.Name.ToLower()) {
@@ -1485,10 +1717,9 @@ public class Macro : MacroProvider
     /// Перегрузка функции для определения типа справочника на основе типа объекта.
     /// Стоит отметить, что данная функция работает только для номенклатурных объектов и
     /// по сути может вернуть только справочники 'Документы', 'Материалы', 'Электронные компоненты'
-    ///
-    /// Аргументы:
-    /// type - тип объекта, из которого нужно определить тип справочника
     /// </summary>
+    /// <param name="type">Тип в виде перечисления</param>
+    /// <returns>Тип справочника, к которому относится переданный тип</returns>
     private TypeOfReference GetTypeOfReferenceFrom(TypeOfObject type) {
         switch (type) {
             case TypeOfObject.Материал:
@@ -1503,18 +1734,15 @@ public class Macro : MacroProvider
             case TypeOfObject.Другое:
                 return TypeOfReference.Документы;
             default:
-                throw new Exception($"Метод {nameof(GetTypeOfReferenceFrom)} не предназначен для работы с '{type.ToString()}'");
+                throw new Exception($"{nameof(GetTypeOfReferenceFrom)}: Функция не предназначена для работы с '{type.ToString()}'");
         }
     }
 
     /// <summary>
     /// Функция для получения соответствующего переданному typeOfReference RefGuidData объекта
-    ///
-    /// Аргументы:
-    /// typeOfReference - перечисление, в котором есть все основные справочники, которые используются данным макросом
-    ///
-    /// Функция возвращает RefGuidData
     /// </summary>
+    /// <param name="typeOfReference">Тип справочинка в виде перечисления</param>
+    /// <returns>Соотвутствующий объект RefGuidData, который инкапсулирует в себе всю потребную информацию по справочнику</returns>
     private RefGuidData GetRefGuidDataFrom(TypeOfReference typeOfReference) {
      
         switch (typeOfReference) {
@@ -1532,7 +1760,7 @@ public class Macro : MacroProvider
             case TypeOfReference.Подключения:
                 return Подключения;
             default:
-                throw new Exception($"Для типа '{typeOfReference.ToString()}' не предусмотрена обработка в методе GetRefGuidDataFrom");
+                throw new Exception($"{nameof(GetRefGuidDataFrom)}: для типа '{typeOfReference.ToString()}' не предусмотрена обработка");
         }
     }
 
@@ -1541,10 +1769,9 @@ public class Macro : MacroProvider
     /// Особое внимание стоит обратить на то, что данный метод возвращает только исходные справочники типов, т.е.
     /// он не будет возвращать справочник ЭСИ, или справочники, которые не относятся к типам GetTypeOfObjectFrom
     /// (к примеру 'Подключения' или 'Список номенклатуры FoxPro')
-    ///
-    /// Аргументы:
-    /// type - тип объекта, из которого нужно вывести объект RefGuidData
     /// </summary>
+    /// <param name="type">Тип номенклатурного объекта, для которого нужно вывести RefGuidData</param>
+    /// <returns>Соотвутствующий объект RefGuidData, который инкапсулирует в себе всю потребную информацию по справочнику</returns>
     private RefGuidData GetRefGuidDataFrom(TypeOfObject type) {
         return GetRefGuidDataFrom(GetTypeOfReferenceFrom(type));
     }
@@ -1552,6 +1779,8 @@ public class Macro : MacroProvider
     /// <summary>
     /// Перегрузка метода, которая вместо типа справочника принимает объект справочника, на основе которого вычисляется нужный RefGuidData объект
     /// </summary>
+    /// <param name="referenceObject">Объект справочника, для которого нужно вывести RefGuidData</param>
+    /// <returns>Соотвутствующий объект RefGuidData, который инкапсулирует в себе всю потребную информацию по справочнику</returns>
     private RefGuidData GetRefGuidDataFrom(ReferenceObject referenceObject) {
      
         return GetRefGuidDataFrom(GetTypeOfReferenceFrom(referenceObject));
@@ -1635,7 +1864,7 @@ public class Macro : MacroProvider
         public NomenclatureTree(Dictionary<string, ReferenceObject> nomenclature, Dictionary<string, List<ReferenceObject>> links, string shifr, RefGuidData nom, RefGuidData conn) {
          
             if (nomenclature == null || links == null || shifr == null)
-                throw new Exception("В конструктор создания NomenclatureTree были поданы отсутствующие значения");
+                throw new Exception($"{nameof(NomenclatureTree)}: в конструктор были переданы отсутствующие значения");
 
             this.Nomenclature = nom;
             this.Connections = conn;
@@ -1690,7 +1919,7 @@ public class Macro : MacroProvider
             if (shifr == null)
                 errors.Add("Параметр 'shifr' имеет значение null");
             if (errors.Count != 0)
-                throw new Exception($"Во время создания объекта NomenclatureNode возникла ошибка:\n{string.Join("\n", errors)}");
+                throw new Exception($"{nameof(NomenclatureNode)}: в процессе создания объекта возникла ошибка:\n{string.Join("\n", errors)}");
 
             this.Tree = tree;
             this.Parent = parent;
@@ -1702,7 +1931,7 @@ public class Macro : MacroProvider
                 this.NomenclatureObject = nomenclature[shifr];
                 if (this.NomenclatureObject == null)
                     throw new Exception(
-                            $"При построении дерева для изделия {this.Tree.NameProduct} возникла ошибка:\n" +
+                            $"{nameof(NomenclatureNode)}: при построении дерева для изделия {this.Tree.NameProduct} возникла ошибка:\n" +
                             "Переданный номенклатурный объект для формирования дочерней ноды содержит null.\n" +
                             $"Родительская нода - {parent.Name}"
                             );
@@ -1710,7 +1939,7 @@ public class Macro : MacroProvider
                 this.Tree.AllReferenceObjects.Add(this.NomenclatureObject);
             }
             else
-                throw new Exception($"В дереве изделия {this.Tree.NameProduct} отсутствует '{shifr}'");
+                throw new Exception($"{nameof(NomenclatureNode)}: в дереве изделия {this.Tree.NameProduct} отсутствует '{shifr}'");
 
             // Получаем название объекта
             this.Name = (string)this.NomenclatureObject[Tree.Nomenclature.Params["Обозначение"]].Value;
@@ -1722,7 +1951,7 @@ public class Macro : MacroProvider
             // Отключаем рекурсию при достижении большого уровня вложенности
             if (this.Level > 100) {
              
-                throw new Exception($"Превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
+                throw new Exception($"{nameof(NomenclatureNode)}: превышена предельная глубина дерева в 100 уровней, возможна бесконечная рекурсия (Последние четыре элемента бесконечной ветки: {this.GetTail(4)})");
             }
 
             if (links.ContainsKey(shifr))
@@ -1787,7 +2016,7 @@ public class Macro : MacroProvider
             ReferenceInfo refInfo = context.Connection.ReferenceCatalog.Find(guidOfReference);
             // Проверка на то, что удалось найти в базе справочник с таким Guid
             if (refInfo == null)
-                throw new Exception($"Ошибка поиска справочника с уникальным идентификатором {guidOfReference} при инициализации нового объекта ReferenceData");
+                throw new Exception($"{nameof(RefGuidData)}: ошибка поиска справочника с уникальным идентификатором {guidOfReference} при инициализации нового объекта ReferenceData");
             Ref = context.Connection.ReferenceCatalog.Find(guidOfReference).CreateReference();
 
             // Инициализируем контейнеры для уникальных идентификаторов
@@ -1835,7 +2064,7 @@ public class Macro : MacroProvider
              
                 string lowerKey = key.ToLower();
                 if (this.Storage.ContainsKey(lowerKey))
-                    throw new Exception($"Хранилище '{this.Name}' объекта RefGuidData для справочника '{Parent.Ref.Name}' уже содержит ключ '{key}'");
+                    throw new Exception($"{nameof(Container)}: хранилище '{this.Name}' объекта RefGuidData для справочника '{Parent.Ref.Name}' уже содержит ключ '{key}'");
                 this.Storage.Add(lowerKey, guid);
             }
 
@@ -1845,13 +2074,13 @@ public class Macro : MacroProvider
                  
                     string lowerKey = key.ToLower();
                     if (!this.Storage.ContainsKey(lowerKey))
-                        throw new Exception($"Хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} не содержит ключа '{key}'");
+                        throw new Exception($"{nameof(Container)}: хранилище {this.Name} объекта RefGuidData для справочника {Parent.Ref.Name} не содержит ключа '{key}'");
                     return this.Storage[lowerKey];
                 }
 
                 set {
                  
-                    throw new Exception("Для добавления объекта используйте методы класса RefGuidData");
+                    throw new Exception($"{nameof(Container)}: для добавления объекта используйте методы класса RefGuidData");
                 }
             }
         }
