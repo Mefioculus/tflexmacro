@@ -277,13 +277,14 @@ public class Macro : MacroProvider
     }
 
     public void TestGukov() {
-        List<ReferenceObject> refObjs = GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5")));
+        HashSet<ReferenceObject> refObjs = new HashSet<ReferenceObject>(GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5"))));
 
-        string message = string.Join(Environment.NewLine, refObjs.Select(ro => $"{ro.ToString()} ({ro.SystemFields.LogicalObjectGuid.ToString()})"));
+        refObjs.UnionWith(new HashSet<ReferenceObject>(GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5")))));
+
 
         Message(
-                "Тестирование функции IsOneLogicalObject",
-                $"Объекты {Environment.NewLine}{message}{Environment.NewLine}являются одним логическим объектом: {IsOneLogicalObject(refObjs)}");
+                "Тестирование",
+                $"HashSet содержит {refObjs.Count} объектов");
     }
 
 
@@ -315,6 +316,49 @@ public class Macro : MacroProvider
                 }
                 catch (Exception e) {
                     messages.Add($"Error: {e.Message}");
+                }
+            }
+        }
+
+        Message("Результат теста", string.Join(Environment.NewLine, messages));
+    }
+
+    /// <summary>
+    /// Метод для тестирования второй стадии
+    /// </summary>
+    public void TestSecondStage() {
+        // Список шифров объектов для тестирования
+        List<string> shifrs = new List<string>() {
+            "7592214458",
+            "2253190300",
+            "6341268135",
+            "6331229015",
+            "7594602237",
+            "7592229430",
+            "8А6.672.028",
+            "УЯИС.711351.083",
+            "УЯИС.303811.125",
+            "7594602237",
+        };
+
+        List<string> messages = new List<string>();
+
+        // Получаем соответствующие объекты
+        List<ReferenceObject> findedObjects = shifrs
+            .Select(shifr => СписокНоменклатуры.Ref.Find(СписокНоменклатуры.Params["Обозначение"], shifr).FirstOrDefault())
+            .ToList<ReferenceObject>();
+
+        foreach (ReferenceObject nomenclature in findedObjects) {
+            if (nomenclature == null)
+                messages.Add("Нулевой объект");
+            else {
+                string name = (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value;
+                messages.Add($"{Environment.NewLine}ОБРАБОТКА {name}:");
+                try {
+                    ReferenceObject result = ProcessSecondStageFindOrCreate(nomenclature, (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value, GetTypeOfObjectFrom(nomenclature), messages);
+                }
+                catch (Exception e) {
+                    messages.Add($"ERROR: {e.Message}");
                 }
             }
         }
@@ -704,7 +748,7 @@ public class Macro : MacroProvider
                 resultObject = FindFoxRevision(linkedObject, designation, messages); // Пробуем найти уже существующую корректную ревизию
                 // Пробуем найти нужную ревизию, и если нам это не удается, создаем новую
                 if (resultObject == null) {
-                    resultObject = CreateFoxRevision(linkedObject, designation);
+                    resultObject = CreateFoxRevision(linkedObject, designation, messages);
                     messages.Add($"{nameof(ProcessFirstStageFindOrCreate)}: создание ревизии");
                 }
                 else
@@ -726,66 +770,80 @@ public class Macro : MacroProvider
     /// Данный код запускается в том случае, если не удалось получить объект по связи и производит поиск объекта в справочнике ЭСИ, и если таковой имеется, производит проверку его типа.
     /// </summary>
     /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
-    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="shifr">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
     /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
     /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
     /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
-    private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
-     
-
-        List<ReferenceObject> findedObjects = ЭСИ.Ref
-            .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
-            .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
-            .ToList<ReferenceObject>();
-
-        List<ReferenceObject> findedObjectsOKP = ЭСИ.Ref
-            .Find(ЭСИ.Params["Код ОКП"], designation) // Производим поиск по всему справочнику
-            .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
-            .ToList<ReferenceObject>();
-
-        // Проверяем совпадают ли по гуиду объекты findedObjects и findedObjectsOKP
-        if (findedObjects.Count > 1 || findedObjectsOKP.Count > 1)
-            throw new Exception($"{nameof(ProcessSecondStageFindOrCreate)}: В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
-        if (findedObjectsOKP.Count != 0)
-        {
-            if (findedObjects.Count != 0)
-            {
-                if (findedObjects[0].SystemFields.Guid != findedObjectsOKP[0].SystemFields.Guid)
-                    findedObjects.AddRange(findedObjectsOKP);
-            }
-            else
-            {
-                findedObjects.AddRange(findedObjectsOKP);
-            }
-        }
-
+    private ReferenceObject ProcessSecondStageFindOrCreate(ReferenceObject nom, string shifr, TypeOfObject type, List<string> messages) {
         
+        // Производим преобразование шифра FoxPro, который может содержать информацию о варианте, в очищенное от лишней информации обозначение T-Flex
+        string designation = GetDesignationFrom(shifr);
+     
+        // -- Начало поиска
 
-        if (findedObjects.Count == 1) {
-         
-            messages.Add("Объект найден в ЭСИ");
-            MoveShifrToOKP(findedObjects[0], designation, type, messages);
-            SyncronizeTypes(nom, findedObjects[0], messages);
-            
-            /*
-            // Производим привязываение объекта к "Списку номенклатуры FoxPro"
-            nom.BeginChanges();
-            nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], resultObject);
-            nom.EndChanges();
-            */
-            // Возвращаем результат
-            return findedObjects[0];
+        // по обозначению
+        HashSet<ReferenceObject> allFinded = new HashSet<ReferenceObject>(
+                ЭСИ.Ref
+                .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
+                .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+                );
+
+        // Объединяем предыдущий результат с результатом поиска по коду ОКП
+        allFinded.UnionWith(
+                ЭСИ.Ref
+                .Find(ЭСИ.Params["Код ОКП"], designation) // Производим поиск по всему справочнику
+                .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
+                );
+
+        // -- Окончание поиска
+        
+        // -- Начало анализа полученных данных
+
+        ReferenceObject foxRevision = null;
+
+        switch (allFinded.Count) {
+            case 0:
+                // Возвращаем null
+                messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: не найдено ни одного совпадения");
+                return null;
+            case 1:
+                // Проверяем объект на то, является ли он ревизией T-Flex, и если не является, создаем ревизию и возвращаем ее
+                messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: найдено одно совпадение");
+                foxRevision = FindFoxRevision(allFinded.First(), designation, messages);
+                if (foxRevision != null) {
+                    messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: найденный объект является корректной ревизией FoxPro");
+                }
+                else {
+                    messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: найденный объект не является корректной ревизией FoxPro");
+                    foxRevision = CreateFoxRevision(allFinded.First(), shifr, messages);
+                }
+                break;
+            default:
+                // Проверяем объекты на то, что они являются ревизиями одного объекта (иначе выбрасываем ошибку).
+                // Eсли так, ищем среди них ревизию Фокс, и если не находим, создаем ее
+                messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: найдено {allFinded.Count} объектов");
+                if (IsOneLogicalObject(allFinded)) {
+                    messages.Add($"{nameof(ProcessSecondStageFindOrCreate)}: все нейденные объекты являются ревизиями одного объекта");
+                    foxRevision = FindFoxRevision(allFinded.First(), designation, messages);
+                    // Создаем новую ревизию, если ее не удалось найти
+                    if (foxRevision == null)
+                        foxRevision = CreateFoxRevision(allFinded.First(), shifr, messages);
+                    break;
+                }
+                else {
+                    throw new Exception(
+                            $"{nameof(ProcessSecondStageFindOrCreate)}: найденные объекты относятся к разным логическим объектам:{Environment.NewLine}" +
+                            string.Join(Environment.NewLine, allFinded.Select(finded => $"- {finded.ToString()} ({finded.SystemFields.LogicalObjectGuid.ToString()})"))
+                            );
+                }
+
         }
-        else if (findedObjects.Count > 1) {
-         
-            messages.Add("Объект найден в ЭСИ");
-            throw new Exception($"{nameof(ProcessSecondStageFindOrCreate)}: В ЭСИ найдено более одного совпадения по данному обозначению:\n{string.Join("\n", findedObjects.Select(obj => obj.ToString()))}");
-        }
-        else {
-         
-            messages.Add("Объект не найден в ЭСИ");
-            return null;
-        }
+
+        MoveShifrToOKP(foxRevision, designation, type, messages);
+        SyncronizeTypes(nom, foxRevision, messages);
+        return foxRevision;
+
+        // -- Окончание анализа полученных данных
     }
 
     /// <summary>
@@ -915,9 +973,10 @@ public class Macro : MacroProvider
     /// Метод для создание ревизии ФОКС для объекта
     /// </summary>
     /// <param name="initialObject">Исходный объект, на основе которого будет создаваться новая ревизия</param>
-    /// <param name="designation">Обозначение изделия из Fox, для которого нужно создать новую ревизию</param>
+    /// <param name="shifr">Обозначение изделия из Fox, для которого нужно создать новую ревизию</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
     /// <returns>Созданная ревизия</returns>
-    private ReferenceObject CreateFoxRevision(ReferenceObject initialObject, string designation) {
+    private ReferenceObject CreateFoxRevision(ReferenceObject initialObject, string shifr, List<string> messages) {
         // -- Начало валидации
         // Производим проверку входного объекта
         if (GetTypeOfReferenceFrom(initialObject) != TypeOfReference.ЭСИ)
@@ -928,7 +987,7 @@ public class Macro : MacroProvider
                     );
 
         // Производим проверку на то, что данной ревизии у объекта еще нет
-        string nameOfRevision = GetRevisionName(designation);
+        string nameOfRevision = GetRevisionName(shifr);
         if (!IsRevisionNameFree(initialObject, nameOfRevision))
             throw new Exception($"{nameof(CreateFoxRevision)}: У объекта {initialObject.ToString()} уже есть ревизия с названием {nameOfRevision}");
         // -- Окончание валидации
@@ -936,7 +995,16 @@ public class Macro : MacroProvider
         // -- Начало создания ревизии
         // Создаем ревизию
         var level = initialObject.Class.RevisionNamingRule.RevisionLevels[1]; // Получаем уровень мажорной ревизии для ее повышения
-        ReferenceObject newRevision = (initialObject as NomenclatureObject).CreateRevision(revisionLevel: level, recursive: false); // Создаем новую ревизию, не подключая к ней связанных объектов
+        ReferenceObject newRevision = null;
+
+        // Пытаемся создать новую ревизию
+        try {
+            newRevision = (initialObject as NomenclatureObject).CreateRevision(revisionLevel: level, recursive: false); // Создаем новую ревизию, не подключая к ней связанных объектов
+        }
+        catch (Exception e) {
+            throw new Exception($"{nameof(CreateFoxRevision)}: {e.Message}");
+        }
+        messages.Add($"{nameof(CreateFoxRevision)}: произведено создание новой ревизии");
 
         // Переименовываем ревизию в номенклатурном объекте
         newRevision.BeginChanges();
@@ -947,6 +1015,7 @@ public class Macro : MacroProvider
         linkedObject.BeginChanges();
         linkedObject.SystemFields.RevisionName = nameOfRevision;
         linkedObject.EndChanges();
+        messages.Add($"{nameof(CreateFoxRevision)}: произведено переименование новой ревизии");
 
         // Автоматическое применение изменений, если потребуется
         // TODO: Подключить настройки, когда они появятся
@@ -969,20 +1038,20 @@ public class Macro : MacroProvider
     /// </summary>
     /// <param name="findedObjects">Список объектов, которые проверяются на принадлежность одному логическому объекту</param>
     /// <returns>true - если все объекты являются одним логическим объектом, false - если нет</returns>
-    public bool IsOneLogicalObject(List<ReferenceObject> findedObjects) {
+    public bool IsOneLogicalObject(IEnumerable<ReferenceObject> findedObjects) {
         // -- Начало валидации данных
-        if ((findedObjects == null) || (findedObjects.Count == 0))
+        if ((findedObjects == null) || (findedObjects.Count() == 0))
             throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} не содержит данных");
-        if (findedObjects.Count == 1)
+        if (findedObjects.Count() == 1)
             throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} содержит только одно значение (должно быть как минимум два)");
         // -- Окончание валидации данных
 
         // Проверка
-        Guid logicalGuid = findedObjects[0].SystemFields.LogicalObjectGuid;
-        for (int i = 1; i < findedObjects.Count; i++) {
-            if (findedObjects[i].SystemFields.LogicalObjectGuid != logicalGuid)
+        Guid logicalGuid = findedObjects.First().SystemFields.LogicalObjectGuid;
+        foreach (ReferenceObject finded in findedObjects)
+            if (finded.SystemFields.LogicalObjectGuid != logicalGuid)
                 return false;
-        }
+
         return true;
     }
 
@@ -990,21 +1059,21 @@ public class Macro : MacroProvider
     /// Метод для поиска корректной ревизии у объекта на основании обозначения, полученного из FoxPro
     /// </summary>
     /// <param name="initialObject">Объект, для которого производится поиск ревизии</param>
-    /// <param name="designation">Обозначение, переданное из FoxPro, которое в себе может содержать название варианта</param>
+    /// <param name="shifr">Обозначение, переданное из FoxPro, которое в себе может содержать название варианта</param>
     /// <returns>ReferenceObject, если получилось найти искомый объект, null, если не получилось его найти, Exception, если совпадений оказалось больше одного</returns>
-    private ReferenceObject FindFoxRevision(ReferenceObject initialObject, string designation, List<string> messages) {
+    private ReferenceObject FindFoxRevision(ReferenceObject initialObject, string shifr, List<string> messages) {
         // На основе обозначения, полученного из FoxPro определяем, какая ревизия должна быть у объекта
-        string revisionName = GetRevisionName(designation);
+        string revisionName = GetRevisionName(shifr);
         List<ReferenceObject> findedRevisions = GetAllRevisionOf(initialObject)
             .Where(rev => rev.SystemFields.RevisionName == revisionName)
             .ToList<ReferenceObject>();
 
         switch (findedRevisions.Count) {
             case 1:
-                messages.Add($"{nameof(FindFoxRevision)}: была найдена корректная ревизия");
+                messages.Add($"{nameof(FindFoxRevision)}: Фокс ревизия найдена");
                 return findedRevisions[0];
             case 0:
-                messages.Add($"{nameof(FindFoxRevision)}: корректная ревизия отсутствовала");
+                messages.Add($"{nameof(FindFoxRevision)}: Фокс ревизия отсутствовала");
                 return null;
             default:
                 throw new Exception($"{nameof(FindFoxRevision)}: у объекта '{initialObject.ToString()}' было обнаружено {findedRevisions.Count} ревизий с названием '{revisionName}'");
