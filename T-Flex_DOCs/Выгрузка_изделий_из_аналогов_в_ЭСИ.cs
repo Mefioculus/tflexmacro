@@ -277,16 +277,22 @@ public class Macro : MacroProvider
     }
 
     public void TestGukov() {
-        HashSet<ReferenceObject> refObjs = new HashSet<ReferenceObject>(GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5"))));
+        // Создаем новый объект в справочнике "Документы";
+        ReferenceObject newDocument = null;
+        try {
+            newDocument = Документы.Ref.CreateReferenceObject(GetClassFrom(TypeOfObject.Другое, Документы.Ref));
+            newDocument[Документы.Params["Обозначение"]].Value = "28072022";
+            newDocument[Документы.Params["Наименование"]].Value = "28072022";
+            newDocument.SystemFields.RevisionName = "ФОКС-1";
+            newDocument.EndChanges();
+        }
+        catch (Exception e) {
+            Message("Ошибка", $"При создании нового документа возникла ошибка:{Environment.NewLine}{e.Message}");
+        }
 
-        refObjs.UnionWith(new HashSet<ReferenceObject>(GetAllRevisionOf(ЭСИ.Ref.Find(new Guid("0fb6e687-3e78-4cf8-b632-7c3f876608a5")))));
-
-
-        Message(
-                "Тестирование",
-                $"HashSet содержит {refObjs.Count} объектов");
+        // Создаем для него номенклатурный объект
+        ReferenceObject newNomenclature = (ЭСИ.Ref as NomenclatureReference).CreateNomenclatureObject(newDocument);
     }
-
 
     /// <summary>
     /// Метод для проведения тестирования отдельно первой стадии
@@ -364,6 +370,131 @@ public class Macro : MacroProvider
         }
 
         Message("Результат теста", string.Join(Environment.NewLine, messages));
+    }
+
+    /// <summary>
+    /// Метод для тестирования третьей стадии
+    /// </summary>
+    public void TestThirdStage() {
+        // Создаем тестовые объекты
+        List<string> testShifrs = new List<string>();
+        for (int i = 1; i < 10; i++)
+            testShifrs.Add($"testObject-{i.ToString()}");
+
+        // Создаем записи в справочнике
+        List<ReferenceObject> nomRecords = new List<ReferenceObject>();
+        for (int i = 0; i < 9; i++) {
+            ReferenceObject newRecord = СписокНоменклатуры.Ref.CreateReferenceObject();
+            newRecord[СписокНоменклатуры.Params["Обозначение"]].Value = testShifrs[i];
+            // Задаем типы этих объектов
+            if (i < 3)
+                newRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.Другое);
+            else if ((3 <= i) && (i < 6))
+                newRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.Материал);
+            else
+                newRecord[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.ЭлектронныйКомпонент);
+            newRecord.EndChanges();
+            nomRecords.Add(newRecord);
+        }
+
+        // Создание тестовых объектов в смежных справочниках
+        List<ReferenceObject> newTestObjects = new List<ReferenceObject>();
+        for (int i = 0; i < 9; i++) {
+            if (i < 3)
+                newTestObjects.Add(TestCreateOneObject(nomRecords[i]));
+            else if ((3 <= i) && (i < 6))
+                newTestObjects.AddRange(TestCreateMultipleRevision(nomRecords[i]));
+            else
+                newTestObjects.AddRange(TestCreateInMultipleReferences(nomRecords[i]));
+        }
+
+        // Контейнер для логов
+        List<string> messages = new List<string>();
+
+        foreach (ReferenceObject nomenclature in nomRecords) {
+            if (nomenclature == null)
+                messages.Add("Нулевой объект");
+            else {
+                string name = (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value;
+                messages.Add($"{Environment.NewLine}ОБРАБОТКА {name}:");
+                try {
+                    ReferenceObject result = ProcessThirdStageFindOrCreate(nomenclature, (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value, GetTypeOfObjectFrom(nomenclature), messages);
+                }
+                catch (Exception e) {
+                    messages.Add($"ERROR: {e.Message}");
+                }
+            }
+        }
+
+        Message("Результат теста", string.Join(Environment.NewLine, messages));
+
+        // Удаляем тестовые записи из справочника "Список номенклатуры FoxPro"
+        for (int i = 0; i < nomRecords.Count; i++)
+            nomRecords[i].Delete();
+
+        // Отменяем создание объектов в смежных справочниках
+        for (int i = 0; i < newTestObjects.Count; i++) {
+            newTestObjects[i].BeginChanges();
+            newTestObjects[i].CancelChanges();
+            newTestObjects[i].EndChanges();
+        }
+    }
+
+    private ReferenceObject TestCreateOneObject(ReferenceObject nom, TypeOfReference refType = TypeOfReference.Другое) {
+        // Определяем тип объекта
+        TypeOfObject type = GetTypeOfObjectFrom(nom);
+
+        // Определяем тип справочника, в котором нужно создать объект
+        if (refType == TypeOfReference.Другое)
+            refType = GetTypeOfReferenceFrom(type);
+
+        RefGuidData refData = GetRefGuidDataFrom(refType);
+
+        ReferenceObject newObject = null;
+        switch (refType) {
+            case TypeOfReference.Документы:
+                newObject = refData.Ref.CreateReferenceObject(GetClassFrom(TypeOfObject.Другое, Документы.Ref));
+                break;
+            case TypeOfReference.Материалы:
+                newObject = refData.Ref.CreateReferenceObject(GetClassFrom(TypeOfObject.Материал, Материалы.Ref));
+                break;
+            case TypeOfReference.ЭлектронныеКомпоненты:
+                newObject = refData.Ref.CreateReferenceObject(GetClassFrom(TypeOfObject.ЭлектронныйКомпонент, ЭлектронныеКомпоненты.Ref));
+                break;
+            default:
+                newObject = refData.Ref.CreateReferenceObject(GetClassFrom(type, refData.Ref));
+                break;
+        }
+        newObject[refData.Params["Обозначение"]].Value = nom[СписокНоменклатуры.Params["Обозначение"]].Value;
+        newObject[refData.Params["Наименование"]].Value = nom[СписокНоменклатуры.Params["Обозначение"]].Value;
+        newObject[refData.Params["Код ОКП"]].Value = nom[СписокНоменклатуры.Params["Обозначение"]].Value;
+        newObject.EndChanges();
+
+        return newObject;
+    }
+
+    private List<ReferenceObject> TestCreateMultipleRevision(ReferenceObject nom) {
+        List<ReferenceObject> result = new List<ReferenceObject>();
+        result.Add(TestCreateOneObject(nom));
+
+        // Создаем несколько дополнительных ревизий объекта
+        for (int i = 0; i < 3; i++)
+            result.Add(result.First().CreateRevision(null, null, false));
+
+        return result;
+    }
+
+    private List<ReferenceObject> TestCreateInMultipleReferences(ReferenceObject nom) {
+        List<ReferenceObject> result = new List<ReferenceObject>();
+        List<TypeOfReference> references = new List<TypeOfReference>() {
+            TypeOfReference.ЭлектронныеКомпоненты,
+            TypeOfReference.Материалы,
+            TypeOfReference.Документы,
+        };
+
+        foreach (TypeOfReference refType in references)
+            result.Add(TestCreateOneObject(nom, refType));
+        return result;
     }
 
     /// <summary>
@@ -666,8 +797,14 @@ public class Macro : MacroProvider
     }
 
     /// <summary>
-    /// Функция предназначена для переноса параметра обозначение в параметр код ОКП
+    /// Функция предназначена для переноса параметра обозначение в параметр код ОКП.
+    /// Код обрабатывает записи, которые относятся к типам, для которых SHIFR является не полем "Обозначение" а полем "ОКП".
     /// </summary>
+    /// <param name="resultObject">Объект, для которого нужно произвести перенос данных полей "Обозначение" и "Код ОКП"</param>
+    /// <param name="designation">Обозначение объекта</param>
+    /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
+    /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
+    /// <returns>Возвращает resultObject с произведенными над ним изменениями</returns>
     private ReferenceObject MoveShifrToOKP(ReferenceObject resultObject, string designation, TypeOfObject nomtype, List<string> messages)
     {
         
@@ -780,15 +917,16 @@ public class Macro : MacroProvider
         string designation = GetDesignationFrom(shifr);
      
         // -- Начало поиска
+        HashSet<ReferenceObject> allFinded = new HashSet<ReferenceObject>(); // контейнер для хранения результатов поиска
 
-        // по обозначению
-        HashSet<ReferenceObject> allFinded = new HashSet<ReferenceObject>(
+        // поиск по обозначению
+        allFinded.UnionWith(
                 ЭСИ.Ref
                 .Find(ЭСИ.Params["Обозначение"], designation) // Производим поиск по всему справочнику
                 .Where(finded => finded.Class.IsInherit(ЭСИ.Types["Материальный объект"])) // Отфильтровываем только те объекты, которые наследуются от 'Материального объекта'
                 );
 
-        // Объединяем предыдущий результат с результатом поиска по коду ОКП
+        // поиск по коду ОКП
         allFinded.UnionWith(
                 ЭСИ.Ref
                 .Find(ЭСИ.Params["Код ОКП"], designation) // Производим поиск по всему справочнику
@@ -851,68 +989,83 @@ public class Macro : MacroProvider
     /// Данный код запускается в том случае, если не удалось найти объект в ЭСИ и производит поиск объекта в смежных справочниках, и если такой имеется, производит проверку типа и создание объекта ЭСИ.
     /// </summary>
     /// <param name="nom">Объект справочника "Список номенклатуры FoxPro", для которого производится поиск связанного объекта</param>
-    /// <param name="designation">Обозначение объекта справочника "Список номенклатуры FoxPro"</param>
+    /// <param name="shifr">Обозначение объекта, полученное из FoxPro (может содержать информацию о варианте)</param>
     /// <param name="nomtype">Объект типа TypeOfObject, представляющий собой тип номенклатурного объекта</param>
     /// <param name="messages">Список строк, представляющий собой лог ведения выгрузки</param>
     /// <returns>Возвращает ReferenceObject, если объект получилось найти, возвращает null, если объект не получилось найти, выбрасывает ошибку, если возникли проблемы в процессе</returns>
-    private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string designation, TypeOfObject type, List<string> messages) {
+    private ReferenceObject ProcessThirdStageFindOrCreate(ReferenceObject nom, string shifr, TypeOfObject type, List<string> messages) {
+
+        string designation = GetDesignationFrom(shifr);
      
         // Производим поиск по смежным справочникам
-        List<ReferenceObject> findedObjects = new List<ReferenceObject>();
+        HashSet<ReferenceObject> allFinded = new HashSet<ReferenceObject>(); // Контейнер для результатов поиска
 
-        List<ReferenceObject> tempResult;
+        // Справочник "Документы"
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    Документы.Ref
+                        .Find(Документы.Params["Обозначение"], designation)
+                        .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
+                    ));
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    Документы.Ref
+                        .Find(Документы.Params["Код ОКП"], designation)
+                        .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
+                    ));
 
-        // Производим поиск по справочнику "Документы"
+        // Справочник "Электронные компоненты"
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    ЭлектронныеКомпоненты.Ref
+                        .Find(ЭлектронныеКомпоненты.Params["Обозначение"], designation)
+                    ));
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    ЭлектронныеКомпоненты.Ref
+                        .Find(ЭлектронныеКомпоненты.Params["Код ОКП"], designation)
+                    ));
 
-        tempResult = Документы.Ref
-            .Find(Документы.Params["Обозначение"], designation)
-            .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
-            .ToList<ReferenceObject>();
-        if (type == TypeOfObject.СтандартноеИзделие)
-        {
-            var okptmpResult = Документы.Ref
-            .Find(Документы.Params["Код ОКП"], designation)
-            .Where(finded => finded.Class.IsInherit(Документы.Types["Объект состава изделия"]))
-            .ToList<ReferenceObject>();
-            if (tempResult.Count != 0 && tempResult != null && okptmpResult.Count != 0)
-            {
-                throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: В справочнике документы найдены 2 объктка {designation}");
-            }
-            else if (tempResult != null && okptmpResult.Count != 0)
-            {
-                tempResult = okptmpResult;
-            }
-        }
+        // Справочник "Материалы"
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    Материалы.Ref
+                        .Find(Материалы.Params["Обозначение"], designation)
+                    ));
+        allFinded.UnionWith(new HashSet<ReferenceObject>(
+                    Материалы.Ref
+                        .Find(Материалы.Params["Код ОКП"], designation)
+                    ));
 
-        if (tempResult != null && tempResult.Count!=0)
-            findedObjects.AddRange(tempResult);
+        // Обрабатываем результаты поиска
+        ReferenceObject targetObject = null;
 
-        // Производим поиск по справочнику "Электронные компоненты"
-        tempResult = ЭлектронныеКомпоненты.Ref.Find(ЭлектронныеКомпоненты.Params["Обозначение"], designation);
-        if (tempResult != null && tempResult.Count != 0)
-            findedObjects.AddRange(tempResult);
-
-        // Производим поиск по справочнику "Материалы"
-        tempResult = Материалы.Ref.Find(Материалы.Params["Обозначение"], designation);
-        if (tempResult != null && tempResult.Count != 0)
-            findedObjects.AddRange(tempResult);
-
-        switch (findedObjects.Count) {
-         
+        switch (allFinded.Count) {
             case 0:
                 messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект не найден в смежных справочниках");
                 return null;
             case 1:
-                // Производим синхронизацию типов
-                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект найден в смежных справочниках");
-                MoveShifrToOKP(findedObjects[0], designation, type, messages);
-                SyncronizeTypes(nom, findedObjects[0], messages);
-                var EsiObj = ConnectRefObjectToESI(findedObjects[0], designation);
-                return EsiObj;
+                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект '{allFinded.First().ToString()}' найден в справочнике {GetTypeOfReferenceFrom(allFinded.First()).ToString()}");
+                // Передаем объект для дальнейшей обработки
+                targetObject = allFinded.First();
+                break;
             default:
-                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: Объект найден в смежных справочниках");
-                throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: Было найдено несколько совпадений:\n{string.Join("\n", findedObjects.Select(res => $"{res.ToString()} (Справочник: {res.Reference.Name})"))}");
+                // TODO: Реализовать обработку множественного случая
+                // Случай, когда получилось найти много объектов
+                messages.Add($"{nameof(ProcessThirdStageFindOrCreate)}: было найдено несколько объектов");
+                // производим проверку результатов поиска и отсеиваем заведомо ложные случаи
+                if (!IsOneReference(allFinded))
+                    throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: найденные объекты принадлежат разным справочникам");
+                if (!IsOneLogicalObject(allFinded))
+                    throw new Exception($"{nameof(ProcessThirdStageFindOrCreate)}: найденный объекты не являются ревизиями одного логического объекта");
+                // Передаем объект для дальнейшей обработки. Здесь можно предусмотреть более сложный алгоритм выбора, но в данный момент просто передается первый объект
+                targetObject = allFinded.First();
+                break;
         }
+
+        // Производим обработку найденного объекта. TODO: Учесть, что данные корректировки будут производиться только для
+        // одной выбранной ревизии из всех найденных. Возможно такой вариант редактирования не будет подходить для финальной версии макроса
+        MoveShifrToOKP(targetObject, designation, type, messages);
+        SyncronizeTypes(nom, targetObject, messages);
+        ReferenceObject newNomObject = ConnectRefObjectToESI(targetObject, designation);
+        
+        // Возвращаем созданную ревизию Фокс
+        return CreateFoxRevision(newNomObject, shifr, messages);
     }
 
 
@@ -1048,8 +1201,30 @@ public class Macro : MacroProvider
 
         // Проверка
         Guid logicalGuid = findedObjects.First().SystemFields.LogicalObjectGuid;
-        foreach (ReferenceObject finded in findedObjects)
+        foreach (ReferenceObject finded in findedObjects.Skip(1))
             if (finded.SystemFields.LogicalObjectGuid != logicalGuid)
+                return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Функция для проверки на то, что все объекты принадлежат одному справочнику
+    /// </summary>
+    /// <param name="findedObjects"></param>
+    /// <returns>true - если все объекты принадлежат к одному справочнику, false - если нет</returns>
+    public bool IsOneReference(IEnumerable<ReferenceObject> findedObjects) {
+        // -- Начало валидации данных
+        if ((findedObjects == null) || (findedObjects.Count() == 0))
+            throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} не содержит данных");
+        if (findedObjects.Count() == 1)
+            throw new Exception($"{nameof(IsOneLogicalObject)}: Параметр {nameof(findedObjects)} содержит только одно значение (должно быть как минимум два)");
+        // -- Окончание валидации данных
+
+        // Проверка
+        TypeOfReference reference = GetTypeOfReferenceFrom(findedObjects.First());
+        foreach (ReferenceObject finded in findedObjects.Skip(1))
+            if (GetTypeOfReferenceFrom(finded) != reference)
                 return false;
 
         return true;
@@ -1187,12 +1362,6 @@ public class Macro : MacroProvider
         // -- Конец верификации информации
 
         // -- Начало подключения объекта
-        // TODO: Удалить код, если тестирование пройдет гладко
-        /*
-        findedOrCreated.BeginChanges();
-        findedOrCreated.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], nom);
-        findedOrCreated.EndChanges();
-        */
         try {
             nom.BeginChanges();
             nom.SetLinkedObject(СписокНоменклатуры.Links["Связь на ЭСИ"], findedOrCreated);
@@ -1423,7 +1592,6 @@ public class Macro : MacroProvider
                 // в другой.
                 else {
                  
-                    // TODO: Реализовать код по смене типа между справочниками
                     findedObject = MoveObjectToAnotherReference(findedObject, typeOfNom);
                     messages.Add($"{nameof(SyncronizeTypes)}: Для смены типов требуется перенос объекта из одного справочника в другой");
                     //messages.Add($"Произведена синхронизация типов. Тип привязанного объекта с 'Другое' изменен на '{typeOfNom.ToString()}'");
