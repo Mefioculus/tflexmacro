@@ -29,6 +29,8 @@ public class Macro : MacroProvider
     private RefGuidData ЖурналВыгрузокИзFoxPro { get; set; }
     private Log log_save_ref = new Log();
                                                                             
+    // Временные настройки
+    private bool applyCreation = false;
                                          
 
     private string ДиректорияДляЛогов { get; set; }
@@ -440,6 +442,38 @@ public class Macro : MacroProvider
         }
     }
 
+    /// <summary>
+    /// Метод для тестирования последней стадии
+    /// </summary>
+    public void TestFinalStage() {
+        // Создаем записи в справочнике
+        List<ReferenceObject> nomRecords = CreateTestNomenclatureRecords(10);
+
+        // Контейнер для логов
+        List<string> messages = new List<string>();
+        List<ReferenceObject> createdStageObjects = new List<ReferenceObject>();
+
+        foreach (ReferenceObject nomenclature in nomRecords) {
+            if (nomenclature == null)
+                messages.Add("Нулевой объект");
+            else {
+                string name = (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value;
+                messages.Add($"{Environment.NewLine}ОБРАБОТКА {name}:");
+                try {
+                    createdStageObjects.Add(ProcessFinalStageFindOrCreate(nomenclature, (string)nomenclature[СписокНоменклатуры.Params["Обозначение"]].Value, GetTypeOfObjectFrom(nomenclature), messages));
+                }
+                catch (Exception e) {
+                    messages.Add($"ERROR: {e.Message}");
+                }
+            }
+        }
+
+        Message("Результат теста", string.Join(Environment.NewLine, messages));
+
+        CleanTestObjects(nomRecords);
+        CleanTestObjects(createdStageObjects);
+    }
+
     private ReferenceObject TestCreateOneObject(ReferenceObject nom, TypeOfReference refType = TypeOfReference.Другое) {
         // Определяем тип объекта
         TypeOfObject type = GetTypeOfObjectFrom(nom);
@@ -494,6 +528,92 @@ public class Macro : MacroProvider
 
         foreach (TypeOfReference refType in references)
             result.Add(TestCreateOneObject(nom, refType));
+        return result;
+    }
+
+    /// <summary>
+    /// Метод для удаление созданных во время тестирования объектов
+    /// </summary>
+    /// <param name="testObjects">Список тектовых объектов, которые нужно подчистить после произведения тестирования</param>
+    private void CleanTestObjects(List<ReferenceObject> testObjects) {
+        if (testObjects == null)
+            throw new Exception($"{nameof(CleanTestObjects)}: в метод передан null");
+        List<string> errors = new List<string>();
+
+        foreach (ReferenceObject testObject in testObjects) {
+            if (testObject == null)
+                continue; // Обработка случая, когда стадия ничего не вернула
+            // Получаем тип справочника
+            TypeOfReference typeOfRef = GetTypeOfReferenceFrom(testObject);
+            switch (GetTypeOfReferenceFrom(testObject)) {
+                case TypeOfReference.СписокНоменклатуры:
+                    try {
+                        testObject.Delete(); // Производим обычное удаление объекта
+                    }
+                    catch (Exception e) {
+                        errors.Add($"{testObject.ToString()}: '{e.Message}'");
+                    }
+                    break;
+                case TypeOfReference.ЭСИ:
+                case TypeOfReference.Документы:
+                case TypeOfReference.Материалы:
+                case TypeOfReference.ЭлектронныеКомпоненты:
+                    foreach (ReferenceObject revision in GetAllRevisionOf(testObject)) {
+                        try {
+                            Desktop.UndoCheckOut(revision); // Отметяем создание новых объектов
+                        }
+                        catch (Exception e) {
+                            errors.Add($"{testObject.ToString()}: '{e.Message}'");
+                        }
+                    }
+                    break;
+                default:
+                    errors.Add($"{testObject}: 'Метод не работает с объектами справочника {testObject.Reference.ToString()}'");
+                    break;
+            }
+        }
+
+        if (errors.Count != 0) {
+            string message = string.Join(Environment.NewLine, errors);
+            Message("Информация", $"{nameof(CleanTestObjects)}: в процессе работы метода возникли следующие ошибки:{Environment.NewLine}{message}");
+        }
+    }
+
+    /// <summary>
+    /// Функция для создания тестовых объектов в справочнике "Список номенклатуры FoxPro"
+    /// </summary>
+    /// <param name="amount">Количество объектов для создания</param>
+    /// <returns>Список созданных объектов</returns>
+    private List<ReferenceObject> CreateTestNomenclatureRecords(int amount) {
+        List<ReferenceObject> result = Enumerable
+            .Range(0, amount)
+            .Select(index => СписокНоменклатуры.Ref.CreateReferenceObject())
+            .ToList<ReferenceObject>();
+
+        int i = 0;
+        // Производим заполнение параметров
+        foreach (ReferenceObject testObject in result) {
+            // Задаем основные параметры
+            testObject[СписокНоменклатуры.Params["Обозначение"]].Value = $"TestObject-{i + 1}";
+            testObject[СписокНоменклатуры.Params["Наименование"]].Value = $"TestObject-{i + 1}";
+            // Указываем тип для объекта
+            switch (i % 3) {
+                case 0:
+                    testObject[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.Другое);
+                    break;
+                case 1:
+                    testObject[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.Материал);
+                    break;
+                case 2:
+                    testObject[СписокНоменклатуры.Params["Тип номенклатуры"]].Value = GetIntFrom(TypeOfObject.ЭлектронныйКомпонент);
+                    break;
+                default:
+                    throw new Exception($"{nameof(CreateTestNomenclatureRecords)}: Ошибка при присвоении типа для объекта 'TestObject-{i + 1}'");
+            }
+            testObject.EndChanges();
+            i++;
+        }
+
         return result;
     }
 
@@ -1171,8 +1291,8 @@ public class Macro : MacroProvider
         messages.Add($"{nameof(CreateFoxRevision)}: произведено переименование новой ревизии");
 
         // Автоматическое применение изменений, если потребуется
-        // TODO: Подключить настройки, когда они появятся
-        Desktop.CheckIn(newRevision, "Создание ревизии FoxPro", false);
+        if (applyCreation)
+            Desktop.CheckIn(newRevision, "Создание ревизии FoxPro", false);
         // -- Окончание создания ревизии
         return newRevision;
     }
@@ -1408,12 +1528,12 @@ public class Macro : MacroProvider
    
     /// <summary>
     /// Создаёт объект в справочнике <refName>, в ЭСИ содаётся на него номенклатурный объект. 
-    /// Добавляет связь созданого объекта в ЭСИ на объект из справочника Список номенклатуры FoxPro
-    /// nom, Объект из справочника "Список номенклатуры"
-    /// name, "Наименование"
-    /// oboz, "Обозначение"
-    /// refname "Справочник в котором создается объект"
     /// </summary>
+    /// <param name="nom">Объект из справочника "Список номенклатуры"</param>
+    /// <param name="name">Наименование создаваемой ДСЕ</param>
+    /// <param name="oboz">Обозначение создаваемой ДСЕ</param>
+    /// <param name="refname">Исходный справочник, в котором нужно создавать объект</param>
+    /// <returns>Созданный объект в справочнике ЭСИ</returns>
     private ReferenceObject CreateRefObject(ReferenceObject nom, string name, string oboz, string classObjectName, RefGuidData refname) //, Reference refName, Guid guidName, Guid guidShifr)
     {
 
@@ -1427,14 +1547,14 @@ public class Macro : MacroProvider
             ReferenceObject refereceObject = refName.CreateReferenceObject(createdClassObject);
             
             if (classObjectName.Equals("Материал"))
-                refereceObject[refname.Params["Сводное обозначение"]].Value = name;
+                refereceObject[refname.Params["Сводное наименование"]].Value = name;
             else
                 refereceObject[refname.Params["Наименование"]].Value = name;
 
             if (classObjectName.Equals("Стандартное изделие") || classObjectName.Equals("Электронный компонент") || classObjectName.Equals("Материал"))
-            refereceObject[refname.Params["Код ОКП"]].Value = oboz;
+                refereceObject[refname.Params["Код ОКП"]].Value = oboz;
             else
-            refereceObject[refname.Params["Обозначение"]].Value = oboz;
+                refereceObject[refname.Params["Обозначение"]].Value = oboz;
             refereceObject.EndChanges();
 
             //Desktop.CheckIn(refereceObject, "Объект создан", false);
@@ -1448,12 +1568,15 @@ public class Macro : MacroProvider
         }
         catch (Exception e)
         {
-            throw new Exception($"{nameof(CreateRefObject)}: ошибка при создании объекта:\n{e}");
+            string arguments = $"nom: {nom.ToString()}\nname: {name}\noboz: {oboz}\nclassObjectName: {classObjectName}\nrefname: {refname.Ref.Name}";
+            throw new Exception($"{nameof(CreateRefObject)}: ошибка при создании объекта:\n{e}\n\nАргументы функции:\n{arguments}");
         }
     }
 
     private String NormalizeNameObject(string name)
     {
+        if (string.IsNullOrEmpty(name))
+            return name;
         while (name.Contains("  "))
         {
             name = name.Replace("  ", " ");
